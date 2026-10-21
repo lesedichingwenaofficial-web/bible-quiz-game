@@ -1,0 +1,2362 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Gift Box</title>
+<meta name="description" content="cheekyfoundlamb demo 11: Chain Reaction with gift boxes full of Bible miracles, parables and gifts." />
+<style>
+/* ===== shared shell styles ===== */
+:root {
+  --night: #13201a;
+  --meadow: #1d3327;
+  --meadow-2: #274232;
+  --cream: #fbf4e6;
+  --muted: #b5c4b4;
+  --sun: #ffcf4a;
+  --wool: #ffffff;
+  --danger: #ff6b6b;
+  --round: ui-rounded, "SF Pro Rounded", "Nunito", "Segoe UI", system-ui, sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--night);
+  color: var(--cream);
+  font-family: var(--round);
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+}
+[hidden] { display: none !important; }
+button { font: inherit; color: inherit; border: 0; cursor: pointer; touch-action: manipulation; }
+button:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
+.app {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: env(safe-area-inset-top, 0px) max(10px, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px) max(10px, env(safe-area-inset-left, 0px));
+}
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 2px 6px;
+  min-height: 52px;
+}
+.status { display: flex; align-items: center; gap: 8px; min-width: 0; font-weight: 800; font-size: 1.02rem; }
+.status .dot { width: 18px; height: 18px; border-radius: 50%; flex: none; box-shadow: 0 0 10px currentColor; background: currentColor; }
+.status .txt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.btns { display: flex; gap: 6px; flex: none; }
+.ib {
+  min-width: 44px; height: 44px; padding: 0 10px; border-radius: 14px;
+  background: var(--meadow); font-size: 1.05rem; font-weight: 800;
+}
+.ib:disabled { opacity: 0.35; cursor: default; }
+.ib.on { background: var(--sun); color: #2a2010; }
+.stage { flex: 1; min-height: 0; position: relative; display: flex; align-items: center; justify-content: center; padding: 4px 0 10px; }
+.stage canvas { display: block; touch-action: manipulation; border-radius: 10px; }
+.chain {
+  position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%);
+  font-size: 2.4rem; font-weight: 900; color: var(--sun); pointer-events: none;
+  text-shadow: 0 3px 0 #6b4a00, 0 0 24px rgba(255, 207, 74, 0.6); opacity: 0; white-space: nowrap;
+}
+.chain.pop { animation: pop 0.9s ease-out; }
+@keyframes pop {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+  15% { opacity: 1; transform: translate(-50%, -50%) scale(1.15); }
+  70% { opacity: 1; transform: translate(-50%, -60%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -75%) scale(0.95); }
+}
+.shake { animation: shake 0.25s linear; }
+.shake-big { animation: shake 0.45s linear; }
+@keyframes shake {
+  0%, 100% { transform: translate(0, 0); }
+  20% { transform: translate(-5px, 3px); }
+  40% { transform: translate(5px, -3px); }
+  60% { transform: translate(-4px, -2px); }
+  80% { transform: translate(3px, 2px); }
+}
+.overlay {
+  position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+  padding: max(16px, env(safe-area-inset-top, 0px)) 16px max(16px, env(safe-area-inset-bottom, 0px));
+  background: rgba(8, 14, 11, 0.86); backdrop-filter: blur(4px); overflow-y: auto;
+}
+.card {
+  width: 100%; max-width: 400px; margin: auto; padding: 22px 18px; border-radius: 24px;
+  background: var(--meadow); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45); text-align: center;
+}
+.card h1, .card h2 { margin: 4px 0 6px; line-height: 1.1; text-wrap: balance; }
+.card h1 { font-size: 2rem; color: var(--sun); letter-spacing: -0.01em; }
+.card h2 { font-size: 1.7rem; }
+.card p { margin: 6px 0; color: var(--muted); line-height: 1.4; }
+.card .how { text-align: left; font-size: 0.95rem; }
+.card canvas.hero { display: block; margin: 0 auto 4px; }
+.big {
+  display: block; width: 100%; margin-top: 14px; padding: 15px; border-radius: 16px;
+  background: var(--sun); color: #2a2010; font-weight: 900; font-size: 1.15rem;
+}
+.big.alt { background: var(--meadow-2); color: var(--cream); margin-top: 8px; }
+.opts { display: grid; gap: 8px; margin-top: 12px; text-align: left; }
+.optrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.optrow label, .optrow .lbl { font-weight: 800; }
+.seg { display: flex; flex-wrap: wrap; gap: 4px; background: var(--meadow-2); padding: 4px; border-radius: 12px; }
+.seg button { padding: 8px 10px; border-radius: 9px; background: transparent; color: var(--muted); font-weight: 800; font-size: 0.9rem; }
+.seg button.on { background: var(--sun); color: #2a2010; }
+.verse { font-style: italic; color: var(--cream) !important; }
+.verse small { display: block; margin-top: 4px; font-style: normal; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) {
+  .shake, .shake-big, .chain.pop { animation-duration: 0.01s; }
+}
+/* ===== end shared shell styles ===== */
+
+/* ===== shared card styles ===== */
+.ccard {
+  --g: #3b6fb6;
+  position: relative; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 1px;
+  width: 100%; min-height: 96px; padding: 6px 5px 5px; border-radius: 12px; text-align: center; line-height: 1.12;
+  background: linear-gradient(170deg, color-mix(in srgb, var(--g) 70%, #fff 0%), color-mix(in srgb, var(--g) 55%, #000 45%));
+  border: 2px solid color-mix(in srgb, var(--g) 60%, #fff 40%); color: #fff; box-shadow: 0 3px 0 rgba(0,0,0,0.35);
+}
+.ccard .ic { font-size: 1.5rem; line-height: 1.1; }
+.ccard b { font-size: 0.74rem; font-weight: 900; }
+.ccard .tx { font-size: 0.62rem; opacity: 0.92; }
+.ccard small { margin-top: auto; font-size: 0.56rem; opacity: 0.75; font-style: italic; }
+.ccard.small { min-height: 64px; }
+.ccard.down { --g: #c84b5a; background: repeating-linear-gradient(45deg, #c84b5a 0 8px, #d8606e 8px 16px); }
+.ccard.golden { background: linear-gradient(160deg, #ffe680, #d4a017); color: #3a2a00; border-color: #fff2a8; }
+.ccard.wolf { background: linear-gradient(170deg, #6b6478, #2c2836); }
+.ccard.on { outline: 3px solid var(--sun); outline-offset: 2px; transform: translateY(-6px); }
+.ccard .cost { position: absolute; top: -6px; left: -6px; width: 24px; height: 24px; border-radius: 50%; background: #8fd3ff; color: #12324a; font-style: normal; font-weight: 900; font-size: 0.8rem; display: grid; place-items: center; box-shadow: 0 2px 0 rgba(0,0,0,0.3); }
+.hand { display: flex; gap: 6px; justify-content: center; padding: 0 0 8px; min-height: 64px; }
+.hand > button { flex: 1; max-width: 112px; padding: 0; background: none; border-radius: 12px; }
+.hand > button:disabled { opacity: 0.45; }
+.hint { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 8px; min-height: 40px; padding: 0 4px 6px; color: var(--cream); font-size: 0.88rem; font-weight: 700; text-align: center; }
+.hint .ib { min-width: 0; height: 36px; padding: 0 12px; font-size: 0.85rem; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; padding: 0 0 4px; }
+.chip { display: flex; align-items: center; gap: 4px; padding: 2px 8px 2px 2px; border-radius: 12px; background: var(--meadow); font-size: 0.72rem; font-weight: 800; border: 2px solid transparent; }
+.chip.now { border-color: var(--sun); }
+.chip.out { opacity: 0.35; }
+.chip.jump canvas { animation: hop 0.6s ease-out 2; }
+@keyframes hop { 40% { transform: translateY(-8px); } }
+.reveal { position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center; background: rgba(8, 14, 11, 0.7); }
+.rv-in { display: flex; flex-direction: column; align-items: center; gap: 6px; animation: rv 0.35s ease-out; }
+.rv-card { width: 170px; }
+.rv-card .ccard { min-height: 170px; padding: 12px; }
+.rv-card .ccard .ic { font-size: 2.8rem; }
+.rv-card .ccard b { font-size: 1.05rem; }
+.rv-card .ccard .tx { font-size: 0.85rem; }
+.rv-card .ccard small { font-size: 0.75rem; }
+.rv-who { margin: 0; font-weight: 900; color: var(--cream); }
+@keyframes rv { from { transform: scale(0.6); opacity: 0; } }
+/* ===== end shared card styles ===== */
+
+.top { min-height: 46px; padding-bottom: 2px; }
+.seats { display: grid; gap: 6px; }
+.seat { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 12px; background: var(--meadow-2); }
+.seat .dot { width: 18px; height: 18px; border-radius: 50%; background: currentColor; flex: none; }
+.seat .nm { flex: 1; font-weight: 800; text-align: left; }
+.stepper { display: flex; align-items: center; gap: 4px; background: var(--meadow-2); border-radius: 12px; padding: 4px; }
+.stepper button { width: 40px; height: 40px; border-radius: 9px; background: transparent; font-size: 1.3rem; font-weight: 900; }
+.stepper output { min-width: 22px; text-align: center; font-weight: 900; }
+.picks { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 10px; }
+.picks button { padding: 0; background: none; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="status"><span class="dot" id="dot"></span><span class="txt" id="status">Gift Box</span></div>
+    <div class="btns">
+      <button class="ib" id="restart" aria-label="Restart">↻</button>
+      <button class="ib" id="mute" aria-label="Mute">🔊</button>
+      <button class="ib" id="menu" aria-label="Menu">☰</button>
+    </div>
+  </header>
+  <div class="chips" id="chips"></div>
+  <main class="stage" id="stage">
+    <canvas id="board" aria-label="Board"></canvas>
+    <div class="chain" id="chain"></div>
+  </main>
+  <div class="hint" id="hint"></div>
+  <div class="hand" id="hand"></div>
+</div>
+
+<section class="overlay" id="intro">
+  <div class="card">
+    <canvas class="hero" id="hero-intro"></canvas>
+    <h1>Gift Box</h1>
+    <div class="how">
+      <p>Chain Reaction with wrapped gifts on the board. Nobody can place on a box: burst into it to claim the square and unwrap what's inside.</p>
+      <p>Each turn, place a sheep and play up to 1 card, before or after. Beware: some boxes hide a wolf! Last flock standing wins.</p>
+    </div>
+    <div class="opts">
+      <div class="optrow"><span class="lbl">Players</span>
+        <div class="stepper"><button id="fewer" aria-label="Fewer players">−</button><output id="count">2</output><button id="more" aria-label="More players">+</button></div>
+      </div>
+      <div class="seats" id="seats"></div>
+    </div>
+    <button class="big" id="play">Play</button>
+  </div>
+</section>
+
+<section class="overlay" id="discard" hidden>
+  <div class="card">
+    <h2>Your hand is full</h2>
+    <p>You can hold 3 cards. Choose one to let go.</p>
+    <div class="picks" id="discard-picks"></div>
+  </div>
+</section>
+
+<section class="overlay" id="end" hidden>
+  <div class="card">
+    <canvas class="hero" id="hero-end"></canvas>
+    <h2 id="end-title"></h2>
+    <p id="end-sub"></p>
+    <button class="big" id="again">Play again</button>
+    <button class="big alt" id="end-menu">Change players</button>
+  </div>
+</section>
+
+<script>
+// ===================== CHAIN REACTION ENGINE =====================
+// Shared by every cheekyfoundlamb demo. Keep this block identical across files;
+// demo-specific rules plug in through the `rules` hooks of Engine.resolve.
+//
+// Written for the Chain Burst project after studying these MIT-licensed
+// open-source Chain Reaction games:
+//   LironCareto/ChainReaction          Copyright (c) 2026 LironCareto
+//   tahmidnafees619/ChainReaction-game Copyright (c) 2026 tahmidnafees619
+//
+// MIT License
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+const Engine = (() => {
+  const ORTHO = [[-1, 0], [0, 1], [1, 0], [0, -1]];
+  const DIAG = [[-1, -1], [-1, 1], [1, 1], [1, -1]];
+  const ALL8 = ORTHO.concat(DIAG);
+
+  // A board is a set of flat arrays indexed by row * cols + col.
+  // owner: player index (>= 0), or -1 for empty. count: orbs in the cell.
+  // rock: blocked cells. `extra` adds more per-cell arrays, e.g. { water: false }.
+  function createBoard(rows, cols, extra = {}) {
+    const size = rows * cols;
+    const b = {
+      rows,
+      cols,
+      size,
+      owner: new Array(size).fill(-1),
+      count: new Array(size).fill(0),
+      rock: new Array(size).fill(false),
+    };
+    for (const [key, value] of Object.entries(extra)) b[key] = new Array(size).fill(value);
+    return b;
+  }
+
+  function clone(b) {
+    const c = {};
+    for (const key in b) c[key] = Array.isArray(b[key]) ? b[key].slice() : b[key];
+    return c;
+  }
+
+  const rowOf = (b, i) => Math.floor(i / b.cols);
+  const colOf = (b, i) => i % b.cols;
+  const inside = (b, r, c) => r >= 0 && c >= 0 && r < b.rows && c < b.cols;
+
+  function neighbours(b, i, dirs = ORTHO) {
+    const r = rowOf(b, i);
+    const c = colOf(b, i);
+    const out = [];
+    for (const [dr, dc] of dirs) {
+      const nr = r + dr;
+      const nc = c + dc;
+      if (!inside(b, nr, nc)) continue;
+      const n = nr * b.cols + nc;
+      if (!b.rock[n]) out.push(n);
+    }
+    return out;
+  }
+
+  // Critical mass: the number of open orthogonal neighbours (corner 2, edge 3, middle 4).
+  const capacity = (b, i) => neighbours(b, i).length;
+
+  const DEFAULT_RULES = {
+    cap: (b, i) => capacity(b, i), // orbs needed to burst
+    canBurst: (b, i) => b.owner[i] >= 0,
+    targets: (b, i) => neighbours(b, i), // one orb lands per entry (repeat an entry for 2 orbs)
+    spend: (b, i) => DEFAULT_RULES.cap(b, i), // orbs the bursting cell loses
+    emptied: (b, i) => {
+      b.owner[i] = -1;
+    },
+    land: (b, from, to, who) => {
+      b.owner[to] = who;
+      b.count[to]++;
+    },
+    done: () => false, // return true to stop resolving (e.g. only one side left)
+    maxWaves: 200,
+  };
+
+  function place(b, i, who, n = 1) {
+    b.owner[i] = who;
+    b.count[i] += n;
+  }
+
+  // Resolves every burst in waves: all full cells in a wave burst together.
+  // Mutates `b`. Returns { waves, capped }, where each wave is
+  // { bursts: [{ from, to, who }], board } and board is a snapshot after the wave.
+  function resolve(b, rules = {}, record = true) {
+    const R = { ...DEFAULT_RULES, ...rules };
+    if (!rules.spend) R.spend = (bb, i) => R.cap(bb, i);
+    const waves = [];
+    let capped = false;
+    for (;;) {
+      if (R.done(b)) break;
+      if (waves.length >= R.maxWaves) {
+        capped = true;
+        break;
+      }
+      const ready = [];
+      for (let i = 0; i < b.size; i++) if (b.count[i] >= R.cap(b, i) && R.canBurst(b, i)) ready.push(i);
+      if (!ready.length) break;
+      const bursts = [];
+      for (const from of ready) {
+        const who = b.owner[from];
+        const to = R.targets(b, from);
+        b.count[from] = Math.max(0, b.count[from] - R.spend(b, from));
+        if (b.count[from] === 0) R.emptied(b, from);
+        bursts.push({ from, to, who });
+      }
+      for (const { from, to, who } of bursts) for (const t of to) R.land(b, from, t, who);
+      waves.push({ bursts, board: record ? clone(b) : null });
+    }
+    return { waves, capped };
+  }
+
+  function tally(b, players) {
+    const cells = new Array(players).fill(0);
+    const orbs = new Array(players).fill(0);
+    for (let i = 0; i < b.size; i++) {
+      const o = b.owner[i];
+      if (o >= 0 && o < players) {
+        cells[o]++;
+        orbs[o] += b.count[i];
+      }
+    }
+    return { cells, orbs };
+  }
+
+  return { ORTHO, DIAG, ALL8, createBoard, clone, rowOf, colOf, inside, neighbours, capacity, place, resolve, tally };
+})();
+// =================== END CHAIN REACTION ENGINE ===================
+
+// ========================= SHARED KIT =========================
+// Sound, character art, wave animation, AI and screen helpers used by every demo.
+const Kit = (() => {
+  // ---------- sound (Web Audio, no files) ----------
+  let actx = null;
+  let muted = false;
+  try {
+    muted = localStorage.getItem("cfl-muted") === "1";
+  } catch {}
+
+  function ac() {
+    if (muted) return null;
+    try {
+      actx ??= new (window.AudioContext || window.webkitAudioContext)();
+      if (actx.state === "suspended") actx.resume();
+      return actx;
+    } catch {
+      return null;
+    }
+  }
+
+  function tone(freq, dur = 0.12, type = "sine", vol = 0.12, slideTo = 0, delay = 0) {
+    const a = ac();
+    if (!a) return;
+    const t = a.currentTime + delay;
+    const o = a.createOscillator();
+    const g = a.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t);
+    if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + dur);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(a.destination);
+    o.start(t);
+    o.stop(t + dur + 0.02);
+  }
+
+  function bleat(pitch = 1, delay = 0) {
+    const a = ac();
+    if (!a) return;
+    const t = a.currentTime + delay;
+    const o = a.createOscillator();
+    const lfo = a.createOscillator();
+    const lg = a.createGain();
+    const f = a.createBiquadFilter();
+    const g = a.createGain();
+    o.type = "sawtooth";
+    o.frequency.setValueAtTime(560 * pitch, t);
+    o.frequency.linearRampToValueAtTime(480 * pitch, t + 0.38);
+    lfo.frequency.value = 22;
+    lg.gain.value = 40 * pitch;
+    lfo.connect(lg).connect(o.frequency);
+    f.type = "lowpass";
+    f.frequency.value = 1700;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.09, t + 0.03);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
+    o.connect(f).connect(g).connect(a.destination);
+    o.start(t);
+    lfo.start(t);
+    o.stop(t + 0.42);
+    lfo.stop(t + 0.42);
+  }
+
+  const sfx = {
+    place: () => tone(660, 0.07, "triangle", 0.1),
+    // Pitch climbs a semitone per wave so long chains feel like they're building.
+    burst: (k) => tone(Math.min(240 * Math.pow(2, k / 12), 2200), 0.13, "sine", 0.13, Math.min(240 * Math.pow(2, k / 12), 2200) * 0.6),
+    bad: () => tone(140, 0.15, "square", 0.06, 100),
+    win: () => [523, 659, 784, 1047].forEach((f, k) => tone(f, 0.22, "triangle", 0.12, 0, k * 0.11)),
+    lose: () => [392, 330, 262, 196].forEach((f, k) => tone(f, 0.26, "sine", 0.12, 0, k * 0.14)),
+    howl: () => tone(300, 0.6, "sawtooth", 0.05, 520),
+    chime: (k = 0) => tone(880 * Math.pow(2, k / 12), 0.3, "sine", 0.08),
+    bleat,
+  };
+
+  function setMuted(m) {
+    muted = m;
+    try {
+      localStorage.setItem("cfl-muted", m ? "1" : "0");
+    } catch {}
+  }
+
+  // ---------- art (all drawn with code) ----------
+  function circle(ctx, x, y, r, fill) {
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = fill;
+    ctx.fill();
+  }
+
+  function ellipse(ctx, x, y, rx, ry, rot, fill) {
+    ctx.beginPath();
+    ctx.ellipse(x, y, rx, ry, rot, 0, Math.PI * 2);
+    ctx.fillStyle = fill;
+    ctx.fill();
+  }
+
+  function shade(hex, amt) {
+    const n = parseInt(hex.slice(1), 16);
+    const t = amt < 0 ? 0 : 255;
+    const p = Math.abs(amt);
+    const ch = (s) => Math.round(((n >> s) & 255) * (1 - p) + t * p);
+    return `rgb(${ch(16)},${ch(8)},${ch(0)})`;
+  }
+
+  // cheekyfoundlamb: white wool, cream face, and two same-size eyes on one level
+  // that each look a different way. s is roughly his full height in pixels.
+  // o: { t (seconds, for idle bob), mood: "happy" | "shock" | "sad" | "sleep", scarf: colour, glow }
+  function drawLamb(ctx, x, y, s, o = {}) {
+    const t = o.t ?? 0;
+    const bob = Math.sin(t * 3) * s * 0.015;
+    ctx.save();
+    ctx.translate(x, y + bob);
+    if (o.flip) ctx.scale(-1, 1);
+    if (o.glow) {
+      const g = ctx.createRadialGradient(0, 0, s * 0.1, 0, 0, s * 0.85);
+      g.addColorStop(0, o.glow);
+      g.addColorStop(1, "rgba(255,220,120,0)");
+      circle(ctx, 0, 0, s * 0.85, g);
+    }
+    // legs
+    ctx.fillStyle = "#3b3340";
+    for (const lx of [-0.2, -0.07, 0.08, 0.21]) {
+      ctx.beginPath();
+      ctx.roundRect(lx * s - s * 0.035, s * 0.12, s * 0.07, s * 0.2, s * 0.03);
+      ctx.fill();
+    }
+    // wool body: a ring of puffs around a core
+    const body = [[-0.24, 0], [-0.14, -0.13], [0.02, -0.17], [0.18, -0.12], [0.27, 0.01], [0.18, 0.13], [0, 0.16], [-0.16, 0.13]];
+    for (const [bx, by] of body) circle(ctx, bx * s, by * s, s * 0.15, "#d9d5de");
+    for (const [bx, by] of body) circle(ctx, bx * s, by * s - s * 0.012, s * 0.14, "#ffffff");
+    circle(ctx, 0, 0, s * 0.24, "#ffffff");
+    // tail puff
+    circle(ctx, -0.36 * s, -0.05 * s, s * 0.07, "#ffffff");
+    // head
+    const hx = 0.22 * s;
+    const hy = -0.2 * s;
+    // ears
+    ellipse(ctx, hx - s * 0.17, hy - s * 0.02, s * 0.1, s * 0.045, -0.5, "#f1d9cc");
+    ellipse(ctx, hx + s * 0.17, hy - s * 0.02, s * 0.1, s * 0.045, 0.5, "#f1d9cc");
+    ellipse(ctx, hx - s * 0.17, hy - s * 0.02, s * 0.06, s * 0.022, -0.5, "#f4a7b4");
+    ellipse(ctx, hx + s * 0.17, hy - s * 0.02, s * 0.06, s * 0.022, 0.5, "#f4a7b4");
+    ellipse(ctx, hx, hy + s * 0.02, s * 0.14, s * 0.16, 0, "#f6e6da");
+    // wool tuft on top
+    for (const [tx, ty] of [[-0.07, -0.13], [0, -0.16], [0.07, -0.13]]) circle(ctx, hx + tx * s, hy + ty * s, s * 0.06, "#ffffff");
+    // scarf in the owner's colour
+    if (o.scarf) {
+      ctx.fillStyle = o.scarf;
+      ctx.beginPath();
+      ctx.roundRect(hx - s * 0.13, hy + s * 0.13, s * 0.26, s * 0.06, s * 0.03);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.roundRect(hx + s * 0.04, hy + s * 0.15, s * 0.06, s * 0.12, s * 0.02);
+      ctx.fill();
+    }
+    // the eyes: equal size, equal height, pupils pointing different ways
+    const er = s * 0.045;
+    const ey = hy - s * 0.005;
+    for (const [side, px, py] of [[-1, -0.55, -0.35], [1, 0.5, 0.4]]) {
+      const ex = hx + side * s * 0.058;
+      circle(ctx, ex, ey, er, "#ffffff");
+      ctx.lineWidth = s * 0.008;
+      ctx.strokeStyle = "#3b3340";
+      ctx.stroke();
+      if (o.mood === "sleep") continue;
+      circle(ctx, ex + px * er * 0.9, ey + py * er * 0.9, er * 0.5, "#241d2a");
+      circle(ctx, ex + px * er * 0.9 - er * 0.15, ey + py * er * 0.9 - er * 0.18, er * 0.15, "#ffffff");
+    }
+    if (o.mood === "sleep") {
+      ctx.strokeStyle = "#3b3340";
+      ctx.lineWidth = s * 0.012;
+      for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.arc(hx + side * s * 0.058, ey, er * 0.7, 0.2, Math.PI - 0.2);
+        ctx.stroke();
+      }
+    }
+    // nose and mouth
+    ellipse(ctx, hx, hy + s * 0.08, s * 0.025, s * 0.016, 0, "#c9788a");
+    ctx.strokeStyle = "#3b3340";
+    ctx.lineWidth = s * 0.012;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    if (o.mood === "shock") {
+      ctx.arc(hx, hy + s * 0.125, s * 0.022, 0, Math.PI * 2);
+    } else if (o.mood === "sad") {
+      ctx.arc(hx, hy + s * 0.15, s * 0.035, Math.PI + 0.4, -0.4);
+    } else {
+      // lopsided cheeky smirk
+      ctx.moveTo(hx - s * 0.04, hy + s * 0.11);
+      ctx.quadraticCurveTo(hx + s * 0.005, hy + s * 0.15, hx + s * 0.055, hy + s * 0.1);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Cheeky grey wolf head. s is the head width.
+  function drawWolf(ctx, x, y, s, o = {}) {
+    const t = o.t ?? 0;
+    ctx.save();
+    ctx.translate(x, y + Math.sin(t * 2.4) * s * 0.012);
+    const fur = o.color ?? "#8b8f9c";
+    const dark = shade(fur.startsWith("#") ? fur : "#8b8f9c", -0.35);
+    // ears
+    for (const side of [-1, 1]) {
+      ctx.fillStyle = fur;
+      ctx.beginPath();
+      ctx.moveTo(side * s * 0.12, -s * 0.22);
+      ctx.lineTo(side * s * 0.38, -s * 0.52);
+      ctx.lineTo(side * s * 0.4, -s * 0.12);
+      ctx.fill();
+      ctx.fillStyle = "#d9a3ab";
+      ctx.beginPath();
+      ctx.moveTo(side * s * 0.18, -s * 0.22);
+      ctx.lineTo(side * s * 0.35, -s * 0.42);
+      ctx.lineTo(side * s * 0.36, -s * 0.18);
+      ctx.fill();
+    }
+    // head with cheek tufts
+    ctx.fillStyle = fur;
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.42, -s * 0.05);
+    ctx.quadraticCurveTo(-s * 0.4, -s * 0.38, 0, -s * 0.36);
+    ctx.quadraticCurveTo(s * 0.4, -s * 0.38, s * 0.42, -s * 0.05);
+    ctx.lineTo(s * 0.5, s * 0.08);
+    ctx.lineTo(s * 0.34, s * 0.1);
+    ctx.quadraticCurveTo(s * 0.2, s * 0.32, 0, s * 0.33);
+    ctx.quadraticCurveTo(-s * 0.2, s * 0.32, -s * 0.34, s * 0.1);
+    ctx.lineTo(-s * 0.5, s * 0.08);
+    ctx.closePath();
+    ctx.fill();
+    // muzzle
+    ellipse(ctx, 0, s * 0.12, s * 0.2, s * 0.15, 0, "#e3e1e6");
+    ellipse(ctx, 0, s * 0.03, s * 0.07, s * 0.045, 0, "#2a2530");
+    // half-lidded, sly eyes
+    for (const side of [-1, 1]) {
+      const ex = side * s * 0.16;
+      const ey = -s * 0.13;
+      ellipse(ctx, ex, ey, s * 0.075, s * 0.06, 0, "#ffe680");
+      circle(ctx, ex + s * 0.02, ey + s * 0.01, s * 0.03, "#2a2530");
+      ctx.fillStyle = fur;
+      ctx.beginPath();
+      ctx.ellipse(ex, ey - s * 0.03, s * 0.085, s * 0.05, side * -0.25, Math.PI, 0);
+      ctx.fill();
+      ctx.strokeStyle = dark;
+      ctx.lineWidth = s * 0.02;
+      ctx.beginPath();
+      ctx.moveTo(ex - s * 0.08, ey - s * 0.03 - side * s * 0.02);
+      ctx.lineTo(ex + s * 0.08, ey - s * 0.03 + side * s * 0.02);
+      ctx.stroke();
+    }
+    // grin with one tooth
+    ctx.strokeStyle = "#2a2530";
+    ctx.lineWidth = s * 0.022;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.11, s * 0.15);
+    ctx.quadraticCurveTo(0, o.mood === "sad" ? s * 0.12 : s * 0.24, s * 0.13, s * 0.13);
+    ctx.stroke();
+    if (o.mood !== "sad") {
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.moveTo(s * 0.03, s * 0.2);
+      ctx.lineTo(s * 0.07, s * 0.19);
+      ctx.lineTo(s * 0.05, s * 0.25);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // The Shepherd: a warm silhouette with a staff and a soft glow. h is the height.
+  function drawShepherd(ctx, x, y, h, o = {}) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.globalAlpha = o.alpha ?? 1;
+    const g = ctx.createRadialGradient(0, -h * 0.5, h * 0.05, 0, -h * 0.5, h * 0.52);
+    g.addColorStop(0, "rgba(255,214,140,0.55)");
+    g.addColorStop(1, "rgba(255,214,140,0)");
+    circle(ctx, 0, -h * 0.5, h * 0.52, g);
+    ctx.fillStyle = o.color ?? "#7a4f33";
+    // robe
+    ctx.beginPath();
+    ctx.moveTo(-h * 0.12, -h * 0.72);
+    ctx.quadraticCurveTo(-h * 0.2, -h * 0.3, -h * 0.24, 0);
+    ctx.lineTo(h * 0.24, 0);
+    ctx.quadraticCurveTo(h * 0.2, -h * 0.3, h * 0.12, -h * 0.72);
+    ctx.closePath();
+    ctx.fill();
+    // hooded head
+    circle(ctx, 0, -h * 0.8, h * 0.11, o.color ?? "#7a4f33");
+    ctx.fillStyle = "rgba(255,230,190,0.25)";
+    ctx.beginPath();
+    ctx.ellipse(h * 0.02, -h * 0.79, h * 0.06, h * 0.08, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // staff with crook
+    ctx.strokeStyle = "#c9a26b";
+    ctx.lineWidth = h * 0.025;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(h * 0.3, 0);
+    ctx.lineTo(h * 0.3, -h * 0.95);
+    ctx.arc(h * 0.38, -h * 0.95, h * 0.08, Math.PI, 0);
+    ctx.lineTo(h * 0.46, -h * 0.9);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // A small sheep in a player's colour (used as an "orb"). r is about its radius.
+  function drawSheep(ctx, x, y, r, color, o = {}) {
+    ctx.save();
+    ctx.translate(x, y);
+    if (o.flip) ctx.scale(-1, 1);
+    ctx.fillStyle = "#2b2430";
+    ctx.fillRect(-r * 0.45, r * 0.45, r * 0.18, r * 0.45);
+    ctx.fillRect(r * 0.25, r * 0.45, r * 0.18, r * 0.45);
+    const light = shade(color, 0.45);
+    for (const [bx, by] of [[-0.45, 0], [0, -0.35], [0.4, -0.05], [0.05, 0.3], [-0.3, 0.3], [0.35, 0.3]]) circle(ctx, bx * r, by * r, r * 0.48, color);
+    for (const [bx, by] of [[-0.35, -0.1], [0.05, -0.38], [0.3, -0.12]]) circle(ctx, bx * r, by * r, r * 0.26, light);
+    ellipse(ctx, r * 0.78, -r * 0.15, r * 0.3, r * 0.36, 0.3, "#2b2430");
+    circle(ctx, r * 0.84, -r * 0.24, r * 0.07, "#ffffff");
+    ctx.restore();
+  }
+
+  // ---------- wave animation ----------
+  // Plays the waves returned by Engine.resolve, one per `ms`, calling onWave(k)
+  // as each starts. Read Kit.anim.cur in the draw loop to animate.
+  const anim = {
+    cur: null,
+    play(waves, ms, onWave, pre) {
+      return new Promise((done) => {
+        if (!waves.length) return done();
+        this.cur = { waves, i: 0, start: null, ms, onWave, done, pre };
+      });
+    },
+    step(now) {
+      const c = this.cur;
+      if (!c) return;
+      if (c.start === null) {
+        c.start = now;
+        c.onWave?.(0, c.waves[0]);
+        return;
+      }
+      if (now - c.start < c.ms) return;
+      c.i++;
+      c.start = now;
+      if (c.i >= c.waves.length) {
+        this.cur = null;
+        c.done();
+      } else c.onWave?.(c.i, c.waves[c.i]);
+    },
+    // 0..1 progress of the current wave
+    t(now) {
+      const c = this.cur;
+      if (!c || c.start === null) return 0;
+      return Math.min(1, (now - c.start) / c.ms);
+    },
+    // Board to draw under the flying orbs for the current wave.
+    base() {
+      const c = this.cur;
+      if (!c) return null;
+      return c.i === 0 ? c.pre : c.waves[c.i - 1].board;
+    },
+  };
+
+  // ---------- AI helpers ----------
+  // Generic board score for `me`: orbs, safe corners/edges, near-full cells,
+  // and danger from enemy cells about to burst next to mine.
+  // isMine(owner), isFoe(owner), cap(i) are supplied by the demo.
+  function evaluate(b, isMine, isFoe, cap) {
+    let score = 0;
+    for (let i = 0; i < b.size; i++) {
+      const own = b.owner[i];
+      if (own < 0 || b.count[i] === 0) continue;
+      const mine = isMine(own);
+      if (!mine && !isFoe(own)) continue;
+      const c = cap(i);
+      let v = b.count[i] * 2 + 3;
+      let threatened = false;
+      let prey = 0;
+      for (const n of Engine.neighbours(b, i)) {
+        const o2 = b.owner[n];
+        if (o2 < 0 || b.count[n] === 0) continue;
+        if (isMine(o2) === mine) continue;
+        if (b.count[n] >= cap(n) - 1) threatened = true;
+        prey += b.count[n];
+      }
+      if (threatened) v -= 5 - c + b.count[i];
+      else {
+        if (c === 2) v += 3;
+        else if (c === 3) v += 2;
+        if (b.count[i] >= c - 1) v += 2 + prey;
+      }
+      score += mine ? v : -v;
+    }
+    return score;
+  }
+
+  // Picks the highest scoring move. With chance `mistake`, picks one of the top 3 instead.
+  function pickBest(scored, mistake = 0) {
+    if (!scored.length) return null;
+    scored.sort((a, b) => b.score - a.score);
+    if (mistake > 0 && Math.random() < mistake && scored.length > 1) return scored[Math.floor(Math.random() * Math.min(3, scored.length))].move;
+    const top = scored.filter((s) => s.score === scored[0].score);
+    return top[Math.floor(Math.random() * top.length)].move;
+  }
+
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // ---------- screen helpers ----------
+  const $ = (id) => document.getElementById(id);
+
+  // Sizes `canvas` to fit `wrap` for a cols x rows board. Returns { cell, dpr, w, h }.
+  function fitBoard(canvas, wrap, cols, rows, extraRows = 0) {
+    const cs = getComputedStyle(wrap);
+    const w = wrap.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const h = wrap.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    const cell = Math.max(12, Math.floor(Math.min(w / cols, h / (rows + extraRows))));
+    const dpr = window.devicePixelRatio || 1;
+    canvas.style.width = cell * cols + "px";
+    canvas.style.height = cell * (rows + extraRows) + "px";
+    canvas.width = Math.round(cell * cols * dpr);
+    canvas.height = Math.round(cell * (rows + extraRows) * dpr);
+    return { cell, dpr, w: cell * cols, h: cell * (rows + extraRows) };
+  }
+
+  // Sets up a fixed-size picture canvas at full screen sharpness; returns its context.
+  function sharp(cv, w, h) {
+    const dpr = window.devicePixelRatio || 1;
+    cv.style.width = w + "px";
+    cv.style.height = h + "px";
+    cv.width = Math.round(w * dpr);
+    cv.height = Math.round(h * dpr);
+    const g = cv.getContext("2d");
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return g;
+  }
+
+  function shake(el, big = false) {
+    el.classList.remove("shake", "shake-big");
+    void el.offsetWidth;
+    el.classList.add(big ? "shake-big" : "shake");
+  }
+
+  function popText(el, text) {
+    el.textContent = text;
+    el.classList.remove("pop");
+    void el.offsetWidth;
+    el.classList.add("pop");
+  }
+
+  function show(id) {
+    $(id).hidden = false;
+  }
+  function hide(id) {
+    $(id).hidden = true;
+  }
+
+  function cellAt(canvas, e, cell) {
+    const r = canvas.getBoundingClientRect();
+    return { col: Math.floor((e.clientX - r.left) / cell), row: Math.floor((e.clientY - r.top) / cell) };
+  }
+
+  // Wires the shared mute button.
+  function muteButton(btn) {
+    const render = () => {
+      btn.textContent = muted ? "🔇" : "🔊";
+      btn.setAttribute("aria-label", muted ? "Unmute" : "Mute");
+    };
+    btn.addEventListener("click", () => {
+      setMuted(!muted);
+      render();
+    });
+    render();
+  }
+
+  const COLORS = ["#ff5a5f", "#3fa7ff", "#ffc93c", "#8f6bff", "#2fd38a", "#ff8c42", "#ff6fc8", "#3ee0e0"];
+  const COLOR_NAMES = ["Red", "Blue", "Yellow", "Purple", "Green", "Orange", "Pink", "Cyan"];
+
+  return {
+    sfx, setMuted, isMuted: () => muted, tone,
+    circle, ellipse, shade, drawLamb, drawWolf, drawShepherd, drawSheep,
+    anim, evaluate, pickBest, sleep,
+    $, fitBoard, sharp, shake, popText, show, hide, cellAt, muteButton,
+    COLORS, COLOR_NAMES,
+  };
+})();
+// ======================= END SHARED KIT =======================
+
+// ===================== SHARED CARD SYSTEM =====================
+// Card pool, card effects, targeting, reveal scenes, board effects and card AI
+// for demos 11-18. Game state shape (plain data, so structuredClone works):
+//   st = { b, n, ps[], alive[], moved[], current, dir, turn, round, turnsInRound,
+//          winner, wolf, forced, extraTurn, events[], seed }
+//   ps[p] = { hand[], gifts: { tongues, mercy, leadership }, discern, skip, den, give }
+// Board extras used here: still (player protecting, -1), mustard (owner, -1).
+// Each demo sets Cards.hooks for its own rules (blocked cells, extra land rules).
+const Cards = (() => {
+  const W = "John 10:12"; // reference for the wolf tricks
+  const DEF = {
+    sea: { name: "Part the Sea", icon: "🌊", ref: "Exodus 14", text: "Empty every enemy square in one row or column.", group: "miracle", target: "line" },
+    fire: { name: "Fire from Heaven", icon: "🔥", ref: "1 Kings 18", text: "Empty every enemy square in a 3×3 area.", group: "miracle", target: "area" },
+    sling: { name: "David's Sling", icon: "🪨", ref: "1 Samuel 17", text: "Empty the enemy square with the most sheep.", group: "miracle", target: "none" },
+    loaves: { name: "Loaves & Fishes", icon: "🍞", ref: "Matthew 14", text: "Double the sheep in one of your squares.", group: "miracle", target: "mine" },
+    manna: { name: "Manna", icon: "☁️", ref: "Exodus 16", text: "3 sheep land on random squares of yours.", group: "miracle", target: "none" },
+    water: { name: "Walking on Water", icon: "👣", ref: "Matthew 14", text: "Place a sheep on any square, even an enemy's. It becomes yours.", group: "miracle", target: "any" },
+    call: { name: "Shepherd's Call", icon: "📯", ref: "John 10:27", text: "Your sheep next to one of your squares all run into it.", group: "miracle", target: "mine" },
+    still: { name: "Be Still", icon: "🕊️", ref: "Psalm 46:10", text: "Nothing in a 3×3 area can flip or burst until your next turn.", group: "miracle", target: "area" },
+    jericho: { name: "Jericho", icon: "🎺", ref: "Joshua 6", text: "Empty every enemy square on the edge of the board.", group: "miracle", target: "none" },
+    mustard: { name: "Mustard Seed", icon: "🌱", ref: "Matthew 13:31", text: "Plant on an empty square. It grows +1 each of your turns until it bursts.", group: "miracle", target: "empty" },
+    sabbath: { name: "Sabbath", icon: "🌙", ref: "Exodus 20:8", text: "The next player skips their turn.", group: "parable", target: "none" },
+    cheek: { name: "Turn the Other Cheek", icon: "🔄", ref: "Matthew 5:39", text: "Turn order reverses.", group: "parable", target: "none" },
+    double: { name: "Double Portion", icon: "✌️", ref: "2 Kings 2:9", text: "Take another turn right away.", group: "parable", target: "none" },
+    twobytwo: { name: "Two by Two", icon: "👯", ref: "Genesis 7", text: "Choose where the next player's next 2 sheep go.", group: "parable", target: "cells" },
+    give: { name: "Give and It Will Be Given", icon: "🎁", ref: "Luke 6:38", text: "Give 1 sheep to an enemy square. Next turn, 3 land on yours.", group: "parable", target: "enemy" },
+    last: { name: "The Last Shall Be First", icon: "🔃", ref: "Matthew 20:16", text: "Whoever has the fewest squares takes 3 from whoever has the most.", group: "parable", target: "none", instant: true },
+    den: { name: "Lions' Den", icon: "🦁", ref: "Daniel 6", text: "You skip your next turn, but none of your squares can be flipped until you're back.", group: "parable", target: "none", instant: true },
+    tongues: { name: "Tongues", icon: "🗣️", ref: "1 Corinthians 12", text: "For 3 turns, your bursts also hit diagonal neighbours.", group: "gift", target: "none" },
+    mercy: { name: "Mercy", icon: "💗", ref: "Romans 12", text: "For 3 turns, enemy bursts take 1 sheep from your squares instead of flipping them.", group: "gift", target: "none" },
+    leadership: { name: "Leadership", icon: "👑", ref: "Romans 12", text: "For 3 turns, place 2 sheep per turn.", group: "gift", target: "none" },
+    faith: { name: "Faith", icon: "⛰️", ref: "Matthew 17:20", text: "Move all the sheep from one of your squares to any empty square.", group: "gift", target: "faith" },
+    discern: { name: "Discernment", icon: "👁️", ref: "1 Corinthians 12", text: "For the whole game, see inside every gift box and face-down card.", group: "gift", target: "none" },
+    wolfdoor: { name: "Wolf at the Door", icon: "🐺", ref: W, text: "Your biggest square is emptied.", group: "wolf", target: "none", instant: true },
+    scatter: { name: "Scatter", icon: "🐺", ref: W, text: "Your squares with exactly 1 sheep are emptied.", group: "wolf", target: "none", instant: true },
+    wolfin: { name: "The Wolf Gets In", icon: "🐺", ref: W, text: "A wolf sneaks onto the board and raids a neighbouring square every round.", group: "wolf", target: "none", instant: true },
+    grace: { name: "Grace", icon: "🛡️", ref: "Ephesians 2:8", text: "Keep it: it cancels the next wolf trick or enemy card aimed at you.", group: "grace", target: "none", auto: true },
+    pentecost: { name: "Pentecost", icon: "🌟", ref: "Acts 2", text: "Every square you own gets +1.", group: "golden", target: "none" },
+  };
+
+  // Draw weights: more good cards than bad, wolf tricks about 15%.
+  const POOL = {
+    sea: 6, fire: 5, sling: 6, loaves: 6, manna: 7, water: 6, call: 5, still: 4, jericho: 4, mustard: 6,
+    sabbath: 5, cheek: 4, double: 5, twobytwo: 4, give: 4, last: 3, den: 2,
+    tongues: 4, mercy: 4, leadership: 4, faith: 3, discern: 2, grace: 4, pentecost: 1,
+    wolfdoor: 7, scatter: 7, wolfin: 6,
+  };
+
+  let speed = 1; // animation time multiplier (tests use a small value)
+  let safeRounds = 2; // nobody can be knocked out during the first rounds
+  let hooks = {}; // per-demo: { blocked(st, i), land(st, b, from, to, who) -> true if handled, emptied(st, b, i) }
+
+  function draw(pool = POOL, filter = () => true, rand = Math.random) {
+    const keys = Object.keys(pool).filter((k) => pool[k] > 0 && filter(k));
+    const total = keys.reduce((n, k) => n + pool[k], 0);
+    let r = rand() * total;
+    for (const k of keys) if ((r -= pool[k]) < 0) return k;
+    return keys[keys.length - 1];
+  }
+
+  // ---------- state ----------
+  function newPlayer() {
+    return { hand: [], gifts: { tongues: 0, mercy: 0, leadership: 0 }, discern: false, skip: 0, den: false, give: false };
+  }
+
+  function newState(b, n) {
+    return {
+      b, n,
+      ps: Array.from({ length: n }, newPlayer),
+      alive: new Array(n).fill(true),
+      moved: new Array(n).fill(false),
+      current: 0, dir: 1, turn: 0, round: 1, turnsInRound: 0, winner: -1,
+      wolf: -1, forced: null, extraTurn: false, events: [],
+    };
+  }
+
+  const clone = (st) => structuredClone(st);
+  const orbs = (b, p) => b.owner.reduce((n, o, i) => n + (o === p ? b.count[i] : 0), 0);
+  const cells = (b, p) => b.owner.reduce((n, o) => n + (o === p ? 1 : 0), 0);
+  const mine = (st, p) => st.b.owner.flatMap((o, i) => (o === p ? [i] : []));
+  const enemy = (st, p, i) => st.b.owner[i] >= 0 && st.b.owner[i] !== p && st.b.owner[i] < st.n;
+  const aliveCount = (st) => st.alive.filter(Boolean).length;
+
+  function nextIndex(st, from = st.current, dir = st.dir) {
+    let q = from;
+    for (let k = 0; k < st.n; k++) {
+      q = (q + dir + st.n) % st.n;
+      if (st.alive[q]) return q;
+    }
+    return from;
+  }
+
+  function canPlace(st, p, i) {
+    const b = st.b;
+    if (i < 0 || i >= b.size || b.rock[i] || i === st.wolf) return false;
+    if (hooks.blocked?.(st, i, p)) return false;
+    return b.owner[i] === -1 || b.owner[i] === p;
+  }
+
+  function emptyCell(st, i) {
+    const b = st.b;
+    b.owner[i] = -1;
+    b.count[i] = 0;
+    b.mustard[i] = -1;
+    hooks.emptied?.(st, b, i);
+  }
+
+  // Grace: if v holds it, it's used up and the effect on v is cancelled.
+  function guard(st, v) {
+    const k = st.ps[v].hand.indexOf("grace");
+    if (k < 0) return true;
+    st.ps[v].hand.splice(k, 1);
+    st.events.push({ type: "grace", p: v });
+    return false;
+  }
+
+  function rules(st) {
+    const b = st.b;
+    return {
+      canBurst: (bb, i) => bb.owner[i] >= 0 && bb.owner[i] < st.n && st.alive[bb.owner[i]] && bb.still[i] < 0 && !(hooks.canBurst && !hooks.canBurst(st, bb, i)),
+      targets: (bb, i) => {
+        const who = bb.owner[i];
+        bb.mustard[i] = -1;
+        const t = Engine.neighbours(bb, i, st.ps[who]?.gifts.tongues > 0 ? Engine.ALL8 : Engine.ORTHO);
+        return hooks.targets ? hooks.targets(st, bb, i, t) : t;
+      },
+      emptied: (bb, i) => {
+        bb.owner[i] = -1;
+        hooks.emptied?.(st, bb, i);
+      },
+      land: (bb, from, to, who) => {
+        if (!st.alive[who]) return;
+        if (to === st.wolf) {
+          st.wolf = -1;
+          st.events.push({ type: "wolfchased", cell: to });
+        }
+        if (hooks.land?.(st, bb, from, to, who)) return;
+        const v = bb.owner[to];
+        if (v >= 0 && v < st.n && v !== who) {
+          if (bb.still[to] >= 0 || st.ps[v].den) return; // protected: the sheep is turned away
+          if (st.ps[v].gifts.mercy > 0) {
+            bb.count[to]--;
+            if (bb.count[to] <= 0) emptyCell(st, to);
+            return;
+          }
+          bb.mustard[to] = -1;
+        }
+        bb.owner[to] = who;
+        bb.count[to]++;
+      },
+      done: () => settled(st) && st.alive.filter((a, p) => a && orbs(b, p) > 0).length <= 1,
+      maxWaves: 200,
+    };
+  }
+
+  function resolve(st, record = true) {
+    const r = Engine.resolve(st.b, rules(st), record);
+    settle(st);
+    return r.waves;
+  }
+
+  // Knock out flocks with no sheep (only once everyone has moved) and find a winner.
+  const settled = (st) => st.moved.every(Boolean) && st.round > safeRounds;
+
+  function settle(st) {
+    if (!settled(st)) return;
+    for (let p = 0; p < st.n; p++) {
+      if (!st.alive[p] || orbs(st.b, p) > 0 || hooks.keepsAlive?.(st, p)) continue;
+      st.alive[p] = false;
+      st.events.push({ type: "out", p });
+      for (let i = 0; i < st.b.size; i++) if (st.b.owner[i] === p) emptyCell(st, i);
+    }
+    if (aliveCount(st) === 1) st.winner = st.alive.indexOf(true);
+  }
+
+  function place(st, p, i, record = true) {
+    Engine.place(st.b, i, p);
+    st.moved[p] = true;
+    return resolve(st, record);
+  }
+
+  // ---------- turn flow ----------
+  // Start of p's turn. Returns { skipped, waves, notes }.
+  function beginTurn(st, record = true) {
+    const p = st.current;
+    const ps = st.ps[p];
+    st.events = [];
+    if (ps.skip > 0) {
+      ps.skip--;
+      return { skipped: true, waves: [] };
+    }
+    ps.den = false;
+    const b = st.b;
+    for (let i = 0; i < b.size; i++) if (b.still[i] === p) b.still[i] = -1;
+    for (const k in ps.gifts) if (ps.gifts[k] > 0) ps.gifts[k]--;
+    let grew = false;
+    for (let i = 0; i < b.size; i++)
+      if (b.mustard[i] === p && b.owner[i] === p) {
+        b.count[i]++;
+        grew = true;
+      }
+    let given = [];
+    if (ps.give) {
+      ps.give = false;
+      given = randomMine(st, p, 3);
+      for (const i of given) Engine.place(b, i, p);
+    }
+    const waves = grew || given.length ? resolve(st, record) : [];
+    return { skipped: false, waves, given, grew };
+  }
+
+  function randomMine(st, p, k) {
+    const own = mine(st, p);
+    const pool = own.length ? own : st.b.owner.flatMap((o, i) => (o === -1 && canPlace(st, p, i) ? [i] : []));
+    return Array.from({ length: k }, () => pool[Math.floor(Math.random() * pool.length)]).filter((i) => i !== undefined);
+  }
+
+  // Move to the next player. Returns the list of events (round ends, wolf raids).
+  function endTurn(st) {
+    st.turn++;
+    if (st.winner >= 0) return;
+    if (st.extraTurn) {
+      st.extraTurn = false;
+      return;
+    }
+    st.current = nextIndex(st);
+    st.turnsInRound++;
+    if (st.turnsInRound >= aliveCount(st)) {
+      st.turnsInRound = 0;
+      st.round++;
+      endRound(st);
+    }
+  }
+
+  // The roaming wolf raids the biggest neighbouring square and moves onto it.
+  function endRound(st) {
+    if (st.wolf < 0) return;
+    const b = st.b;
+    const around = Engine.neighbours(b, st.wolf);
+    let best = -1;
+    for (const n of around) if (b.count[n] > 0 && (best < 0 || b.count[n] > b.count[best])) best = n;
+    const to = best >= 0 ? best : around[Math.floor(Math.random() * around.length)];
+    if (best >= 0 && b.owner[best] < st.n && (b.owner[best] < 0 || guard(st, b.owner[best]))) emptyCell(st, best);
+    st.events.push({ type: "wolfmove", from: st.wolf, to, raided: best });
+    st.wolf = to;
+    settle(st);
+  }
+
+  // ---------- targets ----------
+  // Cells the actor may tap for this card, given the picks so far.
+  function selectable(st, p, key, picks = []) {
+    const b = st.b;
+    const all = [...Array(b.size).keys()].filter((i) => !b.rock[i]);
+    switch (DEF[key].target) {
+      case "line":
+      case "area":
+        return all;
+      case "mine":
+        return all.filter((i) => b.owner[i] === p);
+      case "any":
+        return all.filter((i) => i !== st.wolf && !hooks.blocked?.(st, i, p));
+      case "empty":
+        return all.filter((i) => b.owner[i] === -1 && canPlace(st, p, i));
+      case "enemy":
+        return all.filter((i) => enemy(st, p, i));
+      case "cells": {
+        const v = nextIndex(st, p);
+        return all.filter((i) => canPlace(st, v, i) && !picks.includes(i));
+      }
+      case "faith":
+        return picks.length === 0 ? all.filter((i) => b.owner[i] === p && b.count[i] > 0) : all.filter((i) => b.owner[i] === -1 && canPlace(st, p, i));
+      default:
+        return [];
+    }
+  }
+
+  // How many taps a card needs.
+  const picksNeeded = (key, st) => ({ none: 0, line: 1, area: 1, mine: 1, any: 1, empty: 1, enemy: 1, faith: 2, cells: st?.forcedNext ?? 2 })[DEF[key].target];
+
+  const area = (b, c) => Engine.neighbours(b, c, Engine.ALL8).concat([c]).filter((i) => !b.rock[i]);
+  const lineCells = (b, t) => (t.axis === "row" ? [...Array(b.cols).keys()].map((c) => t.index * b.cols + c) : [...Array(b.rows).keys()].map((r) => r * b.cols + t.index));
+  const edge = (b) => [...Array(b.size).keys()].filter((i) => { const r = Engine.rowOf(b, i), c = Engine.colOf(b, i); return r === 0 || c === 0 || r === b.rows - 1 || c === b.cols - 1; });
+
+  // Empties enemy cells of p in the list, respecting each victim's Grace.
+  function wipe(st, p, list) {
+    const victims = new Set(list.filter((i) => enemy(st, p, i)).map((i) => st.b.owner[i]));
+    const spared = new Set([...victims].filter((v) => !guard(st, v)));
+    const hit = list.filter((i) => enemy(st, p, i) && !spared.has(st.b.owner[i]));
+    for (const i of hit) emptyCell(st, i);
+    return hit;
+  }
+
+  // Plays card `key` for player p with target t. Mutates st. Returns { waves, fx }.
+  // The card must already be removed from p's hand by the caller.
+  function apply(st, p, key, t, record = true) {
+    const b = st.b;
+    st.events.push({ type: "card", p, key });
+    let fx = { kind: key };
+    let waves = [];
+    const res = () => {
+      if (record && !fx.mid) fx.mid = Engine.clone(b); // the board after the card, before any bursts
+      waves = waves.concat(resolve(st, record));
+    };
+    switch (key) {
+      case "sea": fx.cells = lineCells(b, t); fx.hit = wipe(st, p, fx.cells); fx.axis = t.axis; break;
+      case "fire": fx.cells = area(b, t); fx.hit = wipe(st, p, fx.cells); break;
+      case "sling": {
+        let best = -1;
+        for (let i = 0; i < b.size; i++) if (enemy(st, p, i) && (best < 0 || b.count[i] > b.count[best])) best = i;
+        fx.cells = best >= 0 ? [best] : [];
+        if (best >= 0) fx.hit = wipe(st, p, [best]);
+        break;
+      }
+      case "loaves": fx.cells = [t]; b.count[t] *= 2; res(); break;
+      case "manna": fx.cells = randomMine(st, p, 3); for (const i of fx.cells) Engine.place(b, i, p); res(); break;
+      case "water": {
+        fx.cells = [t];
+        const v = b.owner[t];
+        if (enemy(st, p, t) && !guard(st, v)) break;
+        b.owner[t] = p;
+        b.count[t]++;
+        b.mustard[t] = -1;
+        res();
+        break;
+      }
+      case "call": {
+        const from = Engine.neighbours(b, t).filter((n) => b.owner[n] === p && b.count[n] > 0);
+        fx.cells = [t];
+        fx.from = from;
+        for (const n of from) {
+          b.count[t] += b.count[n];
+          emptyCell(st, n);
+        }
+        res();
+        break;
+      }
+      case "still": fx.cells = area(b, t); for (const i of fx.cells) b.still[i] = p; break;
+      case "jericho": fx.cells = edge(b); fx.hit = wipe(st, p, fx.cells); break;
+      case "mustard": fx.cells = [t]; b.owner[t] = p; b.count[t] = 1; b.mustard[t] = p; res(); break;
+      case "sabbath": { const v = nextIndex(st, p); fx.p = v; if (guard(st, v)) st.ps[v].skip++; break; }
+      case "cheek":
+        if (aliveCount(st) <= 2) { const v = nextIndex(st, p); fx.p = v; if (guard(st, v)) st.ps[v].skip++; }
+        else st.dir *= -1;
+        break;
+      case "double": st.extraTurn = true; break;
+      case "twobytwo": {
+        const v = nextIndex(st, p);
+        fx.cells = t;
+        fx.p = v;
+        if (guard(st, v)) st.forced = { victim: v, cells: t.slice(), by: p };
+        break;
+      }
+      case "give": { fx.cells = [t]; const v = b.owner[t]; if (guard(st, v)) { b.count[t]++; res(); } st.ps[p].give = true; break; }
+      case "last": {
+        const live = st.alive.flatMap((a, q) => (a ? [q] : []));
+        const few = live.reduce((x, q) => (cells(b, q) < cells(b, x) ? q : x), live[0]);
+        const most = live.reduce((x, q) => (cells(b, q) > cells(b, x) ? q : x), live[0]);
+        fx.from = most;
+        fx.to = few;
+        if (few !== most && guard(st, most)) {
+          const take = shuffle(mine(st, most)).slice(0, 3);
+          for (const i of take) b.owner[i] = few;
+          fx.cells = take;
+        }
+        settle(st);
+        break;
+      }
+      case "den": st.ps[p].skip++; st.ps[p].den = true; break;
+      // counts down at the start of each of your turns, so it covers your next 3 turns
+      case "tongues": case "mercy": case "leadership": st.ps[p].gifts[key] = 4; fx.cells = mine(st, p); break;
+      case "faith": {
+        const [from, to] = t;
+        fx.cells = [from, to];
+        b.owner[to] = p;
+        b.count[to] = b.count[from];
+        emptyCell(st, from);
+        res();
+        break;
+      }
+      case "discern": st.ps[p].discern = true; break;
+      case "wolfdoor": {
+        const own = mine(st, p);
+        const big = own.reduce((x, i) => (x < 0 || b.count[i] > b.count[x] ? i : x), -1);
+        fx.cells = big >= 0 ? [big] : [];
+        if (big >= 0 && guard(st, p)) emptyCell(st, big);
+        settle(st);
+        break;
+      }
+      case "scatter": {
+        fx.cells = mine(st, p).filter((i) => b.count[i] === 1);
+        if (fx.cells.length && guard(st, p)) for (const i of fx.cells) emptyCell(st, i);
+        settle(st);
+        break;
+      }
+      case "wolfin": {
+        const spots = [...Array(b.size).keys()].filter((i) => !b.rock[i] && !hooks.blocked?.(st, i, -1));
+        st.wolf = spots[Math.floor(Math.random() * spots.length)];
+        fx.cells = [st.wolf];
+        break;
+      }
+      case "grace": st.ps[p].hand.push("grace"); break;
+      case "pentecost": fx.cells = mine(st, p); for (const i of fx.cells) b.count[i]++; res(); break;
+    }
+    return { waves, fx };
+  }
+
+  function shuffle(a) {
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  // ---------- AI ----------
+  function score(st, p) {
+    if (st.winner >= 0) return st.winner === p ? 1e6 : -1e6;
+    if (!st.alive[p]) return -1e6;
+    const b = st.b;
+    let s = Kit.evaluate(b, (o) => o === p, (o) => o !== p && o >= 0 && o < st.n, (i) => Engine.capacity(b, i));
+    s += cells(b, p) * 2;
+    for (let q = 0; q < st.n; q++) if (q !== p && st.alive[q]) s -= cells(b, q) * 1.2;
+    s += st.alive.filter((a, q) => !a && q !== p).length * 60;
+    const g = st.ps[p].gifts;
+    s += (g.tongues + g.mercy + g.leadership) * 2 + (st.ps[p].hand.includes("grace") ? 4 : 0);
+    if (st.ps[p].skip) s -= 8;
+    return s;
+  }
+
+  // Candidate targets for a card (sampled to keep the AI quick).
+  function aiTargets(st, p, key) {
+    const b = st.b;
+    const T = DEF[key].target;
+    const enemyLoad = (list) => list.reduce((n, i) => n + (enemy(st, p, i) ? b.count[i] + 1 : 0), 0);
+    if (T === "none") return [null];
+    if (T === "line") {
+      const lines = [...Array(b.rows).keys()].map((r) => ({ axis: "row", index: r })).concat([...Array(b.cols).keys()].map((c) => ({ axis: "col", index: c })));
+      return lines.sort((x, y) => enemyLoad(lineCells(b, y)) - enemyLoad(lineCells(b, x))).slice(0, 4);
+    }
+    if (T === "area") return [...Array(b.size).keys()].sort((x, y) => enemyLoad(area(b, y)) - enemyLoad(area(b, x))).slice(0, 5);
+    if (T === "cells") {
+      const v = nextIndex(st, p);
+      const opts = selectable(st, p, key);
+      // put their sheep where they are weakest: next to my nearly full squares
+      const risk = (i) => Engine.neighbours(b, i).reduce((n, j) => n + (b.owner[j] === p && b.count[j] >= Engine.capacity(b, j) - 1 ? 3 : b.owner[j] === p ? 1 : 0), 0) - (b.owner[i] === v ? b.count[i] : 0);
+      return [opts.sort((x, y) => risk(y) - risk(x)).slice(0, st.forcedNext ?? 2)];
+    }
+    if (T === "faith") {
+      const own = mine(st, p).filter((i) => b.count[i] > 0).sort((x, y) => b.count[y] - b.count[x]).slice(0, 2);
+      const empt = selectable(st, p, key, [0]).sort((x, y) => enemyLoad(Engine.neighbours(b, y)) - enemyLoad(Engine.neighbours(b, x))).slice(0, 3);
+      return own.flatMap((f) => empt.map((e) => [f, e]));
+    }
+    const opts = selectable(st, p, key);
+    return shuffle(opts).slice(0, 10);
+  }
+
+  // Best placement for p by one-ply simulation. Returns { cell, score }.
+  function bestPlace(st, p, legal, scoreFn = score) {
+    let best = { cell: -1, score: -Infinity };
+    for (const i of legal) {
+      const s2 = clone(st);
+      place(s2, p, i, false);
+      const sc = scoreFn(s2, p);
+      if (sc > best.score) best = { cell: i, score: sc };
+    }
+    return best;
+  }
+
+  // AI plan for one turn: optionally one card (before placing), then a placement.
+  // legalPlace(st) lists placement cells; playable(st, p) lists hand cards it may play.
+  function aiPlan(st, p, { legalPlace, playable = (s) => s.ps[p].hand, margin = 2, mistake = 0.15, score: scoreFn = score, place: doPlace = true }) {
+    const base = doPlace ? bestPlace(st, p, legalPlace(st), scoreFn) : { cell: -1, score: scoreFn(st, p) };
+    let plan = { card: null, target: null, cell: base.cell, score: base.score };
+    for (const key of new Set(playable(st, p))) {
+      if (DEF[key].auto) continue;
+      for (const t of aiTargets(st, p, key)) {
+        const s2 = clone(st);
+        const k = s2.ps[p].hand.indexOf(key);
+        if (k >= 0) s2.ps[p].hand.splice(k, 1);
+        apply(s2, p, key, t, false);
+        const after = s2.winner >= 0 || !doPlace ? { cell: -1, score: scoreFn(s2, p) } : bestPlace(s2, p, legalPlace(s2), scoreFn);
+        if (after.score > plan.score + margin) plan = { card: key, target: t, cell: after.cell, score: after.score };
+      }
+    }
+    if (Math.random() < mistake && plan.card === null) {
+      const legal = legalPlace(st);
+      plan.cell = legal[Math.floor(Math.random() * legal.length)] ?? plan.cell;
+    }
+    return plan;
+  }
+
+  // ---------- look and feel ----------
+  const GROUP_COL = { miracle: "#3b6fb6", parable: "#7a5aa8", gift: "#2f8f6b", wolf: "#5b5468", grace: "#c99a2e", golden: "#d4a017" };
+
+  function cardHTML(key, o = {}) {
+    if (o.faceDown) return `<div class="ccard down${o.small ? " small" : ""}"><span class="ic">🎁</span><b>Gift</b></div>`;
+    const d = DEF[key];
+    return `<div class="ccard ${d.group}${o.small ? " small" : ""}${o.on ? " on" : ""}" style="--g:${GROUP_COL[d.group]}"><span class="ic">${d.icon}</span><b>${d.name}</b>${o.small ? "" : `<span class="tx">${d.text}</span>`}<small>${d.ref}</small>${o.cost !== undefined ? `<i class="cost">${o.cost}</i>` : ""}</div>`;
+  }
+
+  // Card sounds.
+  function sound(key) {
+    const T = Kit.tone;
+    const d = DEF[key];
+    if (d.group === "wolf") return Kit.sfx.howl();
+    ({
+      sea: () => { T(500, 0.7, "sawtooth", 0.05, 120); T(300, 0.8, "triangle", 0.06, 90, 0.1); },
+      fire: () => [0, 0.12, 0.24].forEach((dl) => T(180, 0.4, "sawtooth", 0.07, 60, dl)),
+      sling: () => { T(400, 0.35, "sine", 0.08, 1400); T(90, 0.25, "square", 0.08, 50, 0.4); },
+      loaves: () => [523, 784].forEach((f, k) => T(f, 0.2, "triangle", 0.1, 0, k * 0.1)),
+      manna: () => [1046, 1318, 1568].forEach((f, k) => T(f, 0.25, "sine", 0.06, 0, k * 0.12)),
+      water: () => T(700, 0.5, "sine", 0.08, 350),
+      call: () => { T(392, 0.25, "triangle", 0.1); T(523, 0.4, "triangle", 0.1, 0, 0.22); },
+      still: () => T(330, 1, "sine", 0.06, 300),
+      jericho: () => [262, 330, 392, 523].forEach((f, k) => T(f, 0.25, "square", 0.05, 0, k * 0.12)),
+      mustard: () => T(300, 0.5, "triangle", 0.08, 700),
+      grace: () => [784, 988, 1175].forEach((f, k) => T(f, 0.35, "sine", 0.07, 0, k * 0.08)),
+      pentecost: () => [523, 659, 784, 1047, 1319].forEach((f, k) => T(f, 0.3, "triangle", 0.08, 0, k * 0.09)),
+    }[key] ?? (() => Kit.sfx.chime(5)))();
+  }
+
+  // ---------- board effects ----------
+  // Demos call Cards.fx.draw(ctx, b, cell, now) after drawing their board.
+  const fx = {
+    cur: null,
+    play(f, ms = 1000) {
+      return new Promise((done) => {
+        this.cur = { ...f, t0: performance.now(), ms: Math.max(16, ms * speed), done };
+      });
+    },
+    draw(ctx, b, c, now) {
+      const f = this.cur;
+      if (!f) return;
+      const p = Math.min(1, (now - f.t0) / f.ms);
+      const cx = (i) => (Engine.colOf(b, i) + 0.5) * c;
+      const cy = (i) => (Engine.rowOf(b, i) + 0.5) * c;
+      const W2 = b.cols * c;
+      const H2 = b.rows * c;
+      const cellsOf = f.cells ?? [];
+      ctx.save();
+      switch (f.kind) {
+        case "sea": {
+          // water rushes in along the line, then parts outward
+          for (const i of cellsOf) {
+            const x = Engine.colOf(b, i) * c;
+            const y = Engine.rowOf(b, i) * c;
+            const split = Math.max(0, p - 0.35) / 0.65;
+            ctx.fillStyle = `rgba(60,140,220,${0.75 * (1 - split * 0.6)})`;
+            if (f.axis === "row") {
+              ctx.fillRect(x, y - split * c * 0.5, c, c * 0.5);
+              ctx.fillRect(x, y + c * 0.5 + split * c * 0.5, c, c * 0.5);
+            } else {
+              ctx.fillRect(x - split * c * 0.5, y, c * 0.5, c);
+              ctx.fillRect(x + c * 0.5 + split * c * 0.5, y, c * 0.5, c);
+            }
+            ctx.strokeStyle = "rgba(255,255,255,0.7)";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(x + c / 2, y + c / 2, c * 0.3 * (1 + split), 0, Math.PI * 2 * Math.min(1, p * 2));
+            ctx.stroke();
+          }
+          break;
+        }
+        case "fire": case "pentecost": {
+          for (const [k, i] of cellsOf.entries()) {
+            const drop = Math.min(1, p * 1.6 - (k % 4) * 0.08);
+            if (drop <= 0) continue;
+            const y = cy(i) - c * 3 * (1 - drop);
+            const g = ctx.createRadialGradient(cx(i), y, 0, cx(i), y, c * 0.45);
+            g.addColorStop(0, f.kind === "pentecost" ? "rgba(255,240,170,0.95)" : "rgba(255,230,120,0.95)");
+            g.addColorStop(0.5, f.kind === "pentecost" ? "rgba(255,170,60,0.7)" : "rgba(255,110,30,0.75)");
+            g.addColorStop(1, "rgba(255,60,0,0)");
+            Kit.circle(ctx, cx(i), y, c * 0.45, g);
+          }
+          break;
+        }
+        case "sling": {
+          const i = cellsOf[0];
+          if (i === undefined) break;
+          const sx = W2 / 2;
+          const sy = H2 + c;
+          const x = sx + (cx(i) - sx) * p;
+          const y = sy + (cy(i) - sy) * p - Math.sin(Math.PI * p) * c * 2;
+          Kit.circle(ctx, x, y, c * 0.14, "#8a8f99");
+          if (p > 0.85) {
+            ctx.strokeStyle = "rgba(255,255,255,0.8)";
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(cx(i), cy(i), c * (0.2 + (p - 0.85) * 4), 0, Math.PI * 2);
+            ctx.stroke();
+          }
+          break;
+        }
+        case "manna": {
+          for (const [k, i] of cellsOf.entries()) for (let s = 0; s < 6; s++) {
+            const y = cy(i) - c * 2.5 * (1 - Math.min(1, p * 1.3 - s * 0.05 - k * 0.1)) + s * 3;
+            Kit.circle(ctx, cx(i) + Math.sin(s * 2 + k) * c * 0.25, y, c * 0.05, "rgba(255,255,255,0.9)");
+          }
+          break;
+        }
+        case "water": case "loaves": case "mustard": case "faith": case "give": case "call": {
+          for (const i of cellsOf) {
+            ctx.strokeStyle = f.kind === "water" ? "rgba(140,210,255,0.9)" : f.kind === "mustard" ? "rgba(140,220,120,0.9)" : "rgba(255,220,120,0.9)";
+            ctx.lineWidth = 3;
+            for (const ring of [0, 0.3, 0.6]) {
+              const q = (p + ring) % 1;
+              ctx.globalAlpha = 1 - q;
+              ctx.beginPath();
+              ctx.arc(cx(i), cy(i), c * (0.15 + q * 0.6), 0, Math.PI * 2);
+              ctx.stroke();
+            }
+            ctx.globalAlpha = 1;
+          }
+          if (f.from) for (const n of f.from) {
+            const t = cellsOf[0];
+            Kit.drawSheep(ctx, cx(n) + (cx(t) - cx(n)) * p, cy(n) + (cy(t) - cy(n)) * p, c * 0.14, "#ffffff");
+          }
+          break;
+        }
+        case "still": {
+          ctx.globalAlpha = 0.5 * Math.sin(Math.PI * Math.min(1, p * 1.2));
+          for (const i of cellsOf) {
+            ctx.fillStyle = "rgba(170,210,255,0.8)";
+            ctx.fillRect(Engine.colOf(b, i) * c, Engine.rowOf(b, i) * c, c, c);
+          }
+          break;
+        }
+        case "jericho": {
+          for (const i of cellsOf) {
+            const shake = Math.sin(now / 25 + i) * c * 0.06 * (1 - p);
+            ctx.fillStyle = `rgba(210,170,110,${0.6 * (1 - p)})`;
+            ctx.fillRect(Engine.colOf(b, i) * c + shake, Engine.rowOf(b, i) * c, c, c);
+          }
+          break;
+        }
+        case "tongues": case "mercy": case "leadership": {
+          ctx.strokeStyle = f.color ?? "#ffffff";
+          ctx.lineWidth = 4;
+          ctx.globalAlpha = 1 - p;
+          for (const i of cellsOf) ctx.strokeRect(Engine.colOf(b, i) * c + 2, Engine.rowOf(b, i) * c + 2, c - 4, c - 4);
+          break;
+        }
+        case "wolfdoor": case "scatter": case "wolfin": {
+          for (const i of cellsOf) Kit.drawWolf(ctx, cx(i), cy(i) - Math.sin(Math.PI * p) * c * 0.4, c * (0.5 + 0.4 * Math.sin(Math.PI * p)), { mood: "happy" });
+          break;
+        }
+        case "twobytwo": {
+          for (const i of cellsOf) Kit.drawSheep(ctx, cx(i), cy(i) - (1 - p) * c, c * 0.16, "#ffffff");
+          break;
+        }
+      }
+      ctx.restore();
+      if (p >= 1) {
+        this.cur = null;
+        f.done();
+      }
+    },
+  };
+
+  // ---------- reveal scene ----------
+  // A big card pops up with the lamb (scarf in the player's colour) unwrapping it,
+  // or the wolf jumping out for a wolf trick. Tap to skip.
+  let revealEl = null;
+  function reveal(key, color, o = {}) {
+    if (!revealEl) {
+      revealEl = document.createElement("div");
+      revealEl.className = "reveal";
+      revealEl.innerHTML = `<div class="rv-in"><canvas></canvas><div class="rv-card"></div><p class="rv-who"></p></div>`;
+      document.body.append(revealEl);
+    }
+    const d = DEF[key];
+    revealEl.querySelector(".rv-card").innerHTML = cardHTML(key);
+    revealEl.querySelector(".rv-who").textContent = o.label ?? "";
+    revealEl.hidden = false;
+    const cv = revealEl.querySelector("canvas");
+    const g = Kit.sharp(cv, 220, 120);
+    const t0 = performance.now();
+    const wolf = d.group === "wolf";
+    sound(key);
+    if (!wolf && !o.played) Kit.sfx.bleat(1.1);
+    let raf;
+    const paint = (now) => {
+      const s = Math.min(1, (now - t0) / 500);
+      g.clearRect(0, 0, 220, 120);
+      if (!o.played) {
+        // the box lid flies off
+        g.fillStyle = o.golden ? "#e7b416" : "#c84b5a";
+        g.fillRect(150, 70, 44, 40);
+        g.fillStyle = o.golden ? "#fff2a8" : "#ffd25a";
+        g.fillRect(168, 70, 8, 40);
+        g.save();
+        g.translate(172, 68 - s * 30);
+        g.rotate(s * 0.6);
+        g.fillStyle = o.golden ? "#f2c629" : "#e05a6a";
+        g.fillRect(-25, -6, 50, 10);
+        g.restore();
+      } else {
+        // the card rises from the lamb's hoof
+        g.font = `${28 + s * 14}px system-ui`;
+        g.fillText(d.icon, 140, 80 - s * 20);
+      }
+      if (wolf) {
+        Kit.drawWolf(g, 172, 70 - s * 30, 40 + s * 30, { mood: "happy", t: now / 1000 });
+        Kit.drawLamb(g, 70, 70, 90, { mood: "shock", scarf: color, flip: false });
+      } else {
+        Kit.drawLamb(g, 70, 70 - Math.abs(Math.sin(now / 160)) * 6, 90, { mood: "happy", scarf: color, t: now / 1000 });
+      }
+      raf = requestAnimationFrame(paint);
+    };
+    raf = requestAnimationFrame(paint);
+    return new Promise((done) => {
+      const finish = () => {
+        cancelAnimationFrame(raf);
+        revealEl.hidden = true;
+        revealEl.onclick = null;
+        clearTimeout(timer);
+        done();
+      };
+      const timer = setTimeout(finish, (o.ms ?? 1500) * speed);
+      revealEl.onclick = finish;
+    });
+  }
+
+  // ---------- pass the phone ----------
+  let passEl = null;
+  function passPhone(name, color) {
+    if (!passEl) {
+      passEl = document.createElement("div");
+      passEl.className = "overlay";
+      passEl.innerHTML = `<div class="card"><canvas class="hero"></canvas><h2></h2><p>Hand the phone over. Cards stay hidden until you're ready.</p><button class="big">I'm ready</button></div>`;
+      document.body.append(passEl);
+    }
+    passEl.querySelector("h2").textContent = `Pass to ${name}`;
+    passEl.querySelector("h2").style.color = color;
+    const g = Kit.sharp(passEl.querySelector("canvas"), 200, 110);
+    Kit.drawLamb(g, 100, 62, 96, { scarf: color, mood: "happy" });
+    passEl.hidden = false;
+    return new Promise((done) => {
+      passEl.querySelector("button").onclick = () => {
+        passEl.hidden = true;
+        done();
+      };
+    });
+  }
+
+  // A small lamb icon for player chips.
+  function lambIcon(cv, color, mood = "happy") {
+    const g = Kit.sharp(cv, 34, 30);
+    Kit.drawLamb(g, 17, 17, 30, { scarf: color, mood });
+  }
+
+  return {
+    DEF, POOL, GROUP_COL,
+    set hooks(h) { hooks = h; }, get hooks() { return hooks; },
+    set speed(v) { speed = v; }, get speed() { return speed; },
+    set safeRounds(v) { safeRounds = v; }, get safeRounds() { return safeRounds; },
+    draw, newState, newPlayer, clone, orbs, cells, mine, enemy, aliveCount, nextIndex, canPlace, emptyCell, guard,
+    rules, resolve, settle, place, beginTurn, endTurn, endRound, randomMine,
+    selectable, picksNeeded, area, lineCells, edge, apply, shuffle,
+    score, aiTargets, bestPlace, aiPlan,
+    cardHTML, sound, fx, reveal, passPhone, lambIcon,
+  };
+})();
+// =================== END SHARED CARD SYSTEM ===================
+
+// ========================= SHARED TABLE UI =========================
+// Board drawing, player chips, the hand, tap-to-target and card animations for
+// the card demos. Expects elements: #board #stage #chain #chips #hand #hint #status #dot.
+const Table = (() => {
+  const { $ } = Kit;
+  let opt = {}; // { colors, names, state(), viewer(), cellArt(ctx,b,i,x,y,c,t,viewer), waveMs }
+  let geo = { cell: 40, dpr: 1, w: 0, h: 0 };
+  const view = { override: null, highlight: [], preview: [], pick: null };
+  let canvas;
+  let ctx;
+
+  function init(o) {
+    opt = { waveMs: 130, ...o };
+    canvas = $("board");
+    ctx = canvas.getContext("2d");
+    canvas.addEventListener("pointerdown", onTap);
+    new ResizeObserver(resize).observe($("stage"));
+    requestAnimationFrame(frame);
+  }
+
+  function resize() {
+    const st = opt.state?.();
+    if (!st) return;
+    geo = Kit.fitBoard(canvas, $("stage"), st.b.cols, st.b.rows);
+  }
+
+  // ---------- chips ----------
+  function chips(st, kinds, extra = () => "") {
+    const box = $("chips");
+    box.replaceChildren();
+    for (let p = 0; p < st.n; p++) {
+      const ps = st.ps[p];
+      const el = document.createElement("div");
+      el.className = "chip" + (p === st.current && st.winner < 0 ? " now" : "") + (st.alive[p] ? "" : " out");
+      el.id = `chip-${p}`;
+      const cv = document.createElement("canvas");
+      Cards.lambIcon(cv, opt.colors[p], st.alive[p] ? "happy" : "sleep");
+      const g = ps.gifts;
+      const marks = [g.tongues > 0 ? "🗣️" : "", g.mercy > 0 ? "💗" : "", g.leadership > 0 ? "👑" : "", ps.skip ? "💤" : "", ps.den ? "🦁" : "", ps.discern ? "👁️" : ""].join("");
+      el.append(cv);
+      const label = document.createElement("span");
+      label.innerHTML = `${opt.names[p]}${kinds[p] === "ai" ? " (AI)" : ""} · ${Cards.cells(st.b, p)}▢ ${extra(p)}${marks}`;
+      el.append(label);
+      box.append(el);
+    }
+  }
+
+  function jump(p) {
+    const el = $(`chip-${p}`);
+    if (!el) return;
+    el.classList.remove("jump");
+    void el.offsetWidth;
+    el.classList.add("jump");
+  }
+
+  // ---------- hand and targeting ----------
+  let pending = null; // resolver for the current human turn prompt
+  let ctxTurn = null; // { st, p, canPlace, cardsOk, placeOk, endOk, cardFilter }
+  let sel = null; // { idx, key, picks, axis }
+
+  // Renders cards for player p. faceDown shows the backs (e.g. during someone else's turn).
+  function hand(st, p, { enabled = false, faceDown = false, costs = null, extra = null } = {}) {
+    const box = $("hand");
+    box.replaceChildren();
+    if (p < 0) return;
+    st.ps[p].hand.forEach((key, idx) => {
+      const btn = document.createElement("button");
+      btn.innerHTML = Cards.cardHTML(key, { small: true, faceDown, on: sel?.idx === idx, cost: costs?.[key] });
+      const ok = enabled && !Cards.DEF[key].auto && (ctxTurn?.cardFilter?.(key) ?? true);
+      btn.disabled = !ok && !faceDown;
+      if (ok) btn.addEventListener("click", () => pickCard(idx, key));
+      else if (!faceDown) btn.addEventListener("click", () => hint(`${Cards.DEF[key].icon} ${Cards.DEF[key].text}`));
+      box.append(btn);
+    });
+    if (extra) box.append(extra);
+  }
+
+  function hint(html, buttons = []) {
+    const el = $("hint");
+    el.innerHTML = `<span>${html}</span>`;
+    for (const [label, fn, cls] of buttons) {
+      const b = document.createElement("button");
+      b.className = "ib" + (cls ? " " + cls : "");
+      b.textContent = label;
+      b.addEventListener("click", fn);
+      el.append(b);
+    }
+  }
+
+  function pickCard(idx, key) {
+    if (!ctxTurn) return;
+    if (sel?.idx === idx) return cancelSel();
+    sel = { idx, key, picks: [], axis: "row" };
+    refreshTargets();
+  }
+
+  function cancelSel() {
+    sel = null;
+    view.highlight = [];
+    view.preview = [];
+    idleHint();
+    hand(ctxTurn.st, ctxTurn.p, { enabled: ctxTurn.cardsOk, costs: ctxTurn.costs });
+  }
+
+  function refreshTargets() {
+    const { st, p } = ctxTurn;
+    const d = Cards.DEF[sel.key];
+    hand(st, p, { enabled: true, costs: ctxTurn.costs });
+    view.highlight = Cards.selectable(st, p, sel.key, sel.picks);
+    view.preview = sel.picks.slice();
+    const need = Cards.picksNeeded(sel.key, st);
+    if (need === 0) {
+      view.highlight = [];
+      hint(`${d.icon} <b>${d.name}</b>: ${d.text}`, [["Play", () => finishCard(null), "on"], ["Cancel", cancelSel]]);
+    } else if (d.target === "line") {
+      hint(`Tap a square to part its ${sel.axis}.`, [[sel.axis === "row" ? "Row ⇄ Column" : "Column ⇄ Row", () => { sel.axis = sel.axis === "row" ? "col" : "row"; refreshTargets(); }], ["Cancel", cancelSel]]);
+    } else {
+      const left = need - sel.picks.length;
+      const what = { area: "the middle of a 3×3 area", mine: "one of your squares", any: "any square", empty: "an empty square", enemy: "an enemy square", cells: `${left} square${left > 1 ? "s" : ""} for the next player`, faith: sel.picks.length ? "an empty square to move to" : "a square of yours to move" }[d.target];
+      hint(`${d.icon} Tap ${what}.`, [["Cancel", cancelSel]]);
+    }
+  }
+
+  function finishCard(target) {
+    const done = { type: "card", idx: sel.idx, key: sel.key, target };
+    sel = null;
+    view.highlight = [];
+    view.preview = [];
+    resolveTurn(done);
+  }
+
+  function onTap(e) {
+    if (!ctxTurn) return;
+    const { st, p } = ctxTurn;
+    const { row, col } = Kit.cellAt(canvas, e, geo.cell);
+    if (!Engine.inside(st.b, row, col)) return;
+    const i = row * st.b.cols + col;
+    if (sel) {
+      const d = Cards.DEF[sel.key];
+      if (!view.highlight.includes(i)) return Kit.sfx.bad();
+      if (d.target === "line") return finishCard({ axis: sel.axis, index: sel.axis === "row" ? row : col });
+      sel.picks.push(i);
+      if (sel.picks.length >= Cards.picksNeeded(sel.key, st)) return finishCard(["cells", "faith"].includes(d.target) ? sel.picks : sel.picks[0]);
+      Kit.sfx.place();
+      return refreshTargets();
+    }
+    if (ctxTurn.placeOk && ctxTurn.canPlace(i)) resolveTurn({ type: "place", cell: i });
+    else Kit.sfx.bad();
+  }
+
+  function idleHint() {
+    const c = ctxTurn;
+    const cards = c.cardsOk && c.st.ps[c.p].hand.some((k) => !Cards.DEF[k].auto && (c.cardFilter?.(k) ?? true));
+    const text = c.text ?? (c.placeOk ? `${c.placeText ?? "Tap a square to place a sheep"}${cards ? ", or play a card" : ""}.` : cards ? "Play a card, or end your turn." : "");
+    hint(text, c.endOk ? [[c.endLabel ?? "End turn", () => resolveTurn({ type: "end" }), "on"]] : []);
+  }
+
+  // Waits for a human action: { type: "place", cell } | { type: "card", idx, key, target } | { type: "end" }.
+  function ask(c) {
+    ctxTurn = c;
+    sel = null;
+    idleHint();
+    hand(c.st, c.p, { enabled: c.cardsOk, costs: c.costs });
+    return new Promise((r) => (pending = r));
+  }
+
+  function resolveTurn(action) {
+    const r = pending;
+    pending = null;
+    ctxTurn = null;
+    view.highlight = [];
+    $("hint").innerHTML = "";
+    r?.(action);
+  }
+
+  function cancelAsk() {
+    pending = null;
+    ctxTurn = null;
+    sel = null;
+    view.highlight = [];
+    view.preview = [];
+  }
+
+  // ---------- animations ----------
+  async function waves(ws, pre, onBig) {
+    if (!ws.length) return;
+    await Kit.anim.play(ws, opt.waveMs, (k) => {
+      Kit.sfx.burst(k);
+      if (k >= 1) Kit.popText($("chain"), `Chain x${k + 1}!`);
+      if (k === 5) Kit.shake($("stage"));
+      if (k === 10) Kit.shake($("stage"), true);
+      if (k === 6) onBig?.();
+    }, pre);
+  }
+
+  // Plays a card with its reveal, board effect and bursts. applyFn() must mutate the state and return Cards.apply's result.
+  async function card(p, key, applyFn, { label, fxMs = 1000, golden = false, box = false } = {}) {
+    const st = opt.state();
+    await Cards.reveal(key, opt.colors[p], { played: !box, golden, label: label ?? `${opt.names[p]} plays ${Cards.DEF[key].name}` });
+    const before = Engine.clone(st.b);
+    view.override = before;
+    const r = applyFn();
+    if (r.fx && (r.fx.cells?.length || ["sea", "jericho"].includes(r.fx.kind))) await Cards.fx.play({ ...r.fx, color: opt.colors[p] }, fxMs);
+    view.override = null;
+    await waves(r.waves, r.fx.mid ?? before, () => jump(p));
+    return r;
+  }
+
+  async function place(p, i, placeFn) {
+    const st = opt.state();
+    Kit.sfx.place();
+    const pre = Engine.clone(st.b);
+    Engine.place(pre, i, p);
+    const ws = placeFn();
+    await waves(ws, pre, () => jump(p));
+  }
+
+  // Shows what happened (Grace, knockouts, the wolf) as short pop-ups.
+  async function events(st) {
+    for (const e of st.events) {
+      let msg = "";
+      if (e.type === "grace") msg = `🛡️ Grace protects ${opt.names[e.p]}!`;
+      else if (e.type === "out") msg = `${opt.names[e.p]}'s flock is out`;
+      else if (e.type === "wolfchased") msg = "The wolf is chased off!";
+      else if (e.type === "wolfmove") msg = e.raided >= 0 ? "The wolf raids a square!" : "";
+      if (!msg) continue;
+      if (e.type === "grace") Cards.sound("grace");
+      if (e.type.startsWith("wolf")) Kit.sfx.howl();
+      Kit.popText($("chain"), msg);
+      await Kit.sleep(900 * Cards.speed);
+    }
+    st.events = [];
+  }
+
+  // ---------- drawing ----------
+  const SPOTS = {
+    1: [[0, 0]],
+    2: [[-0.2, 0], [0.2, 0.02]],
+    3: [[-0.2, 0.12], [0.2, 0.12], [0, -0.16]],
+    4: [[-0.2, -0.15], [0.2, -0.15], [-0.2, 0.17], [0.2, 0.17]],
+  };
+
+  function frame(now) {
+    Kit.anim.step(now);
+    const st = opt.state?.();
+    const t = now / 1000;
+    ctx.setTransform(geo.dpr, 0, 0, geo.dpr, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (st) drawBoard(st, now, t);
+    requestAnimationFrame(frame);
+  }
+
+  function drawBoard(st, now, t) {
+    const a = Kit.anim.cur;
+    const b = a ? Kit.anim.base() : view.override ?? st.b;
+    const wave = a && a.start !== null ? a.waves[a.i] : null;
+    const counts = b.count.slice();
+    if (wave) for (const { from } of wave.bursts) counts[from] = Math.max(0, counts[from] - Engine.capacity(b, from));
+    const c = geo.cell;
+    const viewer = opt.viewer?.() ?? -1;
+    for (let i = 0; i < b.size; i++) {
+      const x = Engine.colOf(b, i) * c;
+      const y = Engine.rowOf(b, i) * c;
+      const o = b.owner[i];
+      ctx.fillStyle = (Engine.rowOf(b, i) + Engine.colOf(b, i)) % 2 ? "#3d7a45" : "#46874e";
+      ctx.fillRect(x, y, c, c);
+      if (o >= 0 && o < st.n) {
+        ctx.fillStyle = opt.colors[o] + "38";
+        ctx.fillRect(x, y, c, c);
+        if (st.ps[o].gifts.tongues + st.ps[o].gifts.mercy + st.ps[o].gifts.leadership > 0) {
+          ctx.strokeStyle = opt.colors[o];
+          ctx.globalAlpha = 0.5 + 0.3 * Math.sin(t * 4);
+          ctx.lineWidth = 3;
+          ctx.strokeRect(x + 2, y + 2, c - 4, c - 4);
+          ctx.globalAlpha = 1;
+        }
+      }
+      if (b.still?.[i] >= 0) {
+        ctx.fillStyle = "rgba(170,210,255,0.28)";
+        ctx.fillRect(x, y, c, c);
+      }
+      opt.cellArt?.(ctx, b, i, x, y, c, t, viewer, st);
+      if (b.mustard?.[i] >= 0) {
+        ctx.strokeStyle = "#5fbf4a";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(x + c * 0.82, y + c * 0.92);
+        ctx.quadraticCurveTo(x + c * 0.78, y + c * 0.75, x + c * 0.86, y + c * 0.66);
+        ctx.stroke();
+        Kit.ellipse(ctx, x + c * 0.88, y + c * 0.68, c * 0.06, c * 0.03, -0.6, "#7cd65e");
+      }
+    }
+    for (let i = 0; i < b.size; i++) {
+      const n = counts[i];
+      const o = b.owner[i];
+      if (n <= 0 || o < 0 || o >= st.n) continue;
+      const nervous = n >= Engine.capacity(b, i) - 1;
+      const k = Math.min(n, 4);
+      for (let s = 0; s < k; s++) {
+        const [dx, dy] = SPOTS[k][s];
+        const jx = nervous ? Math.sin(t * 40 + i * 3 + s) * c * 0.02 : 0;
+        Kit.drawSheep(ctx, (Engine.colOf(b, i) + 0.5 + dx) * c + jx, (Engine.rowOf(b, i) + 0.5 + dy) * c, c * 0.14, opt.colors[o], { flip: s % 2 === 1 });
+      }
+      if (n > 4) {
+        ctx.fillStyle = "#ffcf4a";
+        ctx.font = `900 ${Math.round(c * 0.24)}px system-ui`;
+        ctx.textBaseline = "alphabetic";
+        ctx.fillText(n, (Engine.colOf(b, i) + 0.72) * c, (Engine.rowOf(b, i) + 0.95) * c);
+      }
+    }
+    if (st.wolf >= 0 && !a) Kit.drawWolf(ctx, (Engine.colOf(b, st.wolf) + 0.5) * c, (Engine.rowOf(b, st.wolf) + 0.5) * c, c * 0.7, { t, mood: "happy" });
+    if (wave) {
+      const p = Kit.anim.t(now);
+      const e = 1 - (1 - p) * (1 - p);
+      for (const { from, to, who } of wave.bursts) {
+        const fx = (Engine.colOf(b, from) + 0.5) * c;
+        const fy = (Engine.rowOf(b, from) + 0.5) * c;
+        for (const d of to) {
+          const tx = (Engine.colOf(b, d) + 0.5) * c;
+          const ty = (Engine.rowOf(b, d) + 0.5) * c;
+          Kit.drawSheep(ctx, fx + (tx - fx) * e, fy + (ty - fy) * e - Math.sin(Math.PI * p) * c * 0.3, c * 0.14, opt.colors[who] ?? "#fff", { flip: tx < fx });
+        }
+      }
+    }
+    // targeting highlights
+    if (view.highlight.length) {
+      ctx.strokeStyle = "#ffcf4a";
+      ctx.lineWidth = 2.5;
+      ctx.globalAlpha = 0.55 + 0.35 * Math.sin(t * 6);
+      for (const i of view.highlight) ctx.strokeRect(Engine.colOf(b, i) * c + 3, Engine.rowOf(b, i) * c + 3, c - 6, c - 6);
+      ctx.globalAlpha = 1;
+    }
+    for (const i of view.preview) {
+      ctx.fillStyle = "rgba(255,207,74,0.35)";
+      ctx.fillRect(Engine.colOf(b, i) * c, Engine.rowOf(b, i) * c, c, c);
+    }
+    if (st.forced) for (const i of st.forced.cells) Kit.drawSheep(ctx, (Engine.colOf(b, i) + 0.5) * c, (Engine.rowOf(b, i) + 0.5) * c, c * 0.12, "rgba(255,255,255,0.55)");
+    Cards.fx.draw(ctx, b, c, now);
+    ctx.strokeStyle = st.winner < 0 ? opt.colors[st.current] : "#ffffff";
+    ctx.globalAlpha = 0.5;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (let col = 0; col <= b.cols; col++) {
+      const x = Math.min(Math.max(col * c, 0.75), geo.w - 0.75);
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, geo.h);
+    }
+    for (let row = 0; row <= b.rows; row++) {
+      const y = Math.min(Math.max(row * c, 0.75), geo.h - 0.75);
+      ctx.moveTo(0, y);
+      ctx.lineTo(geo.w, y);
+    }
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  return { init, resize, chips, jump, hand, hint, ask, cancelAsk, waves, card, place, events, view, get geo() { return geo; } };
+})();
+// ======================= END SHARED TABLE UI =======================
+
+
+// ---------- balance ----------
+const CONFIG = {
+  rows: 9,
+  cols: 6,
+  startBoxes: 2,
+  totalBoxes: 7, // the last one is golden and holds Pentecost
+  dropEvery: 3, // rounds between new boxes
+  handMax: 3,
+  waveMs: 130,
+  aiDelayMs: 650,
+  aiMistake: 0.12,
+  aiCardMargin: 2, // the AI plays a card only if it beats its best plain move by this much
+  safeRounds: 2, // nobody can be knocked out during the first rounds
+  pool: { ...Cards.POOL }, // draw weights for every card; set one to 0 to remove it
+};
+Cards.safeRounds = CONFIG.safeRounds;
+
+const { $ } = Kit;
+const COLORS = Kit.COLORS.slice(0, 6);
+const NAMES = Kit.COLOR_NAMES.slice(0, 6);
+let setup = { n: 2, seats: ["human", "ai", "ai", "ai", "ai", "ai"] };
+try {
+  Object.assign(setup, JSON.parse(localStorage.getItem("cfl-11")) || {});
+} catch {}
+let S = null;
+let gameId = 0;
+let lastHuman = -1;
+
+const kind = (p) => S.kinds[p];
+const humans = () => S.kinds.filter((k) => k === "human").length;
+// whose cards are shown: the current human, or the only human during AI turns
+const viewer = () => (!S ? -1 : kind(S.current) === "human" ? S.current : humans() === 1 ? S.kinds.indexOf("human") : -1);
+
+// ---------- rules ----------
+Cards.hooks = {
+  blocked: (st, i) => !!st.b.box[i],
+  land: (st, b, from, to, who) => {
+    if (b.box[to]) {
+      st.unwrap.push({ p: who, key: b.box[to], golden: b.gold[to] });
+      b.box[to] = null;
+      b.gold[to] = false;
+      st.opened++;
+    }
+    return false; // then land as normal: the burster claims the square
+  },
+};
+
+function newGame() {
+  const b = Engine.createBoard(CONFIG.rows, CONFIG.cols, { still: -1, mustard: -1, box: null, gold: false });
+  const st = Cards.newState(b, setup.n);
+  st.kinds = setup.seats.slice(0, setup.n);
+  st.dropped = 0;
+  st.opened = 0;
+  st.unwrap = [];
+  st.forcedNext = 2;
+  for (const ps of st.ps) ps.hand.push(Cards.draw(CONFIG.pool, (k) => Cards.DEF[k].group !== "wolf" && !Cards.DEF[k].instant));
+  for (let k = 0; k < CONFIG.startBoxes; k++) dropBox(st);
+  return st;
+}
+
+function dropBox(st) {
+  if (st.dropped >= CONFIG.totalBoxes) return -1;
+  const b = st.b;
+  const spots = [...Array(b.size).keys()].filter((i) => b.owner[i] === -1 && !b.box[i] && i !== st.wolf);
+  if (!spots.length) return -1;
+  const i = spots[Math.floor(Math.random() * spots.length)];
+  st.dropped++;
+  const golden = st.dropped === CONFIG.totalBoxes;
+  b.box[i] = golden ? "pentecost" : Cards.draw(CONFIG.pool);
+  b.gold[i] = golden;
+  return i;
+}
+
+const legalPlace = (st) => [...Array(st.b.size).keys()].filter((i) => Cards.canPlace(st, st.current, i));
+const aiScore = (st, p) => Cards.score(st, p) + st.unwrap.filter((u) => u.p === p).length * 8 + st.ps[p].hand.length * 3;
+const boxesLeft = () => CONFIG.totalBoxes - S.opened;
+
+// ---------- flow ----------
+async function loop(myGame) {
+  while (myGame === gameId) {
+    if (S.winner >= 0) return finish();
+    const p = S.current;
+    hud();
+    if (kind(p) === "human" && humans() > 1 && lastHuman !== p) {
+      await Cards.passPhone(`${NAMES[p]}'s lamb`, COLORS[p]);
+      if (myGame !== gameId) return;
+    }
+    if (kind(p) === "human") lastHuman = p;
+    const pre = Engine.clone(S.b);
+    const bt = Cards.beginTurn(S);
+    hud();
+    if (bt.skipped) {
+      Kit.popText($("chain"), `${NAMES[p]} skips a turn 💤`);
+      await Kit.sleep(1000);
+      Cards.endTurn(S);
+      await afterTurn();
+      continue;
+    }
+    if (bt.given?.length) Kit.popText($("chain"), "It is given back: +3!");
+    if (bt.grew) Kit.sfx.chime(3);
+    await Table.waves(bt.waves, pre, () => Table.jump(p));
+    if (myGame !== gameId) return;
+    await afterAction();
+    if (S.winner >= 0) continue;
+
+    let placesLeft = S.ps[p].gifts.leadership > 0 ? 2 : 1;
+    let cardsLeft = 1;
+    S.forcedNext = S.forced?.victim === p ? S.forced.cells.length + 2 : 2;
+
+    // Two by Two aimed at this player: pass it on with your own, or take the sheep
+    if (S.forced?.victim === p) {
+      const canPass = S.ps[p].hand.includes("twobytwo");
+      let action = null;
+      if (canPass && kind(p) === "human") {
+        Kit.popText($("chain"), `Two by Two: ${S.forced.cells.length} sheep for you!`);
+        action = await Table.ask({ st: S, p, placeOk: false, cardsOk: true, endOk: true, endLabel: "Take them", text: `Two by Two! Play yours to pass ${S.forcedNext} on, or take the ${S.forced.cells.length} sheep.`, cardFilter: (k) => k === "twobytwo", canPlace: () => false });
+        if (action.type === "end") action = null;
+      } else if (canPass) {
+        const t = Cards.aiTargets(S, p, "twobytwo")[0];
+        action = { type: "card", idx: S.ps[p].hand.indexOf("twobytwo"), key: "twobytwo", target: t };
+      }
+      if (myGame !== gameId) return;
+      if (action) {
+        await playCard(p, action);
+        cardsLeft = 0;
+        Kit.popText($("chain"), `Passed on: ${S.forcedNext} sheep for ${NAMES[Cards.nextIndex(S, p)]}!`);
+        await Kit.sleep(900);
+      } else {
+        const forced = S.forced;
+        S.forced = null;
+        Kit.popText($("chain"), `${NAMES[p]}'s sheep go where ${NAMES[forced.by]} chose`);
+        for (const i of forced.cells) {
+          if (!Cards.canPlace(S, p, i)) continue;
+          await Table.place(p, i, () => Cards.place(S, p, i));
+          await afterAction();
+          if (S.winner >= 0 || myGame !== gameId) break;
+        }
+        placesLeft = 0;
+      }
+      if (S.winner >= 0) continue;
+    }
+
+    if (kind(p) === "human") {
+      while (myGame === gameId && S.winner < 0) {
+        const playable = S.ps[p].hand.some((k) => !Cards.DEF[k].auto);
+        if (placesLeft === 0 && (cardsLeft === 0 || !playable)) break;
+        hud();
+        const a = await Table.ask({
+          st: S, p,
+          canPlace: (i) => Cards.canPlace(S, p, i),
+          placeOk: placesLeft > 0,
+          placeText: placesLeft === 2 ? "👑 Place 2 sheep" : "Tap a square to place a sheep",
+          cardsOk: cardsLeft > 0,
+          endOk: placesLeft === 0,
+        });
+        if (myGame !== gameId) return;
+        if (a.type === "end") break;
+        if (a.type === "place") {
+          await Table.place(p, a.cell, () => Cards.place(S, p, a.cell));
+          placesLeft--;
+        } else {
+          await playCard(p, a);
+          cardsLeft--;
+        }
+        await afterAction();
+      }
+    } else {
+      await Kit.sleep(CONFIG.aiDelayMs);
+      if (myGame !== gameId) return;
+      const plan = Cards.aiPlan(S, p, { legalPlace, score: aiScore, margin: CONFIG.aiCardMargin, mistake: CONFIG.aiMistake });
+      if (plan.card && cardsLeft) {
+        await playCard(p, { type: "card", idx: S.ps[p].hand.indexOf(plan.card), key: plan.card, target: plan.target });
+        await afterAction();
+      }
+      for (let k = 0; k < placesLeft && S.winner < 0 && myGame === gameId; k++) {
+        const cell = k === 0 && !plan.card ? plan.cell : Cards.bestPlace(S, p, legalPlace(S), aiScore).cell;
+        if (cell < 0 || !Cards.canPlace(S, p, cell)) continue;
+        await Table.place(p, cell, () => Cards.place(S, p, cell));
+        await afterAction();
+      }
+    }
+    if (myGame !== gameId) return;
+    Cards.endTurn(S);
+    await afterTurn();
+  }
+}
+
+async function playCard(p, a) {
+  S.ps[p].hand.splice(a.idx, 1);
+  hud();
+  await Table.card(p, a.key, () => Cards.apply(S, p, a.key, a.target));
+}
+
+// After any action: unwrap claimed boxes and show what happened.
+async function afterAction() {
+  while (S.unwrap.length) {
+    const u = S.unwrap.shift();
+    if (!S.alive[u.p]) continue;
+    const d = Cards.DEF[u.key];
+    const label = `${NAMES[u.p]}'s lamb unwraps ${d.name}!`;
+    if (d.instant) await Table.card(u.p, u.key, () => Cards.apply(S, u.p, u.key, null), { box: true, golden: u.golden, label });
+    else {
+      await Cards.reveal(u.key, COLORS[u.p], { golden: u.golden, label });
+      S.ps[u.p].hand.push(u.key);
+      if (S.ps[u.p].hand.length > CONFIG.handMax) await discard(u.p);
+    }
+    hud();
+  }
+  await Table.events(S);
+  hud();
+}
+
+async function afterTurn() {
+  if (S.turnsInRound === 0 && S.round > 1 && (S.round - 1) % CONFIG.dropEvery === 0 && S.dropped < CONFIG.totalBoxes) {
+    const i = dropBox(S);
+    if (i >= 0) {
+      Kit.popText($("chain"), S.dropped === CONFIG.totalBoxes ? "✨ The golden box drops!" : "🎁 A gift box drops!");
+      Kit.sfx.chime(8);
+      await Kit.sleep(900);
+    }
+  }
+  await Table.events(S);
+  hud();
+}
+
+// Hand over the limit: the player lets one card go.
+const KEEP_ORDER = ["discern", "cheek", "sabbath", "still", "give", "mustard", "manna", "call", "faith", "jericho", "loaves", "water", "twobytwo", "double", "sea", "sling", "tongues", "mercy", "leadership", "fire", "grace", "pentecost"];
+function discard(p) {
+  const hand = S.ps[p].hand;
+  if (kind(p) === "ai") {
+    const worst = hand.reduce((x, k, i) => (KEEP_ORDER.indexOf(k) < KEEP_ORDER.indexOf(hand[x]) ? i : x), 0);
+    hand.splice(worst, 1);
+    return;
+  }
+  return new Promise((done) => {
+    const box = $("discard-picks");
+    box.replaceChildren();
+    hand.forEach((key, idx) => {
+      const btn = document.createElement("button");
+      btn.innerHTML = Cards.cardHTML(key);
+      btn.addEventListener("click", () => {
+        hand.splice(idx, 1);
+        Kit.hide("discard");
+        done();
+      });
+      box.append(btn);
+    });
+    Kit.show("discard");
+  });
+}
+
+function finish() {
+  const w = S.winner;
+  const won = kind(w) === "human" || humans() === 0;
+  $("end-title").textContent = humans() > 1 || won ? `${NAMES[w]}'s flock wins!` : "The other flock won";
+  $("end-title").style.color = COLORS[w];
+  $("end-sub").textContent = `Last flock standing after ${S.round} rounds, with ${S.opened} gifts unwrapped.`;
+  const g = Kit.sharp($("hero-end"), 220, 120);
+  Kit.drawLamb(g, 110, 66, 104, { scarf: COLORS[w], mood: won || humans() > 1 ? "happy" : "sad" });
+  (won ? Kit.sfx.win : Kit.sfx.lose)();
+  Kit.show("end");
+}
+
+function hud() {
+  if (!S) return;
+  const p = S.winner >= 0 ? S.winner : S.current;
+  $("dot").style.color = COLORS[p];
+  $("status").textContent = S.winner >= 0 ? `${NAMES[p]} wins!` : `${NAMES[p]}${kind(p) === "ai" ? " is thinking…" : "'s turn"} · 🎁 ${boxesLeft()} left`;
+  Table.chips(S, S.kinds, (q) => `🃏${S.ps[q].hand.length} `);
+  const v = viewer();
+  if (kind(S.current) !== "human" || S.winner >= 0) Table.hand(S, v, { enabled: false });
+}
+
+// ---------- drawing extras: the gift boxes ----------
+function cellArt(ctx, b, i, x, y, c, t, v) {
+  if (!b.box[i]) return;
+  const gold = b.gold[i];
+  const bob = Math.sin(t * 3 + i) * c * 0.02;
+  const bx = x + c * 0.2;
+  const by = y + c * 0.3 + bob;
+  const w = c * 0.6;
+  ctx.fillStyle = gold ? "#e7b416" : "#c84b5a";
+  ctx.fillRect(bx, by, w, w * 0.75);
+  ctx.fillStyle = gold ? "#f7d64a" : "#e05a6a";
+  ctx.fillRect(bx - c * 0.04, by - c * 0.1, w + c * 0.08, c * 0.14);
+  ctx.fillStyle = gold ? "#fffbe0" : "#ffd25a";
+  ctx.fillRect(bx + w / 2 - c * 0.05, by - c * 0.1, c * 0.1, w * 0.75 + c * 0.1);
+  Kit.ellipse(ctx, bx + w / 2 - c * 0.09, by - c * 0.14, c * 0.09, c * 0.05, -0.5, gold ? "#fffbe0" : "#ffd25a");
+  Kit.ellipse(ctx, bx + w / 2 + c * 0.09, by - c * 0.14, c * 0.09, c * 0.05, 0.5, gold ? "#fffbe0" : "#ffd25a");
+  if (gold) for (let k = 0; k < 3; k++) Kit.circle(ctx, x + c * (0.2 + 0.3 * k), y + c * 0.15 + Math.sin(t * 5 + k) * c * 0.05, c * 0.03, "#fff");
+  if (v >= 0 && S.ps[v].discern) {
+    ctx.font = `${Math.round(c * 0.26)}px system-ui`;
+    ctx.textBaseline = "middle";
+    ctx.fillText(Cards.DEF[b.box[i]].icon, x + c * 0.36, y + c * 0.62);
+  }
+}
+
+// ---------- menu ----------
+function renderSeats() {
+  $("count").textContent = setup.n;
+  const box = $("seats");
+  box.replaceChildren();
+  for (let p = 0; p < setup.n; p++) {
+    const row = document.createElement("div");
+    row.className = "seat";
+    row.innerHTML = `<span class="dot" style="color:${COLORS[p]}"></span><span class="nm">${NAMES[p]}</span>`;
+    const seg = document.createElement("div");
+    seg.className = "seg";
+    for (const [k, label] of [["human", "Human"], ["ai", "AI"]]) {
+      const btn = document.createElement("button");
+      btn.textContent = label;
+      btn.className = setup.seats[p] === k ? "on" : "";
+      btn.addEventListener("click", () => {
+        setup.seats[p] = k;
+        renderSeats();
+      });
+      seg.append(btn);
+    }
+    row.append(seg);
+    box.append(row);
+  }
+}
+
+function start() {
+  gameId++;
+  Table.cancelAsk();
+  Kit.anim.cur = null;
+  Cards.fx.cur = null;
+  try {
+    localStorage.setItem("cfl-11", JSON.stringify(setup));
+  } catch {}
+  S = newGame();
+  lastHuman = -1;
+  for (const id of ["intro", "end", "discard"]) Kit.hide(id);
+  Table.resize();
+  loop(gameId);
+}
+
+$("fewer").addEventListener("click", () => {
+  setup.n = Math.max(2, setup.n - 1);
+  renderSeats();
+});
+$("more").addEventListener("click", () => {
+  setup.n = Math.min(6, setup.n + 1);
+  renderSeats();
+});
+$("play").addEventListener("click", start);
+$("again").addEventListener("click", start);
+$("restart").addEventListener("click", () => S && start());
+const toMenu = () => {
+  gameId++;
+  Table.cancelAsk();
+  Kit.anim.cur = null;
+  Cards.fx.cur = null;
+  Kit.hide("end");
+  renderSeats();
+  Kit.show("intro");
+};
+$("menu").addEventListener("click", toMenu);
+$("end-menu").addEventListener("click", toMenu);
+Kit.muteButton($("mute"));
+
+Table.init({ colors: COLORS, names: NAMES, state: () => S, viewer, cellArt, waveMs: CONFIG.waveMs });
+renderSeats();
+{
+  const g = Kit.sharp($("hero-intro"), 220, 120);
+  g.fillStyle = "#c84b5a";
+  g.fillRect(150, 70, 44, 38);
+  g.fillStyle = "#ffd25a";
+  g.fillRect(168, 70, 8, 38);
+  g.fillRect(146, 64, 52, 8);
+  Kit.drawLamb(g, 85, 66, 100, { scarf: COLORS[0], mood: "happy" });
+}
+</script>
+</body>
+</html>

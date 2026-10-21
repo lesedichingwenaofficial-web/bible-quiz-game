@@ -1,0 +1,40 @@
+/* ===== shared card styles ===== */
+.ccard {
+  --g: #3b6fb6;
+  position: relative; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 1px;
+  width: 100%; min-height: 96px; padding: 6px 5px 5px; border-radius: 12px; text-align: center; line-height: 1.12;
+  background: linear-gradient(170deg, color-mix(in srgb, var(--g) 70%, #fff 0%), color-mix(in srgb, var(--g) 55%, #000 45%));
+  border: 2px solid color-mix(in srgb, var(--g) 60%, #fff 40%); color: #fff; box-shadow: 0 3px 0 rgba(0,0,0,0.35);
+}
+.ccard .ic { font-size: 1.5rem; line-height: 1.1; }
+.ccard b { font-size: 0.74rem; font-weight: 900; }
+.ccard .tx { font-size: 0.62rem; opacity: 0.92; }
+.ccard small { margin-top: auto; font-size: 0.56rem; opacity: 0.75; font-style: italic; }
+.ccard.small { min-height: 64px; }
+.ccard.down { --g: #c84b5a; background: repeating-linear-gradient(45deg, #c84b5a 0 8px, #d8606e 8px 16px); }
+.ccard.golden { background: linear-gradient(160deg, #ffe680, #d4a017); color: #3a2a00; border-color: #fff2a8; }
+.ccard.wolf { background: linear-gradient(170deg, #6b6478, #2c2836); }
+.ccard.on { outline: 3px solid var(--sun); outline-offset: 2px; transform: translateY(-6px); }
+.ccard .cost { position: absolute; top: -6px; left: -6px; width: 24px; height: 24px; border-radius: 50%; background: #8fd3ff; color: #12324a; font-style: normal; font-weight: 900; font-size: 0.8rem; display: grid; place-items: center; box-shadow: 0 2px 0 rgba(0,0,0,0.3); }
+.hand { display: flex; gap: 6px; justify-content: center; padding: 0 0 8px; min-height: 64px; }
+.hand > button { flex: 1; max-width: 112px; padding: 0; background: none; border-radius: 12px; }
+.hand > button:disabled { opacity: 0.45; }
+.hint { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 8px; min-height: 40px; padding: 0 4px 6px; color: var(--cream); font-size: 0.88rem; font-weight: 700; text-align: center; }
+.hint .ib { min-width: 0; height: 36px; padding: 0 12px; font-size: 0.85rem; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; padding: 0 0 4px; }
+.chip { display: flex; align-items: center; gap: 4px; padding: 2px 8px 2px 2px; border-radius: 12px; background: var(--meadow); font-size: 0.72rem; font-weight: 800; border: 2px solid transparent; }
+.chip.now { border-color: var(--sun); }
+.chip.out { opacity: 0.35; }
+.chip.jump canvas { animation: hop 0.6s ease-out 2; }
+@keyframes hop { 40% { transform: translateY(-8px); } }
+.reveal { position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center; background: rgba(8, 14, 11, 0.7); }
+.rv-in { display: flex; flex-direction: column; align-items: center; gap: 6px; animation: rv 0.35s ease-out; }
+.rv-card { width: 170px; }
+.rv-card .ccard { min-height: 170px; padding: 12px; }
+.rv-card .ccard .ic { font-size: 2.8rem; }
+.rv-card .ccard b { font-size: 1.05rem; }
+.rv-card .ccard .tx { font-size: 0.85rem; }
+.rv-card .ccard small { font-size: 0.75rem; }
+.rv-who { margin: 0; font-weight: 900; color: var(--cream); }
+@keyframes rv { from { transform: scale(0.6); opacity: 0; } }
+/* ===== end shared card styles ===== */

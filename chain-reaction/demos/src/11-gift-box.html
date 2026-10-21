@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Gift Box</title>
+<meta name="description" content="cheekyfoundlamb demo 11: Chain Reaction with gift boxes full of Bible miracles, parables and gifts." />
+<style>
+/*@KITCSS*/
+/*@CARDSCSS*/
+.top { min-height: 46px; padding-bottom: 2px; }
+.seats { display: grid; gap: 6px; }
+.seat { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 12px; background: var(--meadow-2); }
+.seat .dot { width: 18px; height: 18px; border-radius: 50%; background: currentColor; flex: none; }
+.seat .nm { flex: 1; font-weight: 800; text-align: left; }
+.stepper { display: flex; align-items: center; gap: 4px; background: var(--meadow-2); border-radius: 12px; padding: 4px; }
+.stepper button { width: 40px; height: 40px; border-radius: 9px; background: transparent; font-size: 1.3rem; font-weight: 900; }
+.stepper output { min-width: 22px; text-align: center; font-weight: 900; }
+.picks { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 10px; }
+.picks button { padding: 0; background: none; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="status"><span class="dot" id="dot"></span><span class="txt" id="status">Gift Box</span></div>
+    <div class="btns">
+      <button class="ib" id="restart" aria-label="Restart">↻</button>
+      <button class="ib" id="mute" aria-label="Mute">🔊</button>
+      <button class="ib" id="menu" aria-label="Menu">☰</button>
+    </div>
+  </header>
+  <div class="chips" id="chips"></div>
+  <main class="stage" id="stage">
+    <canvas id="board" aria-label="Board"></canvas>
+    <div class="chain" id="chain"></div>
+  </main>
+  <div class="hint" id="hint"></div>
+  <div class="hand" id="hand"></div>
+</div>
+
+<section class="overlay" id="intro">
+  <div class="card">
+    <canvas class="hero" id="hero-intro"></canvas>
+    <h1>Gift Box</h1>
+    <div class="how">
+      <p>Chain Reaction with wrapped gifts on the board. Nobody can place on a box: burst into it to claim the square and unwrap what's inside.</p>
+      <p>Each turn, place a sheep and play up to 1 card, before or after. Beware: some boxes hide a wolf! Last flock standing wins.</p>
+    </div>
+    <div class="opts">
+      <div class="optrow"><span class="lbl">Players</span>
+        <div class="stepper"><button id="fewer" aria-label="Fewer players">−</button><output id="count">2</output><button id="more" aria-label="More players">+</button></div>
+      </div>
+      <div class="seats" id="seats"></div>
+    </div>
+    <button class="big" id="play">Play</button>
+  </div>
+</section>
+
+<section class="overlay" id="discard" hidden>
+  <div class="card">
+    <h2>Your hand is full</h2>
+    <p>You can hold 3 cards. Choose one to let go.</p>
+    <div class="picks" id="discard-picks"></div>
+  </div>
+</section>
+
+<section class="overlay" id="end" hidden>
+  <div class="card">
+    <canvas class="hero" id="hero-end"></canvas>
+    <h2 id="end-title"></h2>
+    <p id="end-sub"></p>
+    <button class="big" id="again">Play again</button>
+    <button class="big alt" id="end-menu">Change players</button>
+  </div>
+</section>
+
+<script>
+/*@ENGINE*/
+/*@KIT*/
+/*@CARDS*/
+/*@TABLE*/
+
+// ---------- balance ----------
+const CONFIG = {
+  rows: 9,
+  cols: 6,
+  startBoxes: 2,
+  totalBoxes: 7, // the last one is golden and holds Pentecost
+  dropEvery: 3, // rounds between new boxes
+  handMax: 3,
+  waveMs: 130,
+  aiDelayMs: 650,
+  aiMistake: 0.12,
+  aiCardMargin: 2, // the AI plays a card only if it beats its best plain move by this much
+  safeRounds: 2, // nobody can be knocked out during the first rounds
+  pool: { ...Cards.POOL }, // draw weights for every card; set one to 0 to remove it
+};
+Cards.safeRounds = CONFIG.safeRounds;
+
+const { $ } = Kit;
+const COLORS = Kit.COLORS.slice(0, 6);
+const NAMES = Kit.COLOR_NAMES.slice(0, 6);
+let setup = { n: 2, seats: ["human", "ai", "ai", "ai", "ai", "ai"] };
+try {
+  Object.assign(setup, JSON.parse(localStorage.getItem("cfl-11")) || {});
+} catch {}
+let S = null;
+let gameId = 0;
+let lastHuman = -1;
+
+const kind = (p) => S.kinds[p];
+const humans = () => S.kinds.filter((k) => k === "human").length;
+// whose cards are shown: the current human, or the only human during AI turns
+const viewer = () => (!S ? -1 : kind(S.current) === "human" ? S.current : humans() === 1 ? S.kinds.indexOf("human") : -1);
+
+// ---------- rules ----------
+Cards.hooks = {
+  blocked: (st, i) => !!st.b.box[i],
+  land: (st, b, from, to, who) => {
+    if (b.box[to]) {
+      st.unwrap.push({ p: who, key: b.box[to], golden: b.gold[to] });
+      b.box[to] = null;
+      b.gold[to] = false;
+      st.opened++;
+    }
+    return false; // then land as normal: the burster claims the square
+  },
+};
+
+function newGame() {
+  const b = Engine.createBoard(CONFIG.rows, CONFIG.cols, { still: -1, mustard: -1, box: null, gold: false });
+  const st = Cards.newState(b, setup.n);
+  st.kinds = setup.seats.slice(0, setup.n);
+  st.dropped = 0;
+  st.opened = 0;
+  st.unwrap = [];
+  st.forcedNext = 2;
+  for (const ps of st.ps) ps.hand.push(Cards.draw(CONFIG.pool, (k) => Cards.DEF[k].group !== "wolf" && !Cards.DEF[k].instant));
+  for (let k = 0; k < CONFIG.startBoxes; k++) dropBox(st);
+  return st;
+}
+
+function dropBox(st) {
+  if (st.dropped >= CONFIG.totalBoxes) return -1;
+  const b = st.b;
+  const spots = [...Array(b.size).keys()].filter((i) => b.owner[i] === -1 && !b.box[i] && i !== st.wolf);
+  if (!spots.length) return -1;
+  const i = spots[Math.floor(Math.random() * spots.length)];
+  st.dropped++;
+  const golden = st.dropped === CONFIG.totalBoxes;
+  b.box[i] = golden ? "pentecost" : Cards.draw(CONFIG.pool);
+  b.gold[i] = golden;
+  return i;
+}
+
+const legalPlace = (st) => [...Array(st.b.size).keys()].filter((i) => Cards.canPlace(st, st.current, i));
+const aiScore = (st, p) => Cards.score(st, p) + st.unwrap.filter((u) => u.p === p).length * 8 + st.ps[p].hand.length * 3;
+const boxesLeft = () => CONFIG.totalBoxes - S.opened;
+
+// ---------- flow ----------
+async function loop(myGame) {
+  while (myGame === gameId) {
+    if (S.winner >= 0) return finish();
+    const p = S.current;
+    hud();
+    if (kind(p) === "human" && humans() > 1 && lastHuman !== p) {
+      await Cards.passPhone(`${NAMES[p]}'s lamb`, COLORS[p]);
+      if (myGame !== gameId) return;
+    }
+    if (kind(p) === "human") lastHuman = p;
+    const pre = Engine.clone(S.b);
+    const bt = Cards.beginTurn(S);
+    hud();
+    if (bt.skipped) {
+      Kit.popText($("chain"), `${NAMES[p]} skips a turn 💤`);
+      await Kit.sleep(1000);
+      Cards.endTurn(S);
+      await afterTurn();
+      continue;
+    }
+    if (bt.given?.length) Kit.popText($("chain"), "It is given back: +3!");
+    if (bt.grew) Kit.sfx.chime(3);
+    await Table.waves(bt.waves, pre, () => Table.jump(p));
+    if (myGame !== gameId) return;
+    await afterAction();
+    if (S.winner >= 0) continue;
+
+    let placesLeft = S.ps[p].gifts.leadership > 0 ? 2 : 1;
+    let cardsLeft = 1;
+    S.forcedNext = S.forced?.victim === p ? S.forced.cells.length + 2 : 2;
+
+    // Two by Two aimed at this player: pass it on with your own, or take the sheep
+    if (S.forced?.victim === p) {
+      const canPass = S.ps[p].hand.includes("twobytwo");
+      let action = null;
+      if (canPass && kind(p) === "human") {
+        Kit.popText($("chain"), `Two by Two: ${S.forced.cells.length} sheep for you!`);
+        action = await Table.ask({ st: S, p, placeOk: false, cardsOk: true, endOk: true, endLabel: "Take them", text: `Two by Two! Play yours to pass ${S.forcedNext} on, or take the ${S.forced.cells.length} sheep.`, cardFilter: (k) => k === "twobytwo", canPlace: () => false });
+        if (action.type === "end") action = null;
+      } else if (canPass) {
+        const t = Cards.aiTargets(S, p, "twobytwo")[0];
+        action = { type: "card", idx: S.ps[p].hand.indexOf("twobytwo"), key: "twobytwo", target: t };
+      }
+      if (myGame !== gameId) return;
+      if (action) {
+        await playCard(p, action);
+        cardsLeft = 0;
+        Kit.popText($("chain"), `Passed on: ${S.forcedNext} sheep for ${NAMES[Cards.nextIndex(S, p)]}!`);
+        await Kit.sleep(900);
+      } else {
+        const forced = S.forced;
+        S.forced = null;
+        Kit.popText($("chain"), `${NAMES[p]}'s sheep go where ${NAMES[forced.by]} chose`);
+        for (const i of forced.cells) {
+          if (!Cards.canPlace(S, p, i)) continue;
+          await Table.place(p, i, () => Cards.place(S, p, i));
+          await afterAction();
+          if (S.winner >= 0 || myGame !== gameId) break;
+        }
+        placesLeft = 0;
+      }
+      if (S.winner >= 0) continue;
+    }
+
+    if (kind(p) === "human") {
+      while (myGame === gameId && S.winner < 0) {
+        const playable = S.ps[p].hand.some((k) => !Cards.DEF[k].auto);
+        if (placesLeft === 0 && (cardsLeft === 0 || !playable)) break;
+        hud();
+        const a = await Table.ask({
+          st: S, p,
+          canPlace: (i) => Cards.canPlace(S, p, i),
+          placeOk: placesLeft > 0,
+          placeText: placesLeft === 2 ? "👑 Place 2 sheep" : "Tap a square to place a sheep",
+          cardsOk: cardsLeft > 0,
+          endOk: placesLeft === 0,
+        });
+        if (myGame !== gameId) return;
+        if (a.type === "end") break;
+        if (a.type === "place") {
+          await Table.place(p, a.cell, () => Cards.place(S, p, a.cell));
+          placesLeft--;
+        } else {
+          await playCard(p, a);
+          cardsLeft--;
+        }
+        await afterAction();
+      }
+    } else {
+      await Kit.sleep(CONFIG.aiDelayMs);
+      if (myGame !== gameId) return;
+      const plan = Cards.aiPlan(S, p, { legalPlace, score: aiScore, margin: CONFIG.aiCardMargin, mistake: CONFIG.aiMistake });
+      if (plan.card && cardsLeft) {
+        await playCard(p, { type: "card", idx: S.ps[p].hand.indexOf(plan.card), key: plan.card, target: plan.target });
+        await afterAction();
+      }
+      for (let k = 0; k < placesLeft && S.winner < 0 && myGame === gameId; k++) {
+        const cell = k === 0 && !plan.card ? plan.cell : Cards.bestPlace(S, p, legalPlace(S), aiScore).cell;
+        if (cell < 0 || !Cards.canPlace(S, p, cell)) continue;
+        await Table.place(p, cell, () => Cards.place(S, p, cell));
+        await afterAction();
+      }
+    }
+    if (myGame !== gameId) return;
+    Cards.endTurn(S);
+    await afterTurn();
+  }
+}
+
+async function playCard(p, a) {
+  S.ps[p].hand.splice(a.idx, 1);
+  hud();
+  await Table.card(p, a.key, () => Cards.apply(S, p, a.key, a.target));
+}
+
+// After any action: unwrap claimed boxes and show what happened.
+async function afterAction() {
+  while (S.unwrap.length) {
+    const u = S.unwrap.shift();
+    if (!S.alive[u.p]) continue;
+    const d = Cards.DEF[u.key];
+    const label = `${NAMES[u.p]}'s lamb unwraps ${d.name}!`;
+    if (d.instant) await Table.card(u.p, u.key, () => Cards.apply(S, u.p, u.key, null), { box: true, golden: u.golden, label });
+    else {
+      await Cards.reveal(u.key, COLORS[u.p], { golden: u.golden, label });
+      S.ps[u.p].hand.push(u.key);
+      if (S.ps[u.p].hand.length > CONFIG.handMax) await discard(u.p);
+    }
+    hud();
+  }
+  await Table.events(S);
+  hud();
+}
+
+async function afterTurn() {
+  if (S.turnsInRound === 0 && S.round > 1 && (S.round - 1) % CONFIG.dropEvery === 0 && S.dropped < CONFIG.totalBoxes) {
+    const i = dropBox(S);
+    if (i >= 0) {
+      Kit.popText($("chain"), S.dropped === CONFIG.totalBoxes ? "✨ The golden box drops!" : "🎁 A gift box drops!");
+      Kit.sfx.chime(8);
+      await Kit.sleep(900);
+    }
+  }
+  await Table.events(S);
+  hud();
+}
+
+// Hand over the limit: the player lets one card go.
+const KEEP_ORDER = ["discern", "cheek", "sabbath", "still", "give", "mustard", "manna", "call", "faith", "jericho", "loaves", "water", "twobytwo", "double", "sea", "sling", "tongues", "mercy", "leadership", "fire", "grace", "pentecost"];
+function discard(p) {
+  const hand = S.ps[p].hand;
+  if (kind(p) === "ai") {
+    const worst = hand.reduce((x, k, i) => (KEEP_ORDER.indexOf(k) < KEEP_ORDER.indexOf(hand[x]) ? i : x), 0);
+    hand.splice(worst, 1);
+    return;
+  }
+  return new Promise((done) => {
+    const box = $("discard-picks");
+    box.replaceChildren();
+    hand.forEach((key, idx) => {
+      const btn = document.createElement("button");
+      btn.innerHTML = Cards.cardHTML(key);
+      btn.addEventListener("click", () => {
+        hand.splice(idx, 1);
+        Kit.hide("discard");
+        done();
+      });
+      box.append(btn);
+    });
+    Kit.show("discard");
+  });
+}
+
+function finish() {
+  const w = S.winner;
+  const won = kind(w) === "human" || humans() === 0;
+  $("end-title").textContent = humans() > 1 || won ? `${NAMES[w]}'s flock wins!` : "The other flock won";
+  $("end-title").style.color = COLORS[w];
+  $("end-sub").textContent = `Last flock standing after ${S.round} rounds, with ${S.opened} gifts unwrapped.`;
+  const g = Kit.sharp($("hero-end"), 220, 120);
+  Kit.drawLamb(g, 110, 66, 104, { scarf: COLORS[w], mood: won || humans() > 1 ? "happy" : "sad" });
+  (won ? Kit.sfx.win : Kit.sfx.lose)();
+  Kit.show("end");
+}
+
+function hud() {
+  if (!S) return;
+  const p = S.winner >= 0 ? S.winner : S.current;
+  $("dot").style.color = COLORS[p];
+  $("status").textContent = S.winner >= 0 ? `${NAMES[p]} wins!` : `${NAMES[p]}${kind(p) === "ai" ? " is thinking…" : "'s turn"} · 🎁 ${boxesLeft()} left`;
+  Table.chips(S, S.kinds, (q) => `🃏${S.ps[q].hand.length} `);
+  const v = viewer();
+  if (kind(S.current) !== "human" || S.winner >= 0) Table.hand(S, v, { enabled: false });
+}
+
+// ---------- drawing extras: the gift boxes ----------
+function cellArt(ctx, b, i, x, y, c, t, v) {
+  if (!b.box[i]) return;
+  const gold = b.gold[i];
+  const bob = Math.sin(t * 3 + i) * c * 0.02;
+  const bx = x + c * 0.2;
+  const by = y + c * 0.3 + bob;
+  const w = c * 0.6;
+  ctx.fillStyle = gold ? "#e7b416" : "#c84b5a";
+  ctx.fillRect(bx, by, w, w * 0.75);
+  ctx.fillStyle = gold ? "#f7d64a" : "#e05a6a";
+  ctx.fillRect(bx - c * 0.04, by - c * 0.1, w + c * 0.08, c * 0.14);
+  ctx.fillStyle = gold ? "#fffbe0" : "#ffd25a";
+  ctx.fillRect(bx + w / 2 - c * 0.05, by - c * 0.1, c * 0.1, w * 0.75 + c * 0.1);
+  Kit.ellipse(ctx, bx + w / 2 - c * 0.09, by - c * 0.14, c * 0.09, c * 0.05, -0.5, gold ? "#fffbe0" : "#ffd25a");
+  Kit.ellipse(ctx, bx + w / 2 + c * 0.09, by - c * 0.14, c * 0.09, c * 0.05, 0.5, gold ? "#fffbe0" : "#ffd25a");
+  if (gold) for (let k = 0; k < 3; k++) Kit.circle(ctx, x + c * (0.2 + 0.3 * k), y + c * 0.15 + Math.sin(t * 5 + k) * c * 0.05, c * 0.03, "#fff");
+  if (v >= 0 && S.ps[v].discern) {
+    ctx.font = `${Math.round(c * 0.26)}px system-ui`;
+    ctx.textBaseline = "middle";
+    ctx.fillText(Cards.DEF[b.box[i]].icon, x + c * 0.36, y + c * 0.62);
+  }
+}
+
+// ---------- menu ----------
+function renderSeats() {
+  $("count").textContent = setup.n;
+  const box = $("seats");
+  box.replaceChildren();
+  for (let p = 0; p < setup.n; p++) {
+    const row = document.createElement("div");
+    row.className = "seat";
+    row.innerHTML = `<span class="dot" style="color:${COLORS[p]}"></span><span class="nm">${NAMES[p]}</span>`;
+    const seg = document.createElement("div");
+    seg.className = "seg";
+    for (const [k, label] of [["human", "Human"], ["ai", "AI"]]) {
+      const btn = document.createElement("button");
+      btn.textContent = label;
+      btn.className = setup.seats[p] === k ? "on" : "";
+      btn.addEventListener("click", () => {
+        setup.seats[p] = k;
+        renderSeats();
+      });
+      seg.append(btn);
+    }
+    row.append(seg);
+    box.append(row);
+  }
+}
+
+function start() {
+  gameId++;
+  Table.cancelAsk();
+  Kit.anim.cur = null;
+  Cards.fx.cur = null;
+  try {
+    localStorage.setItem("cfl-11", JSON.stringify(setup));
+  } catch {}
+  S = newGame();
+  lastHuman = -1;
+  for (const id of ["intro", "end", "discard"]) Kit.hide(id);
+  Table.resize();
+  loop(gameId);
+}
+
+$("fewer").addEventListener("click", () => {
+  setup.n = Math.max(2, setup.n - 1);
+  renderSeats();
+});
+$("more").addEventListener("click", () => {
+  setup.n = Math.min(6, setup.n + 1);
+  renderSeats();
+});
+$("play").addEventListener("click", start);
+$("again").addEventListener("click", start);
+$("restart").addEventListener("click", () => S && start());
+const toMenu = () => {
+  gameId++;
+  Table.cancelAsk();
+  Kit.anim.cur = null;
+  Cards.fx.cur = null;
+  Kit.hide("end");
+  renderSeats();
+  Kit.show("intro");
+};
+$("menu").addEventListener("click", toMenu);
+$("end-menu").addEventListener("click", toMenu);
+Kit.muteButton($("mute"));
+
+Table.init({ colors: COLORS, names: NAMES, state: () => S, viewer, cellArt, waveMs: CONFIG.waveMs });
+renderSeats();
+{
+  const g = Kit.sharp($("hero-intro"), 220, 120);
+  g.fillStyle = "#c84b5a";
+  g.fillRect(150, 70, 44, 38);
+  g.fillStyle = "#ffd25a";
+  g.fillRect(168, 70, 8, 38);
+  g.fillRect(146, 64, 52, 8);
+  Kit.drawLamb(g, 85, 66, 100, { scarf: COLORS[0], mood: "happy" });
+}
+</script>
+</body>
+</html>

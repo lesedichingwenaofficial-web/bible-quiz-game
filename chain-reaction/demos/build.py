@@ -18,6 +18,9 @@ PARTS = {
     "/*@ENGINE*/": (SRC / "_engine.js").read_text(),
     "/*@KIT*/": (SRC / "_kit.js").read_text(),
     "/*@KITCSS*/": (SRC / "_kit.css").read_text(),
+    "/*@CARDS*/": (SRC / "_cards.js").read_text(),
+    "/*@CARDSCSS*/": (SRC / "_cards.css").read_text(),
+    "/*@TABLE*/": (SRC / "_table.js").read_text(),
 }
 SKELETON = re.compile(
     r"<!doctype html>\s*|<html[^>]*>\s*|</html>\s*|<head>\s*|</head>\s*|<body>\s*|</body>\s*"
