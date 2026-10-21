@@ -1,0 +1,1237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Lamb vs Wolf</title>
+<meta name="description" content="cheekyfoundlamb demo 2: a lopsided 1v1 where light converts and the wolf's shadow scatters." />
+<style>
+/* ===== shared shell styles ===== */
+:root {
+  --night: #13201a;
+  --meadow: #1d3327;
+  --meadow-2: #274232;
+  --cream: #fbf4e6;
+  --muted: #b5c4b4;
+  --sun: #ffcf4a;
+  --wool: #ffffff;
+  --danger: #ff6b6b;
+  --round: ui-rounded, "SF Pro Rounded", "Nunito", "Segoe UI", system-ui, sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--night);
+  color: var(--cream);
+  font-family: var(--round);
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+}
+[hidden] { display: none !important; }
+button { font: inherit; color: inherit; border: 0; cursor: pointer; touch-action: manipulation; }
+button:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
+.app {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: env(safe-area-inset-top, 0px) max(10px, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px) max(10px, env(safe-area-inset-left, 0px));
+}
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 2px 6px;
+  min-height: 52px;
+}
+.status { display: flex; align-items: center; gap: 8px; min-width: 0; font-weight: 800; font-size: 1.02rem; }
+.status .dot { width: 18px; height: 18px; border-radius: 50%; flex: none; box-shadow: 0 0 10px currentColor; background: currentColor; }
+.status .txt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.btns { display: flex; gap: 6px; flex: none; }
+.ib {
+  min-width: 44px; height: 44px; padding: 0 10px; border-radius: 14px;
+  background: var(--meadow); font-size: 1.05rem; font-weight: 800;
+}
+.ib:disabled { opacity: 0.35; cursor: default; }
+.ib.on { background: var(--sun); color: #2a2010; }
+.stage { flex: 1; min-height: 0; position: relative; display: flex; align-items: center; justify-content: center; padding: 4px 0 10px; }
+.stage canvas { display: block; touch-action: manipulation; border-radius: 10px; }
+.chain {
+  position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%);
+  font-size: 2.4rem; font-weight: 900; color: var(--sun); pointer-events: none;
+  text-shadow: 0 3px 0 #6b4a00, 0 0 24px rgba(255, 207, 74, 0.6); opacity: 0; white-space: nowrap;
+}
+.chain.pop { animation: pop 0.9s ease-out; }
+@keyframes pop {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+  15% { opacity: 1; transform: translate(-50%, -50%) scale(1.15); }
+  70% { opacity: 1; transform: translate(-50%, -60%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -75%) scale(0.95); }
+}
+.shake { animation: shake 0.25s linear; }
+.shake-big { animation: shake 0.45s linear; }
+@keyframes shake {
+  0%, 100% { transform: translate(0, 0); }
+  20% { transform: translate(-5px, 3px); }
+  40% { transform: translate(5px, -3px); }
+  60% { transform: translate(-4px, -2px); }
+  80% { transform: translate(3px, 2px); }
+}
+.overlay {
+  position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+  padding: max(16px, env(safe-area-inset-top, 0px)) 16px max(16px, env(safe-area-inset-bottom, 0px));
+  background: rgba(8, 14, 11, 0.86); backdrop-filter: blur(4px); overflow-y: auto;
+}
+.card {
+  width: 100%; max-width: 400px; margin: auto; padding: 22px 18px; border-radius: 24px;
+  background: var(--meadow); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45); text-align: center;
+}
+.card h1, .card h2 { margin: 4px 0 6px; line-height: 1.1; text-wrap: balance; }
+.card h1 { font-size: 2rem; color: var(--sun); letter-spacing: -0.01em; }
+.card h2 { font-size: 1.7rem; }
+.card p { margin: 6px 0; color: var(--muted); line-height: 1.4; }
+.card .how { text-align: left; font-size: 0.95rem; }
+.card canvas.hero { display: block; margin: 0 auto 4px; }
+.big {
+  display: block; width: 100%; margin-top: 14px; padding: 15px; border-radius: 16px;
+  background: var(--sun); color: #2a2010; font-weight: 900; font-size: 1.15rem;
+}
+.big.alt { background: var(--meadow-2); color: var(--cream); margin-top: 8px; }
+.opts { display: grid; gap: 8px; margin-top: 12px; text-align: left; }
+.optrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.optrow label, .optrow .lbl { font-weight: 800; }
+.seg { display: flex; flex-wrap: wrap; gap: 4px; background: var(--meadow-2); padding: 4px; border-radius: 12px; }
+.seg button { padding: 8px 10px; border-radius: 9px; background: transparent; color: var(--muted); font-weight: 800; font-size: 0.9rem; }
+.seg button.on { background: var(--sun); color: #2a2010; }
+.verse { font-style: italic; color: var(--cream) !important; }
+.verse small { display: block; margin-top: 4px; font-style: normal; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) {
+  .shake, .shake-big, .chain.pop { animation-duration: 0.01s; }
+}
+/* ===== end shared shell styles ===== */
+
+.meter { position: relative; height: 22px; margin: 0 2px 4px; border-radius: 11px; background: #2a2838; overflow: hidden; }
+.meter .fill { position: absolute; inset: 0 auto 0 0; width: 0; background: linear-gradient(90deg, #ffe9a8, #ffcf4a); transition: width 0.25s; }
+.meter .goal { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--cream); opacity: 0.8; }
+.meter b { position: relative; display: block; text-align: center; font-size: 0.8rem; line-height: 22px; color: #1a1622; mix-blend-mode: normal; text-shadow: 0 0 6px rgba(255,255,255,0.7); }
+.actions { display: flex; gap: 8px; justify-content: center; padding: 0 0 8px; }
+.actions .ib { flex: 1; max-width: 220px; height: 48px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="status"><span class="dot" id="dot"></span><span class="txt" id="status">Lamb vs Wolf</span></div>
+    <div class="btns">
+      <button class="ib" id="restart" aria-label="Restart">↻</button>
+      <button class="ib" id="mute" aria-label="Mute">🔊</button>
+      <button class="ib" id="menu" aria-label="Menu">☰</button>
+    </div>
+  </header>
+  <div class="meter" aria-hidden="true"><span class="fill" id="fill"></span><span class="goal" id="goal"></span><b id="pct">Light 0%</b></div>
+  <main class="stage" id="stage">
+    <canvas id="board" aria-label="Board"></canvas>
+    <div class="chain" id="chain"></div>
+  </main>
+  <div class="actions">
+    <button class="ib" id="move-lamb" disabled>🐑 Move lamb</button>
+  </div>
+</div>
+
+<section class="overlay" id="intro">
+  <div class="card">
+    <canvas class="hero" id="hero-intro"></canvas>
+    <h1>Lamb vs Wolf</h1>
+    <div class="how">
+      <p><b>Lamb:</b> pick a start square in the bottom half. Your bursts turn shadow into light. Instead of placing, you can move the lamb one step onto a light square.</p>
+      <p><b>Wolf:</b> your bursts scatter the lamb's sheep. Land a burst on the lamb to win.</p>
+      <p>The lamb wins by clearing all shadow or holding 60% of the board.</p>
+    </div>
+    <div class="opts">
+      <div class="optrow"><span class="lbl">Play as</span>
+        <div class="seg" id="mode">
+          <button data-mode="lamb">Lamb</button><button data-mode="wolf">Wolf</button><button data-mode="pvp">2 players</button>
+        </div>
+      </div>
+    </div>
+    <button class="big" id="play">Play</button>
+  </div>
+</section>
+
+<section class="overlay" id="end" hidden>
+  <div class="card">
+    <canvas class="hero" id="hero-end"></canvas>
+    <h2 id="end-title"></h2>
+    <p id="end-sub"></p>
+    <button class="big" id="again">Play again</button>
+    <button class="big alt" id="to-menu">Switch sides</button>
+  </div>
+</section>
+
+<script>
+// ===================== CHAIN REACTION ENGINE =====================
+// Shared by every cheekyfoundlamb demo. Keep this block identical across files;
+// demo-specific rules plug in through the `rules` hooks of Engine.resolve.
+//
+// Written for the Chain Burst project after studying these MIT-licensed
+// open-source Chain Reaction games:
+//   LironCareto/ChainReaction          Copyright (c) 2026 LironCareto
+//   tahmidnafees619/ChainReaction-game Copyright (c) 2026 tahmidnafees619
+//
+// MIT License
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+const Engine = (() => {
+  const ORTHO = [[-1, 0], [0, 1], [1, 0], [0, -1]];
+  const DIAG = [[-1, -1], [-1, 1], [1, 1], [1, -1]];
+  const ALL8 = ORTHO.concat(DIAG);
+
+  // A board is a set of flat arrays indexed by row * cols + col.
+  // owner: player index (>= 0), or -1 for empty. count: orbs in the cell.
+  // rock: blocked cells. `extra` adds more per-cell arrays, e.g. { water: false }.
+  function createBoard(rows, cols, extra = {}) {
+    const size = rows * cols;
+    const b = {
+      rows,
+      cols,
+      size,
+      owner: new Array(size).fill(-1),
+      count: new Array(size).fill(0),
+      rock: new Array(size).fill(false),
+    };
+    for (const [key, value] of Object.entries(extra)) b[key] = new Array(size).fill(value);
+    return b;
+  }
+
+  function clone(b) {
+    const c = {};
+    for (const key in b) c[key] = Array.isArray(b[key]) ? b[key].slice() : b[key];
+    return c;
+  }
+
+  const rowOf = (b, i) => Math.floor(i / b.cols);
+  const colOf = (b, i) => i % b.cols;
+  const inside = (b, r, c) => r >= 0 && c >= 0 && r < b.rows && c < b.cols;
+
+  function neighbours(b, i, dirs = ORTHO) {
+    const r = rowOf(b, i);
+    const c = colOf(b, i);
+    const out = [];
+    for (const [dr, dc] of dirs) {
+      const nr = r + dr;
+      const nc = c + dc;
+      if (!inside(b, nr, nc)) continue;
+      const n = nr * b.cols + nc;
+      if (!b.rock[n]) out.push(n);
+    }
+    return out;
+  }
+
+  // Critical mass: the number of open orthogonal neighbours (corner 2, edge 3, middle 4).
+  const capacity = (b, i) => neighbours(b, i).length;
+
+  const DEFAULT_RULES = {
+    cap: (b, i) => capacity(b, i), // orbs needed to burst
+    canBurst: (b, i) => b.owner[i] >= 0,
+    targets: (b, i) => neighbours(b, i), // one orb lands per entry (repeat an entry for 2 orbs)
+    spend: (b, i) => DEFAULT_RULES.cap(b, i), // orbs the bursting cell loses
+    emptied: (b, i) => {
+      b.owner[i] = -1;
+    },
+    land: (b, from, to, who) => {
+      b.owner[to] = who;
+      b.count[to]++;
+    },
+    done: () => false, // return true to stop resolving (e.g. only one side left)
+    maxWaves: 200,
+  };
+
+  function place(b, i, who, n = 1) {
+    b.owner[i] = who;
+    b.count[i] += n;
+  }
+
+  // Resolves every burst in waves: all full cells in a wave burst together.
+  // Mutates `b`. Returns { waves, capped }, where each wave is
+  // { bursts: [{ from, to, who }], board } and board is a snapshot after the wave.
+  function resolve(b, rules = {}, record = true) {
+    const R = { ...DEFAULT_RULES, ...rules };
+    if (!rules.spend) R.spend = (bb, i) => R.cap(bb, i);
+    const waves = [];
+    let capped = false;
+    for (;;) {
+      if (R.done(b)) break;
+      if (waves.length >= R.maxWaves) {
+        capped = true;
+        break;
+      }
+      const ready = [];
+      for (let i = 0; i < b.size; i++) if (b.count[i] >= R.cap(b, i) && R.canBurst(b, i)) ready.push(i);
+      if (!ready.length) break;
+      const bursts = [];
+      for (const from of ready) {
+        const who = b.owner[from];
+        const to = R.targets(b, from);
+        b.count[from] = Math.max(0, b.count[from] - R.spend(b, from));
+        if (b.count[from] === 0) R.emptied(b, from);
+        bursts.push({ from, to, who });
+      }
+      for (const { from, to, who } of bursts) for (const t of to) R.land(b, from, t, who);
+      waves.push({ bursts, board: record ? clone(b) : null });
+    }
+    return { waves, capped };
+  }
+
+  function tally(b, players) {
+    const cells = new Array(players).fill(0);
+    const orbs = new Array(players).fill(0);
+    for (let i = 0; i < b.size; i++) {
+      const o = b.owner[i];
+      if (o >= 0 && o < players) {
+        cells[o]++;
+        orbs[o] += b.count[i];
+      }
+    }
+    return { cells, orbs };
+  }
+
+  return { ORTHO, DIAG, ALL8, createBoard, clone, rowOf, colOf, inside, neighbours, capacity, place, resolve, tally };
+})();
+// =================== END CHAIN REACTION ENGINE ===================
+
+// ========================= SHARED KIT =========================
+// Sound, character art, wave animation, AI and screen helpers used by every demo.
+const Kit = (() => {
+  // ---------- sound (Web Audio, no files) ----------
+  let actx = null;
+  let muted = false;
+  try {
+    muted = localStorage.getItem("cfl-muted") === "1";
+  } catch {}
+
+  function ac() {
+    if (muted) return null;
+    try {
+      actx ??= new (window.AudioContext || window.webkitAudioContext)();
+      if (actx.state === "suspended") actx.resume();
+      return actx;
+    } catch {
+      return null;
+    }
+  }
+
+  function tone(freq, dur = 0.12, type = "sine", vol = 0.12, slideTo = 0, delay = 0) {
+    const a = ac();
+    if (!a) return;
+    const t = a.currentTime + delay;
+    const o = a.createOscillator();
+    const g = a.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t);
+    if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + dur);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(a.destination);
+    o.start(t);
+    o.stop(t + dur + 0.02);
+  }
+
+  function bleat(pitch = 1, delay = 0) {
+    const a = ac();
+    if (!a) return;
+    const t = a.currentTime + delay;
+    const o = a.createOscillator();
+    const lfo = a.createOscillator();
+    const lg = a.createGain();
+    const f = a.createBiquadFilter();
+    const g = a.createGain();
+    o.type = "sawtooth";
+    o.frequency.setValueAtTime(560 * pitch, t);
+    o.frequency.linearRampToValueAtTime(480 * pitch, t + 0.38);
+    lfo.frequency.value = 22;
+    lg.gain.value = 40 * pitch;
+    lfo.connect(lg).connect(o.frequency);
+    f.type = "lowpass";
+    f.frequency.value = 1700;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.09, t + 0.03);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
+    o.connect(f).connect(g).connect(a.destination);
+    o.start(t);
+    lfo.start(t);
+    o.stop(t + 0.42);
+    lfo.stop(t + 0.42);
+  }
+
+  const sfx = {
+    place: () => tone(660, 0.07, "triangle", 0.1),
+    // Pitch climbs a semitone per wave so long chains feel like they're building.
+    burst: (k) => tone(Math.min(240 * Math.pow(2, k / 12), 2200), 0.13, "sine", 0.13, Math.min(240 * Math.pow(2, k / 12), 2200) * 0.6),
+    bad: () => tone(140, 0.15, "square", 0.06, 100),
+    win: () => [523, 659, 784, 1047].forEach((f, k) => tone(f, 0.22, "triangle", 0.12, 0, k * 0.11)),
+    lose: () => [392, 330, 262, 196].forEach((f, k) => tone(f, 0.26, "sine", 0.12, 0, k * 0.14)),
+    howl: () => tone(300, 0.6, "sawtooth", 0.05, 520),
+    chime: (k = 0) => tone(880 * Math.pow(2, k / 12), 0.3, "sine", 0.08),
+    bleat,
+  };
+
+  function setMuted(m) {
+    muted = m;
+    try {
+      localStorage.setItem("cfl-muted", m ? "1" : "0");
+    } catch {}
+  }
+
+  // ---------- art (all drawn with code) ----------
+  function circle(ctx, x, y, r, fill) {
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = fill;
+    ctx.fill();
+  }
+
+  function ellipse(ctx, x, y, rx, ry, rot, fill) {
+    ctx.beginPath();
+    ctx.ellipse(x, y, rx, ry, rot, 0, Math.PI * 2);
+    ctx.fillStyle = fill;
+    ctx.fill();
+  }
+
+  function shade(hex, amt) {
+    const n = parseInt(hex.slice(1), 16);
+    const t = amt < 0 ? 0 : 255;
+    const p = Math.abs(amt);
+    const ch = (s) => Math.round(((n >> s) & 255) * (1 - p) + t * p);
+    return `rgb(${ch(16)},${ch(8)},${ch(0)})`;
+  }
+
+  // cheekyfoundlamb: white wool, cream face, and two same-size eyes on one level
+  // that each look a different way. s is roughly his full height in pixels.
+  // o: { t (seconds, for idle bob), mood: "happy" | "shock" | "sad" | "sleep", scarf: colour, glow }
+  function drawLamb(ctx, x, y, s, o = {}) {
+    const t = o.t ?? 0;
+    const bob = Math.sin(t * 3) * s * 0.015;
+    ctx.save();
+    ctx.translate(x, y + bob);
+    if (o.flip) ctx.scale(-1, 1);
+    if (o.glow) {
+      const g = ctx.createRadialGradient(0, 0, s * 0.1, 0, 0, s * 0.85);
+      g.addColorStop(0, o.glow);
+      g.addColorStop(1, "rgba(255,220,120,0)");
+      circle(ctx, 0, 0, s * 0.85, g);
+    }
+    // legs
+    ctx.fillStyle = "#3b3340";
+    for (const lx of [-0.2, -0.07, 0.08, 0.21]) {
+      ctx.beginPath();
+      ctx.roundRect(lx * s - s * 0.035, s * 0.12, s * 0.07, s * 0.2, s * 0.03);
+      ctx.fill();
+    }
+    // wool body: a ring of puffs around a core
+    const body = [[-0.24, 0], [-0.14, -0.13], [0.02, -0.17], [0.18, -0.12], [0.27, 0.01], [0.18, 0.13], [0, 0.16], [-0.16, 0.13]];
+    for (const [bx, by] of body) circle(ctx, bx * s, by * s, s * 0.15, "#d9d5de");
+    for (const [bx, by] of body) circle(ctx, bx * s, by * s - s * 0.012, s * 0.14, "#ffffff");
+    circle(ctx, 0, 0, s * 0.24, "#ffffff");
+    // tail puff
+    circle(ctx, -0.36 * s, -0.05 * s, s * 0.07, "#ffffff");
+    // head
+    const hx = 0.22 * s;
+    const hy = -0.2 * s;
+    // ears
+    ellipse(ctx, hx - s * 0.17, hy - s * 0.02, s * 0.1, s * 0.045, -0.5, "#f1d9cc");
+    ellipse(ctx, hx + s * 0.17, hy - s * 0.02, s * 0.1, s * 0.045, 0.5, "#f1d9cc");
+    ellipse(ctx, hx - s * 0.17, hy - s * 0.02, s * 0.06, s * 0.022, -0.5, "#f4a7b4");
+    ellipse(ctx, hx + s * 0.17, hy - s * 0.02, s * 0.06, s * 0.022, 0.5, "#f4a7b4");
+    ellipse(ctx, hx, hy + s * 0.02, s * 0.14, s * 0.16, 0, "#f6e6da");
+    // wool tuft on top
+    for (const [tx, ty] of [[-0.07, -0.13], [0, -0.16], [0.07, -0.13]]) circle(ctx, hx + tx * s, hy + ty * s, s * 0.06, "#ffffff");
+    // scarf in the owner's colour
+    if (o.scarf) {
+      ctx.fillStyle = o.scarf;
+      ctx.beginPath();
+      ctx.roundRect(hx - s * 0.13, hy + s * 0.13, s * 0.26, s * 0.06, s * 0.03);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.roundRect(hx + s * 0.04, hy + s * 0.15, s * 0.06, s * 0.12, s * 0.02);
+      ctx.fill();
+    }
+    // the eyes: equal size, equal height, pupils pointing different ways
+    const er = s * 0.045;
+    const ey = hy - s * 0.005;
+    for (const [side, px, py] of [[-1, -0.55, -0.35], [1, 0.5, 0.4]]) {
+      const ex = hx + side * s * 0.058;
+      circle(ctx, ex, ey, er, "#ffffff");
+      ctx.lineWidth = s * 0.008;
+      ctx.strokeStyle = "#3b3340";
+      ctx.stroke();
+      if (o.mood === "sleep") continue;
+      circle(ctx, ex + px * er * 0.9, ey + py * er * 0.9, er * 0.5, "#241d2a");
+      circle(ctx, ex + px * er * 0.9 - er * 0.15, ey + py * er * 0.9 - er * 0.18, er * 0.15, "#ffffff");
+    }
+    if (o.mood === "sleep") {
+      ctx.strokeStyle = "#3b3340";
+      ctx.lineWidth = s * 0.012;
+      for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.arc(hx + side * s * 0.058, ey, er * 0.7, 0.2, Math.PI - 0.2);
+        ctx.stroke();
+      }
+    }
+    // nose and mouth
+    ellipse(ctx, hx, hy + s * 0.08, s * 0.025, s * 0.016, 0, "#c9788a");
+    ctx.strokeStyle = "#3b3340";
+    ctx.lineWidth = s * 0.012;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    if (o.mood === "shock") {
+      ctx.arc(hx, hy + s * 0.125, s * 0.022, 0, Math.PI * 2);
+    } else if (o.mood === "sad") {
+      ctx.arc(hx, hy + s * 0.15, s * 0.035, Math.PI + 0.4, -0.4);
+    } else {
+      // lopsided cheeky smirk
+      ctx.moveTo(hx - s * 0.04, hy + s * 0.11);
+      ctx.quadraticCurveTo(hx + s * 0.005, hy + s * 0.15, hx + s * 0.055, hy + s * 0.1);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Cheeky grey wolf head. s is the head width.
+  function drawWolf(ctx, x, y, s, o = {}) {
+    const t = o.t ?? 0;
+    ctx.save();
+    ctx.translate(x, y + Math.sin(t * 2.4) * s * 0.012);
+    const fur = o.color ?? "#8b8f9c";
+    const dark = shade(fur.startsWith("#") ? fur : "#8b8f9c", -0.35);
+    // ears
+    for (const side of [-1, 1]) {
+      ctx.fillStyle = fur;
+      ctx.beginPath();
+      ctx.moveTo(side * s * 0.12, -s * 0.22);
+      ctx.lineTo(side * s * 0.38, -s * 0.52);
+      ctx.lineTo(side * s * 0.4, -s * 0.12);
+      ctx.fill();
+      ctx.fillStyle = "#d9a3ab";
+      ctx.beginPath();
+      ctx.moveTo(side * s * 0.18, -s * 0.22);
+      ctx.lineTo(side * s * 0.35, -s * 0.42);
+      ctx.lineTo(side * s * 0.36, -s * 0.18);
+      ctx.fill();
+    }
+    // head with cheek tufts
+    ctx.fillStyle = fur;
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.42, -s * 0.05);
+    ctx.quadraticCurveTo(-s * 0.4, -s * 0.38, 0, -s * 0.36);
+    ctx.quadraticCurveTo(s * 0.4, -s * 0.38, s * 0.42, -s * 0.05);
+    ctx.lineTo(s * 0.5, s * 0.08);
+    ctx.lineTo(s * 0.34, s * 0.1);
+    ctx.quadraticCurveTo(s * 0.2, s * 0.32, 0, s * 0.33);
+    ctx.quadraticCurveTo(-s * 0.2, s * 0.32, -s * 0.34, s * 0.1);
+    ctx.lineTo(-s * 0.5, s * 0.08);
+    ctx.closePath();
+    ctx.fill();
+    // muzzle
+    ellipse(ctx, 0, s * 0.12, s * 0.2, s * 0.15, 0, "#e3e1e6");
+    ellipse(ctx, 0, s * 0.03, s * 0.07, s * 0.045, 0, "#2a2530");
+    // half-lidded, sly eyes
+    for (const side of [-1, 1]) {
+      const ex = side * s * 0.16;
+      const ey = -s * 0.13;
+      ellipse(ctx, ex, ey, s * 0.075, s * 0.06, 0, "#ffe680");
+      circle(ctx, ex + s * 0.02, ey + s * 0.01, s * 0.03, "#2a2530");
+      ctx.fillStyle = fur;
+      ctx.beginPath();
+      ctx.ellipse(ex, ey - s * 0.03, s * 0.085, s * 0.05, side * -0.25, Math.PI, 0);
+      ctx.fill();
+      ctx.strokeStyle = dark;
+      ctx.lineWidth = s * 0.02;
+      ctx.beginPath();
+      ctx.moveTo(ex - s * 0.08, ey - s * 0.03 - side * s * 0.02);
+      ctx.lineTo(ex + s * 0.08, ey - s * 0.03 + side * s * 0.02);
+      ctx.stroke();
+    }
+    // grin with one tooth
+    ctx.strokeStyle = "#2a2530";
+    ctx.lineWidth = s * 0.022;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.11, s * 0.15);
+    ctx.quadraticCurveTo(0, o.mood === "sad" ? s * 0.12 : s * 0.24, s * 0.13, s * 0.13);
+    ctx.stroke();
+    if (o.mood !== "sad") {
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.moveTo(s * 0.03, s * 0.2);
+      ctx.lineTo(s * 0.07, s * 0.19);
+      ctx.lineTo(s * 0.05, s * 0.25);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // The Shepherd: a warm silhouette with a staff and a soft glow. h is the height.
+  function drawShepherd(ctx, x, y, h, o = {}) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.globalAlpha = o.alpha ?? 1;
+    const g = ctx.createRadialGradient(0, -h * 0.5, h * 0.05, 0, -h * 0.5, h * 0.8);
+    g.addColorStop(0, "rgba(255,214,140,0.55)");
+    g.addColorStop(1, "rgba(255,214,140,0)");
+    circle(ctx, 0, -h * 0.5, h * 0.8, g);
+    ctx.fillStyle = o.color ?? "#7a4f33";
+    // robe
+    ctx.beginPath();
+    ctx.moveTo(-h * 0.12, -h * 0.72);
+    ctx.quadraticCurveTo(-h * 0.2, -h * 0.3, -h * 0.24, 0);
+    ctx.lineTo(h * 0.24, 0);
+    ctx.quadraticCurveTo(h * 0.2, -h * 0.3, h * 0.12, -h * 0.72);
+    ctx.closePath();
+    ctx.fill();
+    // hooded head
+    circle(ctx, 0, -h * 0.8, h * 0.11, o.color ?? "#7a4f33");
+    ctx.fillStyle = "rgba(255,230,190,0.25)";
+    ctx.beginPath();
+    ctx.ellipse(h * 0.02, -h * 0.79, h * 0.06, h * 0.08, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // staff with crook
+    ctx.strokeStyle = "#c9a26b";
+    ctx.lineWidth = h * 0.025;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(h * 0.3, 0);
+    ctx.lineTo(h * 0.3, -h * 0.95);
+    ctx.arc(h * 0.38, -h * 0.95, h * 0.08, Math.PI, 0);
+    ctx.lineTo(h * 0.46, -h * 0.9);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // A small sheep in a player's colour (used as an "orb"). r is about its radius.
+  function drawSheep(ctx, x, y, r, color, o = {}) {
+    ctx.save();
+    ctx.translate(x, y);
+    if (o.flip) ctx.scale(-1, 1);
+    ctx.fillStyle = "#2b2430";
+    ctx.fillRect(-r * 0.45, r * 0.45, r * 0.18, r * 0.45);
+    ctx.fillRect(r * 0.25, r * 0.45, r * 0.18, r * 0.45);
+    const light = shade(color, 0.45);
+    for (const [bx, by] of [[-0.45, 0], [0, -0.35], [0.4, -0.05], [0.05, 0.3], [-0.3, 0.3], [0.35, 0.3]]) circle(ctx, bx * r, by * r, r * 0.48, color);
+    for (const [bx, by] of [[-0.35, -0.1], [0.05, -0.38], [0.3, -0.12]]) circle(ctx, bx * r, by * r, r * 0.26, light);
+    ellipse(ctx, r * 0.78, -r * 0.15, r * 0.3, r * 0.36, 0.3, "#2b2430");
+    circle(ctx, r * 0.84, -r * 0.24, r * 0.07, "#ffffff");
+    ctx.restore();
+  }
+
+  // ---------- wave animation ----------
+  // Plays the waves returned by Engine.resolve, one per `ms`, calling onWave(k)
+  // as each starts. Read Kit.anim.cur in the draw loop to animate.
+  const anim = {
+    cur: null,
+    play(waves, ms, onWave, pre) {
+      return new Promise((done) => {
+        if (!waves.length) return done();
+        this.cur = { waves, i: 0, start: null, ms, onWave, done, pre };
+      });
+    },
+    step(now) {
+      const c = this.cur;
+      if (!c) return;
+      if (c.start === null) {
+        c.start = now;
+        c.onWave?.(0, c.waves[0]);
+        return;
+      }
+      if (now - c.start < c.ms) return;
+      c.i++;
+      c.start = now;
+      if (c.i >= c.waves.length) {
+        this.cur = null;
+        c.done();
+      } else c.onWave?.(c.i, c.waves[c.i]);
+    },
+    // 0..1 progress of the current wave
+    t(now) {
+      const c = this.cur;
+      if (!c || c.start === null) return 0;
+      return Math.min(1, (now - c.start) / c.ms);
+    },
+    // Board to draw under the flying orbs for the current wave.
+    base() {
+      const c = this.cur;
+      if (!c) return null;
+      return c.i === 0 ? c.pre : c.waves[c.i - 1].board;
+    },
+  };
+
+  // ---------- AI helpers ----------
+  // Generic board score for `me`: orbs, safe corners/edges, near-full cells,
+  // and danger from enemy cells about to burst next to mine.
+  // isMine(owner), isFoe(owner), cap(i) are supplied by the demo.
+  function evaluate(b, isMine, isFoe, cap) {
+    let score = 0;
+    for (let i = 0; i < b.size; i++) {
+      const own = b.owner[i];
+      if (own < 0 || b.count[i] === 0) continue;
+      const mine = isMine(own);
+      if (!mine && !isFoe(own)) continue;
+      const c = cap(i);
+      let v = b.count[i] * 2 + 3;
+      let threatened = false;
+      let prey = 0;
+      for (const n of Engine.neighbours(b, i)) {
+        const o2 = b.owner[n];
+        if (o2 < 0 || b.count[n] === 0) continue;
+        if (isMine(o2) === mine) continue;
+        if (b.count[n] >= cap(n) - 1) threatened = true;
+        prey += b.count[n];
+      }
+      if (threatened) v -= 5 - c + b.count[i];
+      else {
+        if (c === 2) v += 3;
+        else if (c === 3) v += 2;
+        if (b.count[i] >= c - 1) v += 2 + prey;
+      }
+      score += mine ? v : -v;
+    }
+    return score;
+  }
+
+  // Picks the highest scoring move. With chance `mistake`, picks one of the top 3 instead.
+  function pickBest(scored, mistake = 0) {
+    if (!scored.length) return null;
+    scored.sort((a, b) => b.score - a.score);
+    if (mistake > 0 && Math.random() < mistake && scored.length > 1) return scored[Math.floor(Math.random() * Math.min(3, scored.length))].move;
+    const top = scored.filter((s) => s.score === scored[0].score);
+    return top[Math.floor(Math.random() * top.length)].move;
+  }
+
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // ---------- screen helpers ----------
+  const $ = (id) => document.getElementById(id);
+
+  // Sizes `canvas` to fit `wrap` for a cols x rows board. Returns { cell, dpr, w, h }.
+  function fitBoard(canvas, wrap, cols, rows, extraRows = 0) {
+    const cs = getComputedStyle(wrap);
+    const w = wrap.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const h = wrap.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    const cell = Math.max(12, Math.floor(Math.min(w / cols, h / (rows + extraRows))));
+    const dpr = window.devicePixelRatio || 1;
+    canvas.style.width = cell * cols + "px";
+    canvas.style.height = cell * (rows + extraRows) + "px";
+    canvas.width = Math.round(cell * cols * dpr);
+    canvas.height = Math.round(cell * (rows + extraRows) * dpr);
+    return { cell, dpr, w: cell * cols, h: cell * (rows + extraRows) };
+  }
+
+  // Sets up a fixed-size picture canvas at full screen sharpness; returns its context.
+  function sharp(cv, w, h) {
+    const dpr = window.devicePixelRatio || 1;
+    cv.style.width = w + "px";
+    cv.style.height = h + "px";
+    cv.width = Math.round(w * dpr);
+    cv.height = Math.round(h * dpr);
+    const g = cv.getContext("2d");
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return g;
+  }
+
+  function shake(el, big = false) {
+    el.classList.remove("shake", "shake-big");
+    void el.offsetWidth;
+    el.classList.add(big ? "shake-big" : "shake");
+  }
+
+  function popText(el, text) {
+    el.textContent = text;
+    el.classList.remove("pop");
+    void el.offsetWidth;
+    el.classList.add("pop");
+  }
+
+  function show(id) {
+    $(id).hidden = false;
+  }
+  function hide(id) {
+    $(id).hidden = true;
+  }
+
+  function cellAt(canvas, e, cell) {
+    const r = canvas.getBoundingClientRect();
+    return { col: Math.floor((e.clientX - r.left) / cell), row: Math.floor((e.clientY - r.top) / cell) };
+  }
+
+  // Wires the shared mute button.
+  function muteButton(btn) {
+    const render = () => {
+      btn.textContent = muted ? "🔇" : "🔊";
+      btn.setAttribute("aria-label", muted ? "Unmute" : "Mute");
+    };
+    btn.addEventListener("click", () => {
+      setMuted(!muted);
+      render();
+    });
+    render();
+  }
+
+  const COLORS = ["#ff5a5f", "#3fa7ff", "#ffc93c", "#8f6bff", "#2fd38a", "#ff8c42", "#ff6fc8", "#3ee0e0"];
+  const COLOR_NAMES = ["Red", "Blue", "Yellow", "Purple", "Green", "Orange", "Pink", "Cyan"];
+
+  return {
+    sfx, setMuted, isMuted: () => muted, tone,
+    circle, ellipse, shade, drawLamb, drawWolf, drawShepherd, drawSheep,
+    anim, evaluate, pickBest, sleep,
+    $, fitBoard, sharp, shake, popText, show, hide, cellAt, muteButton,
+    COLORS, COLOR_NAMES,
+  };
+})();
+// ======================= END SHARED KIT =======================
+
+
+// ---------- balance ----------
+const CONFIG = {
+  rows: 9,
+  cols: 6,
+  scatterAll: true, // wolf bursts empty a light square completely; false = remove just 1 sheep
+  lambWinShare: 0.6, // share of the board the lamb must hold at the end of his turn
+  wolfCorner: "left", // which top corner the wolf starts in: "left" or "right"
+  waveMs: 130,
+  maxWaves: 200,
+  aiDelayMs: 650,
+  aiMistake: 0.15,
+  aiLookahead: 6,
+  lambDanger: 60, // AI weight for shadow about to burst onto the lamb
+  chainShakeAt: 5,
+  chainBigShakeAt: 10,
+};
+
+const { $ } = Kit;
+const LIGHT = 0;
+const SHADOW = 1;
+const canvas = $("board");
+const ctx = canvas.getContext("2d");
+let mode = "lamb";
+try {
+  mode = localStorage.getItem("cfl-02-mode") || "lamb";
+} catch {}
+
+let S = null;
+let busy = false;
+let moving = false; // "move lamb" mode on
+let geo = { cell: 40, dpr: 1 };
+let gameId = 0;
+
+const cap = (b, i) => Engine.capacity(b, i);
+const ai = (side) => mode === "watch" || (mode === "lamb" && side === SHADOW) || (mode === "wolf" && side === LIGHT);
+const human = (side) => !ai(side);
+
+// ---------- rules ----------
+function newGame() {
+  const b = Engine.createBoard(CONFIG.rows, CONFIG.cols);
+  const corner = CONFIG.wolfCorner === "right" ? CONFIG.cols - 1 : 0;
+  Engine.place(b, corner, SHADOW);
+  return { b, lamb: -1, current: LIGHT, turn: 0, winner: -1, why: "" };
+}
+
+const cloneState = (st) => ({ ...st, b: Engine.clone(st.b) });
+
+function lightShare(st) {
+  let n = 0;
+  for (let i = 0; i < st.b.size; i++) if (st.b.owner[i] === LIGHT) n++;
+  return n / st.b.size;
+}
+
+function shadowOrbs(b) {
+  let n = 0;
+  for (let i = 0; i < b.size; i++) if (b.owner[i] === SHADOW) n += b.count[i];
+  return n;
+}
+
+function legalMoves(st) {
+  const b = st.b;
+  const out = [];
+  if (st.current === LIGHT && st.lamb < 0) {
+    for (let i = Math.floor(b.rows / 2) * b.cols; i < b.size; i++) if (b.owner[i] === -1) out.push({ kind: "place", i });
+    return out;
+  }
+  for (let i = 0; i < b.size; i++) {
+    if (st.current === SHADOW && i === st.lamb) continue;
+    if (b.owner[i] === -1 || b.owner[i] === st.current) out.push({ kind: "place", i });
+  }
+  if (st.current === LIGHT) for (const n of lambSteps(st)) out.push({ kind: "move", i: n });
+  return out;
+}
+
+function lambSteps(st) {
+  if (st.lamb < 0) return [];
+  return Engine.neighbours(st.b, st.lamb).filter((n) => st.b.owner[n] === LIGHT);
+}
+
+function sameMove(a, m) {
+  return a.kind === m.kind && a.i === m.i;
+}
+
+// Plays a move on a copy. Returns { st, pre, waves }.
+function simulate(st0, m, record) {
+  const st = cloneState(st0);
+  const b = st.b;
+  const p = st.current;
+  let lambHit = false;
+  if (m.kind === "move") {
+    if (b.count[st.lamb] === 0) b.owner[st.lamb] = -1;
+    st.lamb = m.i;
+  } else {
+    if (p === LIGHT && st.lamb < 0) st.lamb = m.i;
+    Engine.place(b, m.i, p);
+  }
+  const pre = record ? Engine.clone(b) : null;
+  const { waves, capped } = Engine.resolve(
+    b,
+    {
+      emptied: (bb, c) => {
+        if (c !== st.lamb) bb.owner[c] = -1;
+      },
+      land: (bb, from, to, who) => {
+        if (who === SHADOW && bb.owner[to] === LIGHT) {
+          if (to === st.lamb) {
+            lambHit = true;
+            return;
+          }
+          if (CONFIG.scatterAll) bb.count[to] = 0;
+          else bb.count[to] = Math.max(0, bb.count[to] - 1);
+          if (bb.count[to] === 0) bb.owner[to] = -1;
+          return;
+        }
+        bb.owner[to] = who;
+        bb.count[to]++;
+      },
+      done: (bb) => lambHit || shadowOrbs(bb) === 0,
+      maxWaves: CONFIG.maxWaves,
+    },
+    record
+  );
+  st.turn++;
+  if (lambHit || (capped && p === SHADOW)) {
+    st.winner = SHADOW;
+    st.why = "caught";
+  } else if (shadowOrbs(b) === 0) {
+    st.winner = LIGHT;
+    st.why = "cleared";
+  } else if ((p === LIGHT && lightShare(st) >= CONFIG.lambWinShare) || (capped && p === LIGHT)) {
+    st.winner = LIGHT;
+    st.why = "share";
+  } else st.current = 1 - p;
+  return { st, pre, waves, lambHit };
+}
+
+// ---------- AI ----------
+function scoreFor(st, side) {
+  const b = st.b;
+  if (st.winner >= 0) return st.winner === side ? 1e6 : -1e6;
+  let s = Kit.evaluate(b, (o) => o === side, (o) => o === 1 - side, (i) => cap(b, i));
+  const share = lightShare(st);
+  s += (side === LIGHT ? 1 : -1) * share * 40;
+  if (st.lamb >= 0) {
+    // Each square next to the lamb is a threat by how few wolf moves it needs to burst.
+    for (const n of Engine.neighbours(b, st.lamb)) {
+      if (b.owner[n] === LIGHT && b.count[n] > 0) continue;
+      const left = cap(b, n) - (b.owner[n] === SHADOW ? b.count[n] : 0);
+      const danger = left <= 1 ? CONFIG.lambDanger : CONFIG.lambDanger / (left * left);
+      s += side === LIGHT ? -danger : danger;
+    }
+  }
+  return s;
+}
+
+function aiMove(st) {
+  const me = st.current;
+  const first = legalMoves(st).map((move) => {
+    const r = simulate(st, move, false);
+    return { move, r, score: scoreFor(r.st, me) };
+  });
+  first.sort((a, b) => b.score - a.score);
+  for (const cand of first.slice(0, CONFIG.aiLookahead)) {
+    const after = cand.r.st;
+    if (after.winner >= 0) continue;
+    let best = -Infinity;
+    let mine = cand.score;
+    for (const m of legalMoves(after)) {
+      const r2 = simulate(after, m, false);
+      const theirs = scoreFor(r2.st, after.current);
+      if (theirs > best) {
+        best = theirs;
+        mine = scoreFor(r2.st, me);
+      }
+    }
+    cand.score = mine;
+  }
+  return Kit.pickBest(first.map(({ move, score }) => ({ move, score })), CONFIG.aiMistake);
+}
+
+// ---------- flow ----------
+async function play(m) {
+  busy = true;
+  moving = false;
+  const myGame = gameId;
+  const p = S.current;
+  const r = simulate(S, m, true);
+  if (m.kind === "move") Kit.sfx.bleat(1.15);
+  else Kit.sfx.place();
+  S = { ...S, b: r.pre, lamb: r.st.lamb };
+  await Kit.anim.play(r.waves, CONFIG.waveMs, (k) => {
+    Kit.sfx.burst(p === SHADOW ? k - 7 : k);
+    if (k >= 1) Kit.popText($("chain"), `Chain x${k + 1}!`);
+    if (k === CONFIG.chainShakeAt) Kit.shake($("stage"));
+    if (k === CONFIG.chainBigShakeAt) Kit.shake($("stage"), true);
+  }, r.pre);
+  if (myGame !== gameId) return;
+  S = r.st;
+  busy = false;
+  next();
+}
+
+async function next() {
+  hud();
+  if (S.winner >= 0) {
+    if (S.winner === SHADOW) Kit.sfx.howl();
+    await Kit.sleep(800);
+    return finish();
+  }
+  if (ai(S.current)) {
+    busy = true;
+    const myGame = gameId;
+    await Kit.sleep(CONFIG.aiDelayMs);
+    if (myGame !== gameId) return;
+    play(aiMove(S));
+  }
+}
+
+function finish() {
+  const lambWon = S.winner === LIGHT;
+  const youWon = mode === "pvp" ? true : human(S.winner);
+  const why = {
+    caught: "The wolf's burst reached the lamb.",
+    cleared: "Every bit of shadow is gone.",
+    share: `The lamb holds ${Math.round(lightShare(S) * 100)}% of the board.`,
+  }[S.why];
+  $("end-title").textContent = lambWon ? "The lamb wins!" : "The wolf wins!";
+  $("end-sub").textContent = why + (mode === "pvp" ? "" : youWon ? " Well played." : " Try again?");
+  hero($("hero-end"), lambWon ? "happy" : "shock", !lambWon);
+  (youWon ? Kit.sfx.win : Kit.sfx.lose)();
+  Kit.show("end");
+}
+
+function start() {
+  gameId++;
+  Kit.anim.cur = null;
+  S = newGame();
+  busy = false;
+  moving = false;
+  try {
+    localStorage.setItem("cfl-02-mode", mode);
+  } catch {}
+  Kit.hide("intro");
+  Kit.hide("end");
+  resize();
+  next();
+}
+
+function hud() {
+  if (!S) return;
+  const side = S.winner >= 0 ? S.winner : S.current;
+  $("dot").style.color = side === LIGHT ? "#ffe9a8" : "#6d6a86";
+  const who = side === LIGHT ? "Lamb" : "Wolf";
+  let t;
+  if (S.winner >= 0) t = `${who} wins!`;
+  else if (ai(side)) t = `${who} is thinking…`;
+  else if (side === LIGHT && S.lamb < 0) t = "Lamb: pick a start square";
+  else if (moving) t = "Tap where the lamb goes";
+  else t = `${who}'s turn`;
+  $("status").textContent = t;
+  const share = lightShare(S);
+  $("fill").style.width = share * 100 + "%";
+  $("goal").style.left = CONFIG.lambWinShare * 100 + "%";
+  $("pct").textContent = `Light ${Math.round(share * 100)}% · goal ${Math.round(CONFIG.lambWinShare * 100)}%`;
+  const canMove = !busy && S.winner < 0 && S.current === LIGHT && human(LIGHT) && lambSteps(S).length > 0;
+  $("move-lamb").disabled = !canMove;
+  $("move-lamb").classList.toggle("on", moving);
+}
+
+canvas.addEventListener("pointerdown", (e) => {
+  if (!S || busy || S.winner >= 0 || ai(S.current)) return;
+  const { row, col } = Kit.cellAt(canvas, e, geo.cell);
+  if (!Engine.inside(S.b, row, col)) return;
+  const i = row * S.b.cols + col;
+  const m = { kind: moving ? "move" : "place", i };
+  if (legalMoves(S).some((x) => sameMove(x, m))) play(m);
+  else Kit.sfx.bad();
+});
+
+$("move-lamb").addEventListener("click", () => {
+  moving = !moving;
+  hud();
+});
+
+// ---------- drawing ----------
+function resize() {
+  if (!S) return;
+  geo = Kit.fitBoard(canvas, $("stage"), S.b.cols, S.b.rows);
+}
+
+const SPOTS = {
+  1: [[0, 0]],
+  2: [[-0.2, 0], [0.2, 0.02]],
+  3: [[-0.2, 0.12], [0.2, 0.12], [0, -0.16]],
+  4: [[-0.2, -0.15], [0.2, -0.15], [-0.2, 0.17], [0.2, 0.17]],
+};
+
+function drawOrbs(b, i, n, side, t, lambHere) {
+  const c = geo.cell;
+  const x = Engine.colOf(b, i) * c + c / 2;
+  const y = Engine.rowOf(b, i) * c + c / 2;
+  const nervous = n >= cap(b, i) - 1;
+  const k = Math.min(n, 4);
+  for (let s = 0; s < k; s++) {
+    let [dx, dy] = SPOTS[k][s];
+    if (lambHere) dy = -0.32 + dy * 0.3;
+    const jx = nervous ? Math.sin(t * 40 + i * 3 + s) * c * 0.02 : 0;
+    if (side === LIGHT) Kit.drawSheep(ctx, x + dx * c + jx, y + dy * c, c * (lambHere ? 0.11 : 0.15), "#fff4d6", { flip: s % 2 === 1 });
+    else Kit.drawWolf(ctx, x + dx * c + jx, y + dy * c + c * 0.03, c * 0.3, { t: t + i + s, color: "#8a87a3" });
+  }
+}
+
+function draw(now) {
+  Kit.anim.step(now);
+  const t = now / 1000;
+  ctx.setTransform(geo.dpr, 0, 0, geo.dpr, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (!S) return requestAnimationFrame(draw);
+  const a = Kit.anim.cur;
+  const b = a ? Kit.anim.base() : S.b;
+  const wave = a && a.start !== null ? a.waves[a.i] : null;
+  const counts = b.count.slice();
+  if (wave) for (const { from } of wave.bursts) counts[from] = Math.max(0, counts[from] - cap(b, from));
+  const c = geo.cell;
+  const steps = moving ? lambSteps(S) : [];
+  for (let i = 0; i < b.size; i++) {
+    const x = Engine.colOf(b, i) * c;
+    const y = Engine.rowOf(b, i) * c;
+    const chk = (Engine.rowOf(b, i) + Engine.colOf(b, i)) % 2;
+    const o = b.owner[i];
+    ctx.fillStyle = o === LIGHT ? (chk ? "#7fae5a" : "#88b862") : o === SHADOW ? (chk ? "#2b2838" : "#322e42") : chk ? "#3d6a45" : "#44734c";
+    ctx.fillRect(x, y, c, c);
+    if (o === LIGHT) {
+      const g = ctx.createRadialGradient(x + c / 2, y + c / 2, 0, x + c / 2, y + c / 2, c * 0.7);
+      g.addColorStop(0, "rgba(255,236,160,0.45)");
+      g.addColorStop(1, "rgba(255,236,160,0)");
+      ctx.fillStyle = g;
+      ctx.fillRect(x, y, c, c);
+    }
+    if (S.current === LIGHT && S.lamb < 0 && !a && human(LIGHT) && Engine.rowOf(b, i) >= Math.floor(b.rows / 2) && o === -1) {
+      ctx.fillStyle = `rgba(255,236,160,${0.12 + 0.08 * Math.sin(t * 4)})`;
+      ctx.fillRect(x, y, c, c);
+    }
+    if (steps.includes(i)) {
+      ctx.strokeStyle = "#ffcf4a";
+      ctx.lineWidth = 3;
+      ctx.strokeRect(x + 3, y + 3, c - 6, c - 6);
+    }
+  }
+  const lamb = a ? S.lamb : S.lamb;
+  for (let i = 0; i < b.size; i++) {
+    if (i === lamb) {
+      const scared = Engine.neighbours(b, i).some((n) => b.owner[n] === SHADOW && b.count[n] >= cap(b, n) - 1);
+      Kit.drawLamb(ctx, (Engine.colOf(b, i) + 0.5) * c, (Engine.rowOf(b, i) + 0.6) * c, c * 0.62, { t, mood: S.winner === SHADOW ? "shock" : scared ? "shock" : "happy", glow: "rgba(255,230,150,0.5)" });
+    }
+    if (counts[i] > 0 && b.owner[i] >= 0) drawOrbs(b, i, counts[i], b.owner[i], t, i === lamb);
+  }
+  if (wave) {
+    const p = Kit.anim.t(now);
+    const e = 1 - (1 - p) * (1 - p);
+    for (const { from, to, who } of wave.bursts) {
+      const fx = (Engine.colOf(b, from) + 0.5) * c;
+      const fy = (Engine.rowOf(b, from) + 0.5) * c;
+      for (const d of to) {
+        const tx = (Engine.colOf(b, d) + 0.5) * c;
+        const ty = (Engine.rowOf(b, d) + 0.5) * c;
+        const x = fx + (tx - fx) * e;
+        const y = fy + (ty - fy) * e - Math.sin(Math.PI * p) * c * 0.3;
+        if (who === LIGHT) Kit.drawSheep(ctx, x, y, c * 0.15, "#fff4d6", { flip: tx < fx });
+        else Kit.drawWolf(ctx, x, y, c * 0.3, { color: "#8a87a3" });
+      }
+    }
+  }
+  ctx.strokeStyle = S.current === LIGHT ? "rgba(255,233,168,0.5)" : "rgba(140,130,180,0.6)";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let col = 0; col <= b.cols; col++) {
+    const x = Math.min(Math.max(col * c, 0.75), geo.w - 0.75);
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, geo.h);
+  }
+  for (let row = 0; row <= b.rows; row++) {
+    const y = Math.min(Math.max(row * c, 0.75), geo.h - 0.75);
+    ctx.moveTo(0, y);
+    ctx.lineTo(geo.w, y);
+  }
+  ctx.stroke();
+  requestAnimationFrame(draw);
+}
+
+function hero(cv, mood, wolfWins) {
+  const g = Kit.sharp(cv, 240, 130);
+  Kit.drawWolf(g, wolfWins ? 120 : 185, wolfWins ? 62 : 70, wolfWins ? 110 : 80, { mood: wolfWins ? "happy" : "sad" });
+  if (!wolfWins) Kit.drawLamb(g, 85, 74, 112, { mood });
+}
+
+// ---------- menu ----------
+function renderMode() {
+  for (const btn of $("mode").querySelectorAll("button")) btn.classList.toggle("on", btn.dataset.mode === mode);
+}
+$("mode").addEventListener("click", (e) => {
+  const m = e.target.closest("button")?.dataset.mode;
+  if (!m) return;
+  mode = m;
+  renderMode();
+});
+$("play").addEventListener("click", start);
+$("again").addEventListener("click", start);
+$("restart").addEventListener("click", start);
+$("menu").addEventListener("click", () => {
+  gameId++;
+  Kit.anim.cur = null;
+  busy = false;
+  Kit.hide("end");
+  Kit.show("intro");
+});
+$("to-menu").addEventListener("click", () => $("menu").click());
+Kit.muteButton($("mute"));
+new ResizeObserver(resize).observe($("stage"));
+
+renderMode();
+hero($("hero-intro"), "happy", false);
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>

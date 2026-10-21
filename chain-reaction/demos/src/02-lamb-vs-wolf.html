@@ -1,0 +1,497 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Lamb vs Wolf</title>
+<meta name="description" content="cheekyfoundlamb demo 2: a lopsided 1v1 where light converts and the wolf's shadow scatters." />
+<style>
+/*@KITCSS*/
+.meter { position: relative; height: 22px; margin: 0 2px 4px; border-radius: 11px; background: #2a2838; overflow: hidden; }
+.meter .fill { position: absolute; inset: 0 auto 0 0; width: 0; background: linear-gradient(90deg, #ffe9a8, #ffcf4a); transition: width 0.25s; }
+.meter .goal { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--cream); opacity: 0.8; }
+.meter b { position: relative; display: block; text-align: center; font-size: 0.8rem; line-height: 22px; color: #1a1622; mix-blend-mode: normal; text-shadow: 0 0 6px rgba(255,255,255,0.7); }
+.actions { display: flex; gap: 8px; justify-content: center; padding: 0 0 8px; }
+.actions .ib { flex: 1; max-width: 220px; height: 48px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="status"><span class="dot" id="dot"></span><span class="txt" id="status">Lamb vs Wolf</span></div>
+    <div class="btns">
+      <button class="ib" id="restart" aria-label="Restart">↻</button>
+      <button class="ib" id="mute" aria-label="Mute">🔊</button>
+      <button class="ib" id="menu" aria-label="Menu">☰</button>
+    </div>
+  </header>
+  <div class="meter" aria-hidden="true"><span class="fill" id="fill"></span><span class="goal" id="goal"></span><b id="pct">Light 0%</b></div>
+  <main class="stage" id="stage">
+    <canvas id="board" aria-label="Board"></canvas>
+    <div class="chain" id="chain"></div>
+  </main>
+  <div class="actions">
+    <button class="ib" id="move-lamb" disabled>🐑 Move lamb</button>
+  </div>
+</div>
+
+<section class="overlay" id="intro">
+  <div class="card">
+    <canvas class="hero" id="hero-intro"></canvas>
+    <h1>Lamb vs Wolf</h1>
+    <div class="how">
+      <p><b>Lamb:</b> pick a start square in the bottom half. Your bursts turn shadow into light. Instead of placing, you can move the lamb one step onto a light square.</p>
+      <p><b>Wolf:</b> your bursts scatter the lamb's sheep. Land a burst on the lamb to win.</p>
+      <p>The lamb wins by clearing all shadow or holding 60% of the board.</p>
+    </div>
+    <div class="opts">
+      <div class="optrow"><span class="lbl">Play as</span>
+        <div class="seg" id="mode">
+          <button data-mode="lamb">Lamb</button><button data-mode="wolf">Wolf</button><button data-mode="pvp">2 players</button>
+        </div>
+      </div>
+    </div>
+    <button class="big" id="play">Play</button>
+  </div>
+</section>
+
+<section class="overlay" id="end" hidden>
+  <div class="card">
+    <canvas class="hero" id="hero-end"></canvas>
+    <h2 id="end-title"></h2>
+    <p id="end-sub"></p>
+    <button class="big" id="again">Play again</button>
+    <button class="big alt" id="to-menu">Switch sides</button>
+  </div>
+</section>
+
+<script>
+/*@ENGINE*/
+/*@KIT*/
+
+// ---------- balance ----------
+const CONFIG = {
+  rows: 9,
+  cols: 6,
+  scatterAll: true, // wolf bursts empty a light square completely; false = remove just 1 sheep
+  lambWinShare: 0.6, // share of the board the lamb must hold at the end of his turn
+  wolfCorner: "left", // which top corner the wolf starts in: "left" or "right"
+  waveMs: 130,
+  maxWaves: 200,
+  aiDelayMs: 650,
+  aiMistake: 0.15,
+  aiLookahead: 6,
+  lambDanger: 60, // AI weight for shadow about to burst onto the lamb
+  chainShakeAt: 5,
+  chainBigShakeAt: 10,
+};
+
+const { $ } = Kit;
+const LIGHT = 0;
+const SHADOW = 1;
+const canvas = $("board");
+const ctx = canvas.getContext("2d");
+let mode = "lamb";
+try {
+  mode = localStorage.getItem("cfl-02-mode") || "lamb";
+} catch {}
+
+let S = null;
+let busy = false;
+let moving = false; // "move lamb" mode on
+let geo = { cell: 40, dpr: 1 };
+let gameId = 0;
+
+const cap = (b, i) => Engine.capacity(b, i);
+const ai = (side) => mode === "watch" || (mode === "lamb" && side === SHADOW) || (mode === "wolf" && side === LIGHT);
+const human = (side) => !ai(side);
+
+// ---------- rules ----------
+function newGame() {
+  const b = Engine.createBoard(CONFIG.rows, CONFIG.cols);
+  const corner = CONFIG.wolfCorner === "right" ? CONFIG.cols - 1 : 0;
+  Engine.place(b, corner, SHADOW);
+  return { b, lamb: -1, current: LIGHT, turn: 0, winner: -1, why: "" };
+}
+
+const cloneState = (st) => ({ ...st, b: Engine.clone(st.b) });
+
+function lightShare(st) {
+  let n = 0;
+  for (let i = 0; i < st.b.size; i++) if (st.b.owner[i] === LIGHT) n++;
+  return n / st.b.size;
+}
+
+function shadowOrbs(b) {
+  let n = 0;
+  for (let i = 0; i < b.size; i++) if (b.owner[i] === SHADOW) n += b.count[i];
+  return n;
+}
+
+function legalMoves(st) {
+  const b = st.b;
+  const out = [];
+  if (st.current === LIGHT && st.lamb < 0) {
+    for (let i = Math.floor(b.rows / 2) * b.cols; i < b.size; i++) if (b.owner[i] === -1) out.push({ kind: "place", i });
+    return out;
+  }
+  for (let i = 0; i < b.size; i++) {
+    if (st.current === SHADOW && i === st.lamb) continue;
+    if (b.owner[i] === -1 || b.owner[i] === st.current) out.push({ kind: "place", i });
+  }
+  if (st.current === LIGHT) for (const n of lambSteps(st)) out.push({ kind: "move", i: n });
+  return out;
+}
+
+function lambSteps(st) {
+  if (st.lamb < 0) return [];
+  return Engine.neighbours(st.b, st.lamb).filter((n) => st.b.owner[n] === LIGHT);
+}
+
+function sameMove(a, m) {
+  return a.kind === m.kind && a.i === m.i;
+}
+
+// Plays a move on a copy. Returns { st, pre, waves }.
+function simulate(st0, m, record) {
+  const st = cloneState(st0);
+  const b = st.b;
+  const p = st.current;
+  let lambHit = false;
+  if (m.kind === "move") {
+    if (b.count[st.lamb] === 0) b.owner[st.lamb] = -1;
+    st.lamb = m.i;
+  } else {
+    if (p === LIGHT && st.lamb < 0) st.lamb = m.i;
+    Engine.place(b, m.i, p);
+  }
+  const pre = record ? Engine.clone(b) : null;
+  const { waves, capped } = Engine.resolve(
+    b,
+    {
+      emptied: (bb, c) => {
+        if (c !== st.lamb) bb.owner[c] = -1;
+      },
+      land: (bb, from, to, who) => {
+        if (who === SHADOW && bb.owner[to] === LIGHT) {
+          if (to === st.lamb) {
+            lambHit = true;
+            return;
+          }
+          if (CONFIG.scatterAll) bb.count[to] = 0;
+          else bb.count[to] = Math.max(0, bb.count[to] - 1);
+          if (bb.count[to] === 0) bb.owner[to] = -1;
+          return;
+        }
+        bb.owner[to] = who;
+        bb.count[to]++;
+      },
+      done: (bb) => lambHit || shadowOrbs(bb) === 0,
+      maxWaves: CONFIG.maxWaves,
+    },
+    record
+  );
+  st.turn++;
+  if (lambHit || (capped && p === SHADOW)) {
+    st.winner = SHADOW;
+    st.why = "caught";
+  } else if (shadowOrbs(b) === 0) {
+    st.winner = LIGHT;
+    st.why = "cleared";
+  } else if ((p === LIGHT && lightShare(st) >= CONFIG.lambWinShare) || (capped && p === LIGHT)) {
+    st.winner = LIGHT;
+    st.why = "share";
+  } else st.current = 1 - p;
+  return { st, pre, waves, lambHit };
+}
+
+// ---------- AI ----------
+function scoreFor(st, side) {
+  const b = st.b;
+  if (st.winner >= 0) return st.winner === side ? 1e6 : -1e6;
+  let s = Kit.evaluate(b, (o) => o === side, (o) => o === 1 - side, (i) => cap(b, i));
+  const share = lightShare(st);
+  s += (side === LIGHT ? 1 : -1) * share * 40;
+  if (st.lamb >= 0) {
+    // Each square next to the lamb is a threat by how few wolf moves it needs to burst.
+    for (const n of Engine.neighbours(b, st.lamb)) {
+      if (b.owner[n] === LIGHT && b.count[n] > 0) continue;
+      const left = cap(b, n) - (b.owner[n] === SHADOW ? b.count[n] : 0);
+      const danger = left <= 1 ? CONFIG.lambDanger : CONFIG.lambDanger / (left * left);
+      s += side === LIGHT ? -danger : danger;
+    }
+  }
+  return s;
+}
+
+function aiMove(st) {
+  const me = st.current;
+  const first = legalMoves(st).map((move) => {
+    const r = simulate(st, move, false);
+    return { move, r, score: scoreFor(r.st, me) };
+  });
+  first.sort((a, b) => b.score - a.score);
+  for (const cand of first.slice(0, CONFIG.aiLookahead)) {
+    const after = cand.r.st;
+    if (after.winner >= 0) continue;
+    let best = -Infinity;
+    let mine = cand.score;
+    for (const m of legalMoves(after)) {
+      const r2 = simulate(after, m, false);
+      const theirs = scoreFor(r2.st, after.current);
+      if (theirs > best) {
+        best = theirs;
+        mine = scoreFor(r2.st, me);
+      }
+    }
+    cand.score = mine;
+  }
+  return Kit.pickBest(first.map(({ move, score }) => ({ move, score })), CONFIG.aiMistake);
+}
+
+// ---------- flow ----------
+async function play(m) {
+  busy = true;
+  moving = false;
+  const myGame = gameId;
+  const p = S.current;
+  const r = simulate(S, m, true);
+  if (m.kind === "move") Kit.sfx.bleat(1.15);
+  else Kit.sfx.place();
+  S = { ...S, b: r.pre, lamb: r.st.lamb };
+  await Kit.anim.play(r.waves, CONFIG.waveMs, (k) => {
+    Kit.sfx.burst(p === SHADOW ? k - 7 : k);
+    if (k >= 1) Kit.popText($("chain"), `Chain x${k + 1}!`);
+    if (k === CONFIG.chainShakeAt) Kit.shake($("stage"));
+    if (k === CONFIG.chainBigShakeAt) Kit.shake($("stage"), true);
+  }, r.pre);
+  if (myGame !== gameId) return;
+  S = r.st;
+  busy = false;
+  next();
+}
+
+async function next() {
+  hud();
+  if (S.winner >= 0) {
+    if (S.winner === SHADOW) Kit.sfx.howl();
+    await Kit.sleep(800);
+    return finish();
+  }
+  if (ai(S.current)) {
+    busy = true;
+    const myGame = gameId;
+    await Kit.sleep(CONFIG.aiDelayMs);
+    if (myGame !== gameId) return;
+    play(aiMove(S));
+  }
+}
+
+function finish() {
+  const lambWon = S.winner === LIGHT;
+  const youWon = mode === "pvp" ? true : human(S.winner);
+  const why = {
+    caught: "The wolf's burst reached the lamb.",
+    cleared: "Every bit of shadow is gone.",
+    share: `The lamb holds ${Math.round(lightShare(S) * 100)}% of the board.`,
+  }[S.why];
+  $("end-title").textContent = lambWon ? "The lamb wins!" : "The wolf wins!";
+  $("end-sub").textContent = why + (mode === "pvp" ? "" : youWon ? " Well played." : " Try again?");
+  hero($("hero-end"), lambWon ? "happy" : "shock", !lambWon);
+  (youWon ? Kit.sfx.win : Kit.sfx.lose)();
+  Kit.show("end");
+}
+
+function start() {
+  gameId++;
+  Kit.anim.cur = null;
+  S = newGame();
+  busy = false;
+  moving = false;
+  try {
+    localStorage.setItem("cfl-02-mode", mode);
+  } catch {}
+  Kit.hide("intro");
+  Kit.hide("end");
+  resize();
+  next();
+}
+
+function hud() {
+  if (!S) return;
+  const side = S.winner >= 0 ? S.winner : S.current;
+  $("dot").style.color = side === LIGHT ? "#ffe9a8" : "#6d6a86";
+  const who = side === LIGHT ? "Lamb" : "Wolf";
+  let t;
+  if (S.winner >= 0) t = `${who} wins!`;
+  else if (ai(side)) t = `${who} is thinking…`;
+  else if (side === LIGHT && S.lamb < 0) t = "Lamb: pick a start square";
+  else if (moving) t = "Tap where the lamb goes";
+  else t = `${who}'s turn`;
+  $("status").textContent = t;
+  const share = lightShare(S);
+  $("fill").style.width = share * 100 + "%";
+  $("goal").style.left = CONFIG.lambWinShare * 100 + "%";
+  $("pct").textContent = `Light ${Math.round(share * 100)}% · goal ${Math.round(CONFIG.lambWinShare * 100)}%`;
+  const canMove = !busy && S.winner < 0 && S.current === LIGHT && human(LIGHT) && lambSteps(S).length > 0;
+  $("move-lamb").disabled = !canMove;
+  $("move-lamb").classList.toggle("on", moving);
+}
+
+canvas.addEventListener("pointerdown", (e) => {
+  if (!S || busy || S.winner >= 0 || ai(S.current)) return;
+  const { row, col } = Kit.cellAt(canvas, e, geo.cell);
+  if (!Engine.inside(S.b, row, col)) return;
+  const i = row * S.b.cols + col;
+  const m = { kind: moving ? "move" : "place", i };
+  if (legalMoves(S).some((x) => sameMove(x, m))) play(m);
+  else Kit.sfx.bad();
+});
+
+$("move-lamb").addEventListener("click", () => {
+  moving = !moving;
+  hud();
+});
+
+// ---------- drawing ----------
+function resize() {
+  if (!S) return;
+  geo = Kit.fitBoard(canvas, $("stage"), S.b.cols, S.b.rows);
+}
+
+const SPOTS = {
+  1: [[0, 0]],
+  2: [[-0.2, 0], [0.2, 0.02]],
+  3: [[-0.2, 0.12], [0.2, 0.12], [0, -0.16]],
+  4: [[-0.2, -0.15], [0.2, -0.15], [-0.2, 0.17], [0.2, 0.17]],
+};
+
+function drawOrbs(b, i, n, side, t, lambHere) {
+  const c = geo.cell;
+  const x = Engine.colOf(b, i) * c + c / 2;
+  const y = Engine.rowOf(b, i) * c + c / 2;
+  const nervous = n >= cap(b, i) - 1;
+  const k = Math.min(n, 4);
+  for (let s = 0; s < k; s++) {
+    let [dx, dy] = SPOTS[k][s];
+    if (lambHere) dy = -0.32 + dy * 0.3;
+    const jx = nervous ? Math.sin(t * 40 + i * 3 + s) * c * 0.02 : 0;
+    if (side === LIGHT) Kit.drawSheep(ctx, x + dx * c + jx, y + dy * c, c * (lambHere ? 0.11 : 0.15), "#fff4d6", { flip: s % 2 === 1 });
+    else Kit.drawWolf(ctx, x + dx * c + jx, y + dy * c + c * 0.03, c * 0.3, { t: t + i + s, color: "#8a87a3" });
+  }
+}
+
+function draw(now) {
+  Kit.anim.step(now);
+  const t = now / 1000;
+  ctx.setTransform(geo.dpr, 0, 0, geo.dpr, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (!S) return requestAnimationFrame(draw);
+  const a = Kit.anim.cur;
+  const b = a ? Kit.anim.base() : S.b;
+  const wave = a && a.start !== null ? a.waves[a.i] : null;
+  const counts = b.count.slice();
+  if (wave) for (const { from } of wave.bursts) counts[from] = Math.max(0, counts[from] - cap(b, from));
+  const c = geo.cell;
+  const steps = moving ? lambSteps(S) : [];
+  for (let i = 0; i < b.size; i++) {
+    const x = Engine.colOf(b, i) * c;
+    const y = Engine.rowOf(b, i) * c;
+    const chk = (Engine.rowOf(b, i) + Engine.colOf(b, i)) % 2;
+    const o = b.owner[i];
+    ctx.fillStyle = o === LIGHT ? (chk ? "#7fae5a" : "#88b862") : o === SHADOW ? (chk ? "#2b2838" : "#322e42") : chk ? "#3d6a45" : "#44734c";
+    ctx.fillRect(x, y, c, c);
+    if (o === LIGHT) {
+      const g = ctx.createRadialGradient(x + c / 2, y + c / 2, 0, x + c / 2, y + c / 2, c * 0.7);
+      g.addColorStop(0, "rgba(255,236,160,0.45)");
+      g.addColorStop(1, "rgba(255,236,160,0)");
+      ctx.fillStyle = g;
+      ctx.fillRect(x, y, c, c);
+    }
+    if (S.current === LIGHT && S.lamb < 0 && !a && human(LIGHT) && Engine.rowOf(b, i) >= Math.floor(b.rows / 2) && o === -1) {
+      ctx.fillStyle = `rgba(255,236,160,${0.12 + 0.08 * Math.sin(t * 4)})`;
+      ctx.fillRect(x, y, c, c);
+    }
+    if (steps.includes(i)) {
+      ctx.strokeStyle = "#ffcf4a";
+      ctx.lineWidth = 3;
+      ctx.strokeRect(x + 3, y + 3, c - 6, c - 6);
+    }
+  }
+  const lamb = a ? S.lamb : S.lamb;
+  for (let i = 0; i < b.size; i++) {
+    if (i === lamb) {
+      const scared = Engine.neighbours(b, i).some((n) => b.owner[n] === SHADOW && b.count[n] >= cap(b, n) - 1);
+      Kit.drawLamb(ctx, (Engine.colOf(b, i) + 0.5) * c, (Engine.rowOf(b, i) + 0.6) * c, c * 0.62, { t, mood: S.winner === SHADOW ? "shock" : scared ? "shock" : "happy", glow: "rgba(255,230,150,0.5)" });
+    }
+    if (counts[i] > 0 && b.owner[i] >= 0) drawOrbs(b, i, counts[i], b.owner[i], t, i === lamb);
+  }
+  if (wave) {
+    const p = Kit.anim.t(now);
+    const e = 1 - (1 - p) * (1 - p);
+    for (const { from, to, who } of wave.bursts) {
+      const fx = (Engine.colOf(b, from) + 0.5) * c;
+      const fy = (Engine.rowOf(b, from) + 0.5) * c;
+      for (const d of to) {
+        const tx = (Engine.colOf(b, d) + 0.5) * c;
+        const ty = (Engine.rowOf(b, d) + 0.5) * c;
+        const x = fx + (tx - fx) * e;
+        const y = fy + (ty - fy) * e - Math.sin(Math.PI * p) * c * 0.3;
+        if (who === LIGHT) Kit.drawSheep(ctx, x, y, c * 0.15, "#fff4d6", { flip: tx < fx });
+        else Kit.drawWolf(ctx, x, y, c * 0.3, { color: "#8a87a3" });
+      }
+    }
+  }
+  ctx.strokeStyle = S.current === LIGHT ? "rgba(255,233,168,0.5)" : "rgba(140,130,180,0.6)";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let col = 0; col <= b.cols; col++) {
+    const x = Math.min(Math.max(col * c, 0.75), geo.w - 0.75);
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, geo.h);
+  }
+  for (let row = 0; row <= b.rows; row++) {
+    const y = Math.min(Math.max(row * c, 0.75), geo.h - 0.75);
+    ctx.moveTo(0, y);
+    ctx.lineTo(geo.w, y);
+  }
+  ctx.stroke();
+  requestAnimationFrame(draw);
+}
+
+function hero(cv, mood, wolfWins) {
+  const g = Kit.sharp(cv, 240, 130);
+  Kit.drawWolf(g, wolfWins ? 120 : 185, wolfWins ? 62 : 70, wolfWins ? 110 : 80, { mood: wolfWins ? "happy" : "sad" });
+  if (!wolfWins) Kit.drawLamb(g, 85, 74, 112, { mood });
+}
+
+// ---------- menu ----------
+function renderMode() {
+  for (const btn of $("mode").querySelectorAll("button")) btn.classList.toggle("on", btn.dataset.mode === mode);
+}
+$("mode").addEventListener("click", (e) => {
+  const m = e.target.closest("button")?.dataset.mode;
+  if (!m) return;
+  mode = m;
+  renderMode();
+});
+$("play").addEventListener("click", start);
+$("again").addEventListener("click", start);
+$("restart").addEventListener("click", start);
+$("menu").addEventListener("click", () => {
+  gameId++;
+  Kit.anim.cur = null;
+  busy = false;
+  Kit.hide("end");
+  Kit.show("intro");
+});
+$("to-menu").addEventListener("click", () => $("menu").click());
+Kit.muteButton($("mute"));
+new ResizeObserver(resize).observe($("stage"));
+
+renderMode();
+hero($("hero-intro"), "happy", false);
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>
