@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Stampede Plus</title>
+<meta name="description" content="cheekyfoundlamb Stampede S1: real-time Chain Reaction for 2-4 players with sheep pens, special sheep, teams and mystery boxes." />
+<style>
+/*@KITCSS*/
+/*@STAMPEDECSS*/
+</style>
+</head>
+<body>
+<!--@STAMPEDEHTML-->
+<script>
+/*@ENGINE*/
+/*@KIT*/
+/*@STAMPEDE*/
+
+// ======================= S1: STAMPEDE+ =======================
+const CONFIG = {
+  boxEverySecs: 15, // a mystery box lands this often
+  boxSpecials: ["line", "line", "bomb", "bomb", "overflow"], // what a box can hold
+};
+
+Stampede.run({
+  key: "s1",
+  title: "Stampede+",
+  how: ["Tap your button to drop a sheep where your cursor is.", "Big chains load special sheep. Last flock, or most squares, wins."],
+  setupDefaults: { n: 2, seats: ["human", "ai", "ai", "ai"], level: "normal", teams: false, boxes: true },
+  players: (s) =>
+    Array.from({ length: s.n }, (_, p) => ({
+      seat: p,
+      kind: s.seats[p],
+      level: s.level,
+      // 2v2: the two bottom seats against the two top seats
+      team: s.teams && s.n === 4 ? (p === 0 || p === 3 ? 0 : 1) : p,
+    })),
+  options(ui, s) {
+    ui.stepper("Players", "n", 2, 4);
+    ui.seats(s.n);
+    if (s.seats.slice(0, s.n).includes("ai")) ui.level();
+    if (s.n === 4) ui.seg("Teams", "teams", [[false, "Off"], [true, "2 v 2"]]);
+    ui.seg("Mystery boxes", "boxes", [[true, "On"], [false, "Off"]]);
+  },
+  hooks: {
+    setup(G, s) {
+      G.data.boxes = new Set();
+      G.data.nextBox = s.boxes ? performance.now() + CONFIG.boxEverySecs * 1000 : Infinity;
+      if (s.teams && s.n === 4) {
+        // teammates share a colour family so the board reads at a glance
+        G.players[3].color = "#ff9a5c";
+        G.players[2].color = "#7fd0ff";
+        G.players[1].color = "#3f7bff";
+        G.players[0].color = "#ff4d4d";
+        G.players[0].name = "Red";
+        G.players[3].name = "Orange";
+        G.players[1].name = "Blue";
+        G.players[2].name = "Sky";
+      }
+    },
+    update(G, now) {
+      if (now < G.data.nextBox) return;
+      G.data.nextBox = now + CONFIG.boxEverySecs * 1000;
+      const empty = [];
+      for (let i = 0; i < G.b.size; i++) if (G.b.owner[i] === -1 && !G.data.boxes.has(i)) empty.push(i);
+      if (!empty.length) return;
+      G.data.boxes.add(empty[Math.floor(Math.random() * empty.length)]);
+      Kit.sfx.chime();
+    },
+    shift(G, d) {
+      G.data.nextBox += d;
+    },
+    blocked: (G, i) => G.data.boxes.has(i),
+    land(G, b, from, to, who) {
+      openBox(G, to, who);
+      return false;
+    },
+    specialHit(G, k, who) {
+      openBox(G, k, who);
+      return false;
+    },
+    aiValue: (G, pl, i) => Engine.neighbours(G.b, i).filter((k) => G.data.boxes.has(k)).length * 3,
+    drawCell(ctx, G, i, x, y, c, t) {
+      if (!G.data.boxes.has(i)) return false;
+      drawGift(ctx, x + c / 2, y + c / 2 + Math.sin(t * 4 + i) * c * 0.03, c * 0.3);
+      return true;
+    },
+  },
+});
+
+// A sheep arriving on a box opens it and loads a random special on its owner's button.
+function openBox(G, i, who) {
+  if (!G.data.boxes.delete(i)) return;
+  const pl = G.players[who];
+  const type = CONFIG.boxSpecials[Math.floor(Math.random() * CONFIG.boxSpecials.length)];
+  Stampede.loadSpecial(pl, type);
+  Stampede.shout(pl, "Gift!", 1.1);
+  Kit.sfx.chime();
+}
+
+function drawGift(g, x, y, r) {
+  g.fillStyle = "#c0398f";
+  g.fillRect(x - r, y - r * 0.7, r * 2, r * 1.6);
+  g.fillStyle = "#e050ad";
+  g.fillRect(x - r * 1.1, y - r * 0.95, r * 2.2, r * 0.45);
+  g.fillStyle = "#ffcf4a";
+  g.fillRect(x - r * 0.16, y - r * 0.95, r * 0.32, r * 1.85);
+  Kit.ellipse(g, x - r * 0.4, y - r * 1.12, r * 0.35, r * 0.2, -0.4, "#ffcf4a");
+  Kit.ellipse(g, x + r * 0.4, y - r * 1.12, r * 0.35, r * 0.2, 0.4, "#ffcf4a");
+  g.fillStyle = "#2a2010";
+  g.font = `900 ${Math.round(r * 0.9)}px system-ui`;
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.fillText("?", x, y + r * 0.25);
+  g.textAlign = "start";
+  g.textBaseline = "alphabetic";
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,60 @@
+<div class="app" id="app">
+  <div class="band top" id="band-top">
+    <button class="pbtn" id="p2" aria-label="Player 3 button"><canvas></canvas></button>
+    <div class="mid"><span class="timer" id="timer-top"></span></div>
+    <button class="pbtn right" id="p1" aria-label="Player 2 button"><canvas></canvas></button>
+  </div>
+  <div class="hud" id="hud"></div>
+  <main class="stage" id="stage">
+    <canvas id="board" aria-label="Board"></canvas>
+    <div class="shouts" id="shouts"></div>
+    <div class="chain" id="chain"></div>
+  </main>
+  <div class="band bottom" id="band-bottom">
+    <button class="pbtn" id="p0" aria-label="Player 1 button"><canvas></canvas></button>
+    <div class="mid">
+      <span class="timer" id="timer"></span>
+      <div class="mini">
+        <button class="ib" id="pause" aria-label="Pause and tune">⏸</button>
+        <button class="ib" id="mute" aria-label="Mute">🔊</button>
+      </div>
+    </div>
+    <button class="pbtn right" id="p3" aria-label="Player 4 button"><canvas></canvas></button>
+  </div>
+</div>
+
+<section class="overlay" id="intro">
+  <div class="card">
+    <button class="ib gear" id="gear" aria-label="Tuning">⚙</button>
+    <canvas class="hero" id="hero-intro"></canvas>
+    <h1 id="title"></h1>
+    <p class="howto2" id="how"></p>
+    <div class="opts" id="opts"></div>
+    <button class="big" id="play">Play</button>
+  </div>
+</section>
+
+<section class="overlay" id="tune" hidden>
+  <div class="card">
+    <h2>Tuning</h2>
+    <p>Changes apply straight away and are remembered.</p>
+    <div class="sliders" id="sliders"></div>
+    <button class="big" id="tune-done">Resume</button>
+    <div class="row2">
+      <button class="big alt" id="tune-restart">Restart</button>
+      <button class="big alt" id="tune-menu">Menu</button>
+    </div>
+    <button class="big alt" id="tune-reset">Reset to defaults</button>
+  </div>
+</section>
+
+<section class="overlay" id="end" hidden>
+  <div class="card">
+    <canvas class="hero" id="hero-end"></canvas>
+    <h2 id="end-title"></h2>
+    <p id="end-sub"></p>
+    <div id="end-extra"></div>
+    <button class="big" id="again">Play again</button>
+    <button class="big alt" id="end-menu">Menu</button>
+  </div>
+</section>

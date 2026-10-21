@@ -1,6 +1,6 @@
 # cheekyfoundlamb demos
 
-Eighteen playable prototypes built on the same Chain Reaction engine. Each `NN-*.html` file is self-contained: open it in a browser, or host the folder on Netlify or Vercel.
+Eighteen playable prototypes, plus the Stampede versions, built on the same Chain Reaction engine. Each `NN-*.html` file is self-contained: open it in a browser, or host the folder on Netlify or Vercel.
 
 | # | Demo | Idea |
 |---|---|---|
@@ -23,6 +23,14 @@ Eighteen playable prototypes built on the same Chain Reaction engine. Each `NN-*
 | 17 | Gift Traps | Hide traps under gift tags; they spring on enemy chains |
 | 18 | The Daily Gift | Wordle-style daily puzzle with a par and a shareable result |
 
+## Stampede versions
+
+Eight takes on demo 8, all on one shared real-time core (`src/_stampede.js`) so they can later sit behind one mode menu.
+
+| # | Version | Idea |
+|---|---|---|
+| S1 | Stampede+ | 2–4 players or AI: sheep pens, chain rewards, special sheep, optional 2v2 teams and mystery boxes |
+
 Balance numbers sit in a `CONFIG` object at the top of each file.
 
 ## Editing
@@ -40,5 +48,6 @@ python3 build.py
 - `src/_kit.css`: the shared screen layout
 - `src/_cards.js`, `src/_cards.css`: the card pool, card effects, targeting, reveal scenes, board effects and card AI (demos 11–18)
 - `src/_table.js`: board, player chips, hand and tap-to-target UI for the card demos
+- `src/_stampede.js`, `src/_stampede.css`, `src/_stampede.html`: the real-time Stampede core (cursors, sheep pens, special sheep, shouts, lambs, AI seats, Stampede Time, tuning panel)
 
 Demos change the engine's behaviour only through the rule hooks passed to `Engine.resolve`.
