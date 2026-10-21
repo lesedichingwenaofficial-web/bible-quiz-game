@@ -275,10 +275,10 @@ const Kit = (() => {
     ctx.save();
     ctx.translate(x, y);
     ctx.globalAlpha = o.alpha ?? 1;
-    const g = ctx.createRadialGradient(0, -h * 0.5, h * 0.05, 0, -h * 0.5, h * 0.8);
+    const g = ctx.createRadialGradient(0, -h * 0.5, h * 0.05, 0, -h * 0.5, h * 0.52);
     g.addColorStop(0, "rgba(255,214,140,0.55)");
     g.addColorStop(1, "rgba(255,214,140,0)");
-    circle(ctx, 0, -h * 0.5, h * 0.8, g);
+    circle(ctx, 0, -h * 0.5, h * 0.52, g);
     ctx.fillStyle = o.color ?? "#7a4f33";
     // robe
     ctx.beginPath();

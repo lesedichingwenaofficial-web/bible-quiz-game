@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Rejoice With Me</title>
+<meta name="description" content="cheekyfoundlamb demo 3: one tap per level sets off a chain of found sheep." />
+<style>
+/*@KITCSS*/
+.stage { padding: 0 0 10px; }
+.stage canvas { border-radius: 16px; }
+.banner {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: min(320px, 86%); padding: 16px 14px; border-radius: 20px; text-align: center;
+  background: rgba(19, 32, 26, 0.88); box-shadow: 0 10px 40px rgba(0,0,0,0.4); pointer-events: none;
+}
+.banner h2 { margin: 0 0 4px; font-size: 1.5rem; color: var(--sun); }
+.banner p { margin: 0; color: var(--cream); }
+.banner small { display: block; margin-top: 6px; color: var(--muted); }
+.hint { position: absolute; left: 0; right: 0; top: 10px; text-align: center; color: var(--muted); font-weight: 800; pointer-events: none; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="status"><span class="txt" id="status">Rejoice With Me</span></div>
+    <div class="btns">
+      <button class="ib" id="restart" aria-label="Restart level">↻</button>
+      <button class="ib" id="mute" aria-label="Mute">🔊</button>
+      <button class="ib" id="menu" aria-label="Menu">☰</button>
+    </div>
+  </header>
+  <main class="stage" id="stage">
+    <canvas id="field" aria-label="Field of lost sheep"></canvas>
+    <div class="hint" id="hint"></div>
+    <div class="banner" id="banner" hidden><h2 id="b-title"></h2><p id="b-text"></p><small id="b-small"></small></div>
+    <div class="chain" id="chain"></div>
+  </main>
+</div>
+
+<section class="overlay" id="intro">
+  <div class="card">
+    <canvas class="hero" id="hero-intro"></canvas>
+    <h1>Rejoice With Me</h1>
+    <div class="how">
+      <p>Lost sheep are wandering in the dark. You get <b>one tap</b> per level.</p>
+      <p>The lamb pops up and bleats, making a ring of light. Any sheep it touches is found and makes a ring of its own. Find enough to pass the level.</p>
+    </div>
+    <button class="big" id="play">Play</button>
+    <button class="big alt" id="continue" hidden></button>
+  </div>
+</section>
+
+<section class="overlay" id="end" hidden>
+  <div class="card">
+    <canvas class="hero" id="hero-end"></canvas>
+    <h2 style="color: var(--sun)">Rejoice!</h2>
+    <p class="verse">"Rejoice with me; for I have found my sheep which was lost."<small>Luke 15:6</small></p>
+    <p id="end-sub"></p>
+    <button class="big" id="again">Play again</button>
+  </div>
+</section>
+
+<script>
+/*@ENGINE*/
+/*@KIT*/
+
+// ---------- balance ----------
+// Distances are in "units": 1 unit = the shorter side of the field.
+const CONFIG = {
+  // [sheep on the field, sheep you must find, ring radius]
+  // Sparse fields need bigger rings so a chain can jump between sheep.
+  levels: [[5, 1, 0.16], [10, 3, 0.26], [15, 6, 0.26], [20, 10, 0.22], [30, 17, 0.185], [40, 26, 0.16], [50, 35, 0.14], [65, 48, 0.12], [80, 62, 0.105], [99, 75, 0.088]],
+  sheepSize: 0.022, // sheep radius
+  speed: 0.09, // sheep drift speed per second
+  growMs: 450,
+  holdMs: 1500,
+  fadeMs: 450,
+  bigChainAt: 15, // finds before a screen shake
+};
+
+const { $ } = Kit;
+const canvas = $("field");
+const ctx = canvas.getContext("2d");
+let geo = { W: 300, H: 500, unit: 300, dpr: 1 };
+let level = 0;
+let world = null;
+let phase = "ready"; // ready | running | result
+let best = 0;
+try {
+  best = +localStorage.getItem("cfl-03-best") || 0;
+} catch {}
+
+// ---------- simulation (shared by the game and the balance tests) ----------
+function rng(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function makeWorld(n, w, h, seed, ring) {
+  ringSize = ring;
+  const rand = rng(seed);
+  const r = CONFIG.sheepSize;
+  const sheep = [];
+  for (let k = 0; k < n; k++) {
+    const a = rand() * Math.PI * 2;
+    const v = CONFIG.speed * (0.6 + rand() * 0.8);
+    sheep.push({ x: r + rand() * (w - 2 * r), y: r + rand() * (h - 2 * r), vx: Math.cos(a) * v, vy: Math.sin(a) * v, found: false, at: 0 });
+  }
+  return { w, h, sheep, rings: [], time: 0, found: 0, tapped: false, tap: null };
+}
+
+let ringSize = CONFIG.levels[0][2];
+
+function ringRadius(ring, time) {
+  const age = (time - ring.t0) * 1000;
+  return age < CONFIG.growMs ? ringSize * (1 - Math.pow(1 - age / CONFIG.growMs, 3)) : ringSize;
+}
+const ringActive = (ring, time) => (time - ring.t0) * 1000 < CONFIG.growMs + CONFIG.holdMs;
+const ringOver = (ring, time) => (time - ring.t0) * 1000 >= CONFIG.growMs + CONFIG.holdMs + CONFIG.fadeMs;
+
+function tapAt(wd, x, y) {
+  wd.tapped = true;
+  wd.tap = { x, y, t0: wd.time };
+  wd.rings.push({ x, y, t0: wd.time, lamb: true });
+}
+
+// Advances the world by dt seconds. Returns how many sheep were found this step.
+function step(wd, dt) {
+  wd.time += dt;
+  const r = CONFIG.sheepSize;
+  for (const s of wd.sheep) {
+    if (s.found) continue;
+    s.x += s.vx * dt;
+    s.y += s.vy * dt;
+    if (s.x < r) (s.x = r), (s.vx = Math.abs(s.vx));
+    if (s.x > wd.w - r) (s.x = wd.w - r), (s.vx = -Math.abs(s.vx));
+    if (s.y < r) (s.y = r), (s.vy = Math.abs(s.vy));
+    if (s.y > wd.h - r) (s.y = wd.h - r), (s.vy = -Math.abs(s.vy));
+  }
+  let newly = 0;
+  const live = wd.rings.filter((g) => ringActive(g, wd.time));
+  for (const s of wd.sheep) {
+    if (s.found) continue;
+    for (const g of live) {
+      const rr = ringRadius(g, wd.time) + r;
+      if ((s.x - g.x) ** 2 + (s.y - g.y) ** 2 <= rr * rr) {
+        s.found = true;
+        s.at = wd.time;
+        wd.found++;
+        newly++;
+        wd.rings.push({ x: s.x, y: s.y, t0: wd.time });
+        break;
+      }
+    }
+  }
+  wd.rings = wd.rings.filter((g) => !ringOver(g, wd.time));
+  return newly;
+}
+
+const isDone = (wd) => wd.tapped && wd.rings.length === 0;
+
+// Runs a whole level without drawing. Used by the balance tests.
+function simulate(levelIndex, seed, tx, ty, w = 1, h = 1.6) {
+  const [n, , ring] = CONFIG.levels[levelIndex];
+  const wd = makeWorld(n, w, h, seed, ring);
+  for (let k = 0; k < 30; k++) step(wd, 1 / 60); // sheep move a little before the tap
+  tapAt(wd, tx * w, ty * h);
+  let guard = 0;
+  while (!isDone(wd) && guard++ < 60 * 120) step(wd, 1 / 60);
+  return wd.found;
+}
+
+// ---------- game flow ----------
+function startLevel(k) {
+  level = k;
+  resize();
+  world = makeWorld(CONFIG.levels[k][0], geo.W / geo.unit, geo.H / geo.unit, (Math.random() * 2 ** 31) | 0, CONFIG.levels[k][2]);
+  phase = "ready";
+  Kit.hide("banner");
+  hud();
+}
+
+function hud() {
+  const [n, need] = CONFIG.levels[level];
+  const found = world ? world.found : 0;
+  $("status").textContent = `Level ${level + 1}/${CONFIG.levels.length} · Found ${found}/${n}`;
+  $("hint").textContent = phase === "ready" ? `Find ${need} of ${n}. Tap once!` : phase === "running" ? `Need ${need}` : "";
+}
+
+function banner(title, text, small) {
+  $("b-title").textContent = title;
+  $("b-text").textContent = text;
+  $("b-small").textContent = small;
+  Kit.show("banner");
+}
+
+function levelOver() {
+  const [n, need] = CONFIG.levels[level];
+  phase = "result";
+  hud();
+  if (world.found >= need) {
+    best = Math.max(best, level + 1);
+    try {
+      localStorage.setItem("cfl-03-best", best);
+    } catch {}
+    if (level === CONFIG.levels.length - 1) {
+      Kit.sfx.win();
+      $("end-sub").textContent = `You found ${world.found} of ${n} on the last field.`;
+      hero($("hero-end"), true);
+      Kit.show("end");
+      return;
+    }
+    Kit.sfx.win();
+    banner("Found!", `${world.found} of ${n} sheep found.`, "Tap for the next field");
+  } else {
+    Kit.sfx.lose();
+    banner("Not quite", `Found ${world.found}. You needed ${need}.`, "Tap to retry");
+  }
+}
+
+canvas.addEventListener("pointerdown", (e) => {
+  if (!world) return;
+  if (phase === "ready") {
+    const r = canvas.getBoundingClientRect();
+    tapAt(world, (e.clientX - r.left) / geo.unit, (e.clientY - r.top) / geo.unit);
+    phase = "running";
+    Kit.sfx.bleat();
+    hud();
+  } else if (phase === "result") {
+    const passed = world.found >= CONFIG.levels[level][1];
+    startLevel(passed ? level + 1 : level);
+  }
+});
+
+// ---------- drawing ----------
+function resize() {
+  const st = $("stage");
+  const cs = getComputedStyle(st);
+  const W = st.clientWidth;
+  const H = st.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+  const dpr = window.devicePixelRatio || 1;
+  canvas.style.width = W + "px";
+  canvas.style.height = H + "px";
+  canvas.width = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+  const oldUnit = geo.unit;
+  geo = { W, H, unit: Math.min(W, H), dpr };
+  if (world && oldUnit !== geo.unit) {
+    world.w = W / geo.unit;
+    world.h = H / geo.unit;
+  }
+}
+
+const stars = Array.from({ length: 60 }, (_, k) => [((k * 73) % 101) / 101, ((k * 37) % 89) / 89, (k % 3) + 1]);
+
+let last = 0;
+let chainShown = 0;
+function frame(now) {
+  const dt = Math.min(0.05, (now - (last || now)) / 1000);
+  last = now;
+  if (world && phase !== "result") {
+    const newly = step(world, dt);
+    if (newly) {
+      Kit.sfx.chime(Math.min(world.found, 24));
+      hud();
+      if (world.found >= 5 && world.found - chainShown >= 5) {
+        chainShown = world.found - (world.found % 5);
+        Kit.popText($("chain"), `Chain x${world.found}!`);
+      }
+      if (world.found === CONFIG.bigChainAt) Kit.shake($("stage"));
+      if (world.found === CONFIG.bigChainAt * 3) Kit.shake($("stage"), true);
+    }
+    if (phase === "running" && isDone(world)) {
+      chainShown = 0;
+      levelOver();
+    }
+  }
+  draw(now / 1000);
+  requestAnimationFrame(frame);
+}
+
+function draw(t) {
+  const { W, H, unit, dpr } = geo;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, "#0d1622");
+  bg.addColorStop(1, "#15261c");
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+  for (const [sx, sy, sz] of stars) {
+    ctx.globalAlpha = 0.25 + 0.2 * Math.sin(t * 1.3 + sx * 9);
+    Kit.circle(ctx, sx * W, sy * H, sz * 0.6, "#fff6dc");
+  }
+  ctx.globalAlpha = 1;
+  if (!world) return;
+  const r = CONFIG.sheepSize * unit;
+  for (const g of world.rings) {
+    const age = (world.time - g.t0) * 1000;
+    const fade = age > CONFIG.growMs + CONFIG.holdMs ? 1 - (age - CONFIG.growMs - CONFIG.holdMs) / CONFIG.fadeMs : 1;
+    const rad = ringRadius(g, world.time) * unit;
+    const grd = ctx.createRadialGradient(g.x * unit, g.y * unit, 0, g.x * unit, g.y * unit, rad);
+    grd.addColorStop(0, `rgba(255,214,110,${0.05 * fade})`);
+    grd.addColorStop(0.85, `rgba(255,214,110,${0.22 * fade})`);
+    grd.addColorStop(1, `rgba(255,236,170,${0.55 * fade})`);
+    Kit.circle(ctx, g.x * unit, g.y * unit, rad, grd);
+  }
+  for (const s of world.sheep) {
+    const x = s.x * unit;
+    const y = s.y * unit;
+    if (s.found) {
+      const pulse = Math.max(0, 1 - (world.time - s.at) * 2);
+      Kit.circle(ctx, x, y, r * (1.6 + pulse), "rgba(255,210,90,0.25)");
+      Kit.drawSheep(ctx, x, y, r * (1 + pulse * 0.4), "#ffd25a");
+    } else Kit.drawSheep(ctx, x, y, r, "#8f8f9e", { flip: s.vx < 0 });
+  }
+  if (world.tap) {
+    const age = world.time - world.tap.t0;
+    const s = unit * 0.16 * Math.min(1, age * 5);
+    Kit.drawLamb(ctx, world.tap.x * unit, world.tap.y * unit, s, { t, mood: world.found >= CONFIG.levels[level][1] ? "happy" : "shock" });
+  }
+}
+
+function hero(cv, win) {
+  const g = Kit.sharp(cv, 240, 130);
+  if (win) {
+    Kit.drawShepherd(g, 170, 124, 112, {});
+    Kit.drawLamb(g, 92, 74, 110, { mood: "happy" });
+  } else {
+    Kit.drawSheep(g, 40, 100, 14, "#8f8f9e");
+    Kit.drawSheep(g, 205, 40, 14, "#8f8f9e", { flip: true });
+    Kit.drawSheep(g, 200, 104, 14, "#ffd25a");
+    Kit.drawLamb(g, 118, 72, 110, { mood: "happy" });
+  }
+}
+
+// ---------- menu ----------
+function begin(k) {
+  Kit.hide("intro");
+  Kit.hide("end");
+  chainShown = 0;
+  startLevel(k);
+}
+$("play").addEventListener("click", () => begin(0));
+$("continue").addEventListener("click", () => begin(Math.min(best, CONFIG.levels.length - 1)));
+$("again").addEventListener("click", () => begin(0));
+$("restart").addEventListener("click", () => {
+  if (world) begin(level);
+});
+$("menu").addEventListener("click", () => {
+  world = null;
+  Kit.hide("banner");
+  renderContinue();
+  Kit.show("intro");
+});
+function renderContinue() {
+  const k = Math.min(best, CONFIG.levels.length - 1);
+  $("continue").hidden = best === 0;
+  $("continue").textContent = `Continue from level ${k + 1}`;
+}
+Kit.muteButton($("mute"));
+new ResizeObserver(resize).observe($("stage"));
+
+renderContinue();
+hero($("hero-intro"), false);
+resize();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
