@@ -1698,7 +1698,7 @@ const Table = (() => {
       else if (!faceDown) btn.addEventListener("click", () => hint(`${Cards.DEF[key].icon} ${Cards.DEF[key].text}`));
       box.append(btn);
     });
-    if (extra) box.append(extra);
+    if (extra) box.append(typeof extra === "function" ? extra() : extra);
   }
 
   function hint(html, buttons = []) {
