@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Let It Shine</title>
+<meta name="description" content="cheekyfoundlamb demo 9: co-op Chain Reaction where two lights hold back the darkness until dawn." />
+<style>
+/*@KITCSS*/
+body { transition: background-color 1.2s; }
+.meters { display: flex; gap: 8px; padding: 0 2px 4px; font-size: 0.8rem; font-weight: 800; }
+.meter { position: relative; flex: 1; height: 22px; border-radius: 11px; background: rgba(0,0,0,0.35); overflow: hidden; }
+.meter i { position: absolute; inset: 0 auto 0 0; width: 0; transition: width 0.25s; }
+.meter b { position: relative; display: block; text-align: center; line-height: 22px; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
+.meter .mark { position: absolute; top: 0; bottom: 0; width: 2px; background: #fff; opacity: 0.7; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="status"><span class="dot" id="dot"></span><span class="txt" id="status">Let It Shine</span></div>
+    <div class="btns">
+      <button class="ib" id="restart" aria-label="Restart">↻</button>
+      <button class="ib" id="mute" aria-label="Mute">🔊</button>
+      <button class="ib" id="menu" aria-label="Menu">☰</button>
+    </div>
+  </header>
+  <div class="meters" aria-hidden="true">
+    <div class="meter"><i id="light-fill" style="background:linear-gradient(90deg,#ffd25a,#8fd3ff)"></i><span class="mark" style="left:50%"></span><b id="light-txt">Light 0%</b></div>
+    <div class="meter"><i id="dark-fill" style="background:#5a3f86"></i><span class="mark" id="dark-mark"></span><b id="dark-txt">Dark 0%</b></div>
+  </div>
+  <main class="stage" id="stage">
+    <canvas id="board" aria-label="Board"></canvas>
+    <div class="chain" id="chain"></div>
+  </main>
+</div>
+
+<section class="overlay" id="intro">
+  <div class="card">
+    <canvas class="hero" id="hero-intro"></canvas>
+    <h1>Let It Shine</h1>
+    <div class="how">
+      <p>Two lights, gold and sky, take turns against the darkness, which places after every round.</p>
+      <p>Your bursts landing on your ally's lamps add +1 without taking them, so you can set off each other's chains. Wipe out the darkness, or hold more than half the board when dawn breaks after round 20. If darkness covers 75%, it wins.</p>
+    </div>
+    <div class="opts"><div class="optrow"><span class="lbl">Players</span><div class="seg" id="mode"><button data-mode="solo">Solo (both lights)</button><button data-mode="duo">2 players</button></div></div></div>
+    <button class="big" id="play">Play</button>
+  </div>
+</section>
+
+<section class="overlay" id="end" hidden>
+  <div class="card">
+    <canvas class="hero" id="hero-end"></canvas>
+    <h2 id="end-title"></h2>
+    <p id="end-sub"></p>
+    <p class="verse" id="end-verse" hidden>"Let your light so shine before men, that they may see your good works, and glorify your Father which is in heaven."<small>Matthew 5:16</small></p>
+    <button class="big" id="again">Play again</button>
+  </div>
+</section>
+
+<script>
+/*@ENGINE*/
+/*@KIT*/
+
+// ---------- balance ----------
+const CONFIG = {
+  rows: 9,
+  cols: 6,
+  rounds: 20, // dawn breaks after this round
+  dawnShare: 0.5, // light must hold more than this share at dawn
+  darkLoseShare: 0.75, // darkness wins if it covers this share
+  doubleEvery: 3, // darkness places twice every this many rounds
+  ai: { mistake: 0.15, look: 5 },
+  waveMs: 130,
+  maxWaves: 200,
+  aiDelayMs: 650,
+  chainShakeAt: 5,
+  chainBigShakeAt: 10,
+};
+
+const { $ } = Kit;
+const GOLD = 0;
+const SKY = 1;
+const DARK = 2;
+const PCOL = ["#ffd25a", "#8fd3ff", "#4a3470"];
+const PNAME = ["Gold", "Sky", "Darkness"];
+const canvas = $("board");
+const ctx = canvas.getContext("2d");
+let geo = { cell: 40, dpr: 1 };
+let mode = "solo";
+let S = null;
+let busy = false;
+let gameId = 0;
+let autoplay = false; // tests only: the AI also plays both lights
+
+// ---------- rules ----------
+const isLight = (o) => o === GOLD || o === SKY;
+const cap = (b, i) => Engine.capacity(b, i);
+const share = (b, test) => b.owner.reduce((n, o) => n + (test(o) ? 1 : 0), 0) / b.size;
+const orbs = (b, test) => b.owner.reduce((n, o, i) => n + (test(o) ? b.count[i] : 0), 0);
+
+function newGame() {
+  return { b: Engine.createBoard(CONFIG.rows, CONFIG.cols), current: GOLD, round: 1, darkLeft: 1, moved: [false, false, false], winner: "", why: "" };
+}
+
+const cloneState = (st) => ({ ...st, b: Engine.clone(st.b), moved: st.moved.slice() });
+const isLegal = (st, i) => st.b.owner[i] === -1 || st.b.owner[i] === st.current;
+
+function legalMoves(st) {
+  const out = [];
+  for (let i = 0; i < st.b.size; i++) if (isLegal(st, i)) out.push(i);
+  return out;
+}
+
+function simulate(st0, i, record) {
+  const st = cloneState(st0);
+  const b = st.b;
+  const p = st.current;
+  Engine.place(b, i, p);
+  st.moved[p] = true;
+  const pre = record ? Engine.clone(b) : null;
+  const allMoved = () => st.moved.every(Boolean);
+  const { waves, capped } = Engine.resolve(
+    b,
+    {
+      land: (bb, from, to, who) => {
+        // allies add to each other's lamps instead of taking them
+        if (isLight(who) && isLight(bb.owner[to]) && bb.owner[to] !== who) {
+          bb.count[to]++;
+          return;
+        }
+        bb.owner[to] = who;
+        bb.count[to]++;
+      },
+      done: (bb) => allMoved() && (orbs(bb, (o) => o === DARK) === 0 || orbs(bb, isLight) === 0),
+      maxWaves: CONFIG.maxWaves,
+    },
+    record
+  );
+  // outcome checks
+  if (allMoved() && (orbs(b, (o) => o === DARK) === 0 || (capped && p !== DARK))) [st.winner, st.why] = ["light", "cleared"];
+  else if (share(b, (o) => o === DARK) >= CONFIG.darkLoseShare || (allMoved() && orbs(b, isLight) === 0) || (capped && p === DARK)) [st.winner, st.why] = ["dark", "covered"];
+  if (st.winner) return { st, pre, waves };
+  // turn order: Gold, Sky, then Darkness (once, or twice every third round)
+  if (p === GOLD) st.current = SKY;
+  else if (p === SKY) {
+    st.current = DARK;
+    st.darkLeft = st.round % CONFIG.doubleEvery === 0 ? 2 : 1;
+  } else if (--st.darkLeft > 0) st.current = DARK;
+  else if (st.round >= CONFIG.rounds) {
+    const lit = share(b, isLight);
+    [st.winner, st.why] = lit > CONFIG.dawnShare ? ["light", "dawn"] : ["dark", "dawn"];
+  } else {
+    st.round++;
+    st.current = GOLD;
+  }
+  return { st, pre, waves };
+}
+
+// ---------- AI (darkness; tests also use it for the lights) ----------
+function scoreFor(st, side) {
+  const light = isLight(side);
+  if (st.winner) return (st.winner === "light") === light ? 1e6 : -1e6;
+  const b = st.b;
+  const mine = light ? isLight : (o) => o === DARK;
+  const foe = light ? (o) => o === DARK : isLight;
+  return Kit.evaluate(b, mine, foe, (i) => cap(b, i)) + (share(b, mine) - share(b, foe)) * 40;
+}
+
+function aiMove(st) {
+  const me = st.current;
+  const first = legalMoves(st).map((move) => {
+    const r = simulate(st, move, false);
+    return { move, r, score: scoreFor(r.st, me) };
+  });
+  first.sort((a, b) => b.score - a.score);
+  const look = CONFIG.ai.look;
+  for (const cand of first.slice(0, look)) {
+    const after = cand.r.st;
+    if (after.winner || isLight(after.current) === isLight(me)) continue;
+    let best = -Infinity;
+    let mine = cand.score;
+    for (const m of legalMoves(after)) {
+      const r2 = simulate(after, m, false);
+      const theirs = scoreFor(r2.st, after.current);
+      if (theirs > best) {
+        best = theirs;
+        mine = scoreFor(r2.st, me);
+      }
+    }
+    cand.score = mine;
+  }
+  return Kit.pickBest(first.slice(0, look).map(({ move, score }) => ({ move, score })), CONFIG.ai.mistake);
+}
+
+// ---------- flow ----------
+async function playAt(i) {
+  busy = true;
+  const myGame = gameId;
+  const p = S.current;
+  const r = simulate(S, i, true);
+  Kit.sfx.place();
+  S = { ...S, b: r.pre };
+  await Kit.anim.play(r.waves, CONFIG.waveMs, (k) => {
+    Kit.sfx.burst(p === DARK ? k - 9 : k);
+    if (k >= 1) Kit.popText($("chain"), `Chain x${k + 1}!`);
+    if (k === CONFIG.chainShakeAt) Kit.shake($("stage"));
+    if (k === CONFIG.chainBigShakeAt) Kit.shake($("stage"), true);
+  }, r.pre);
+  if (myGame !== gameId) return;
+  const newRound = r.st.round !== S.round;
+  S = r.st;
+  if (newRound && !S.winner) {
+    Kit.popText($("chain"), S.round % CONFIG.doubleEvery === 0 ? `Round ${S.round}: darkness places twice` : `Round ${S.round}`);
+    Kit.sfx.chime(S.round);
+  }
+  busy = false;
+  next();
+}
+
+async function next() {
+  hud();
+  if (S.winner) {
+    await Kit.sleep(800);
+    return finish();
+  }
+  if (S.current === DARK || autoplay) {
+    busy = true;
+    const myGame = gameId;
+    await Kit.sleep(CONFIG.aiDelayMs);
+    if (myGame !== gameId) return;
+    playAt(aiMove(S));
+  }
+}
+
+function finish() {
+  const won = S.winner === "light";
+  const lit = Math.round(share(S.b, isLight) * 100);
+  $("end-title").textContent = won ? (S.why === "dawn" ? "Morning has broken!" : "The darkness is gone!") : "The darkness spread";
+  $("end-sub").textContent = won
+    ? S.why === "dawn"
+      ? `Dawn broke with light on ${lit}% of the board.`
+      : `You cleared every shadow in round ${S.round}.`
+    : S.why === "dawn"
+      ? `Dawn came, but the light held only ${lit}%. You need more than ${Math.round(CONFIG.dawnShare * 100)}%.`
+      : `Darkness covered too much of the board in round ${S.round}.`;
+  $("end-verse").hidden = !won;
+  hero($("hero-end"), won ? "happy" : "sad");
+  (won ? Kit.sfx.win : Kit.sfx.lose)();
+  Kit.show("end");
+}
+
+function start() {
+  gameId++;
+  Kit.anim.cur = null;
+  busy = false;
+  S = newGame();
+  Kit.hide("intro");
+  Kit.hide("end");
+  resize();
+  next();
+}
+
+function hud() {
+  if (!S) return;
+  const p = S.current;
+  $("dot").style.color = PCOL[p];
+  const who = p === DARK ? "Darkness" : mode === "duo" ? `Player ${p + 1} (${PNAME[p]})` : `${PNAME[p]} light`;
+  $("status").textContent = S.winner ? (S.winner === "light" ? "The light wins!" : "Darkness wins") : `Round ${S.round}/${CONFIG.rounds} · ${p === DARK ? "Darkness moves…" : who}`;
+  const lit = share(S.b, isLight);
+  const dark = share(S.b, (o) => o === DARK);
+  $("light-fill").style.width = lit * 100 + "%";
+  $("dark-fill").style.width = dark * 100 + "%";
+  $("dark-mark").style.left = CONFIG.darkLoseShare * 100 + "%";
+  $("light-txt").textContent = `Light ${Math.round(lit * 100)}% · goal ${Math.round(CONFIG.dawnShare * 100)}%`;
+  $("dark-txt").textContent = `Dark ${Math.round(dark * 100)}% · max ${Math.round(CONFIG.darkLoseShare * 100)}%`;
+  // the sky brightens towards dawn
+  const k = (S.round - 1) / (CONFIG.rounds - 1);
+  const mix = (a, b) => Math.round(a + (b - a) * k);
+  document.body.style.backgroundColor = `rgb(${mix(10, 74)},${mix(14, 52)},${mix(30, 60)})`;
+}
+
+canvas.addEventListener("pointerdown", (e) => {
+  if (!S || busy || S.winner || S.current === DARK || autoplay) return;
+  const { row, col } = Kit.cellAt(canvas, e, geo.cell);
+  if (!Engine.inside(S.b, row, col)) return;
+  const i = row * S.b.cols + col;
+  if (isLegal(S, i)) playAt(i);
+  else Kit.sfx.bad();
+});
+
+// ---------- drawing ----------
+function resize() {
+  if (!S) return;
+  geo = Kit.fitBoard(canvas, $("stage"), CONFIG.cols, CONFIG.rows);
+}
+
+const SPOTS = {
+  1: [[0, 0]],
+  2: [[-0.2, 0], [0.2, 0.02]],
+  3: [[-0.2, 0.12], [0.2, 0.12], [0, -0.16]],
+  4: [[-0.2, -0.15], [0.2, -0.15], [-0.2, 0.17], [0.2, 0.17]],
+};
+
+// A little oil lamp with a flickering flame.
+function lamp(x, y, c, color, t) {
+  const s = c * 0.13;
+  const f = 1 + Math.sin(t * 13 + x) * 0.12;
+  const g = ctx.createRadialGradient(x, y - s * 0.6, 0, x, y - s * 0.6, s * 2.2);
+  g.addColorStop(0, color + "88");
+  g.addColorStop(1, color + "00");
+  Kit.circle(ctx, x, y - s * 0.6, s * 2.2, g);
+  Kit.ellipse(ctx, x, y + s * 0.45, s * 0.95, s * 0.42, 0, "#b9874a");
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(x, y - s * 1.6 * f);
+  ctx.quadraticCurveTo(x + s * 0.6, y - s * 0.3, x, y + s * 0.15);
+  ctx.quadraticCurveTo(x - s * 0.6, y - s * 0.3, x, y - s * 1.6 * f);
+  ctx.fill();
+  Kit.circle(ctx, x, y - s * 0.25, s * 0.22, "#fff8e0");
+}
+
+// A shadow puff with two dim eyes.
+function shade(x, y, c, t) {
+  const s = c * 0.17;
+  const w = Math.sin(t * 3 + x) * s * 0.1;
+  for (const [dx, dy, r] of [[-0.5, 0.1, 0.65], [0.45, 0.15, 0.6], [0, -0.3, 0.7], [0, 0.25, 0.75]]) Kit.circle(ctx, x + dx * s + w, y + dy * s, r * s, "#4a3470");
+  for (const [dx, dy, r] of [[-0.3, -0.25, 0.35], [0.2, -0.4, 0.3]]) Kit.circle(ctx, x + dx * s + w, y + dy * s, r * s, "#5f4790");
+  Kit.circle(ctx, x - s * 0.28, y - s * 0.02, s * 0.15, "#e6dcff");
+  Kit.circle(ctx, x + s * 0.28, y - s * 0.02, s * 0.15, "#e6dcff");
+}
+
+function piece(x, y, c, who, t) {
+  if (who === DARK) shade(x, y, c, t);
+  else lamp(x, y, c, PCOL[who], t);
+}
+
+function draw(now) {
+  Kit.anim.step(now);
+  const t = now / 1000;
+  ctx.setTransform(geo.dpr, 0, 0, geo.dpr, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (!S) return requestAnimationFrame(draw);
+  const a = Kit.anim.cur;
+  const b = a ? Kit.anim.base() : S.b;
+  const wave = a && a.start !== null ? a.waves[a.i] : null;
+  const counts = b.count.slice();
+  if (wave) for (const { from } of wave.bursts) counts[from] = Math.max(0, counts[from] - cap(b, from));
+  const c = geo.cell;
+  for (let i = 0; i < b.size; i++) {
+    const x = Engine.colOf(b, i) * c;
+    const y = Engine.rowOf(b, i) * c;
+    const chk = (Engine.rowOf(b, i) + Engine.colOf(b, i)) % 2;
+    const o = b.owner[i];
+    ctx.fillStyle = o === DARK ? (chk ? "#1b1428" : "#21182f") : o >= 0 ? (chk ? "#3b4a3a" : "#425240") : chk ? "#26332b" : "#2b3a31";
+    ctx.fillRect(x, y, c, c);
+    if (isLight(o)) {
+      ctx.fillStyle = PCOL[o] + "26";
+      ctx.fillRect(x, y, c, c);
+    }
+  }
+  for (let i = 0; i < b.size; i++) {
+    const n = counts[i];
+    if (n <= 0 || b.owner[i] < 0) continue;
+    const nervous = n >= cap(b, i) - 1;
+    const k = Math.min(n, 4);
+    for (let s = 0; s < k; s++) {
+      const [dx, dy] = SPOTS[k][s];
+      const jx = nervous ? Math.sin(t * 40 + i * 3 + s) * c * 0.02 : 0;
+      piece((Engine.colOf(b, i) + 0.5 + dx) * c + jx, (Engine.rowOf(b, i) + 0.5 + dy) * c, c, b.owner[i], t + i + s);
+    }
+  }
+  if (wave) {
+    const p = Kit.anim.t(now);
+    const e = 1 - (1 - p) * (1 - p);
+    for (const { from, to, who } of wave.bursts) {
+      const fx = (Engine.colOf(b, from) + 0.5) * c;
+      const fy = (Engine.rowOf(b, from) + 0.5) * c;
+      for (const d of to) {
+        const tx = (Engine.colOf(b, d) + 0.5) * c;
+        const ty = (Engine.rowOf(b, d) + 0.5) * c;
+        piece(fx + (tx - fx) * e, fy + (ty - fy) * e - Math.sin(Math.PI * p) * c * 0.3, c, who, t);
+      }
+    }
+  }
+  ctx.strokeStyle = S.current === DARK ? "rgba(120,90,170,0.6)" : PCOL[S.current] + "88";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let col = 0; col <= b.cols; col++) {
+    const x = Math.min(Math.max(col * c, 0.75), geo.w - 0.75);
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, geo.h);
+  }
+  for (let row = 0; row <= b.rows; row++) {
+    const y = Math.min(Math.max(row * c, 0.75), geo.h - 0.75);
+    ctx.moveTo(0, y);
+    ctx.lineTo(geo.w, y);
+  }
+  ctx.stroke();
+  requestAnimationFrame(draw);
+}
+
+function hero(cv, mood) {
+  const g = Kit.sharp(cv, 240, 130);
+  const sun = g.createRadialGradient(120, 130, 10, 120, 130, 120);
+  sun.addColorStop(0, mood === "sad" ? "rgba(90,63,134,0.6)" : "rgba(255,200,110,0.7)");
+  sun.addColorStop(1, "rgba(255,200,110,0)");
+  g.fillStyle = sun;
+  g.fillRect(0, 0, 240, 130);
+  Kit.drawLamb(g, 120, 72, 108, { mood });
+}
+
+function renderMode() {
+  for (const btn of $("mode").querySelectorAll("button")) btn.classList.toggle("on", btn.dataset.mode === mode);
+}
+$("mode").addEventListener("click", (e) => {
+  const m = e.target.closest("button")?.dataset.mode;
+  if (!m) return;
+  mode = m;
+  renderMode();
+});
+$("play").addEventListener("click", start);
+$("again").addEventListener("click", start);
+$("restart").addEventListener("click", () => S && start());
+$("menu").addEventListener("click", () => {
+  gameId++;
+  Kit.anim.cur = null;
+  busy = false;
+  Kit.hide("end");
+  Kit.show("intro");
+});
+Kit.muteButton($("mute"));
+new ResizeObserver(resize).observe($("stage"));
+
+renderMode();
+hero($("hero-intro"), "happy");
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>
