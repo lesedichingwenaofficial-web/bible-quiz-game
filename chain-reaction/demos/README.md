@@ -30,6 +30,7 @@ Eight takes on demo 8, all on one shared real-time core (`src/_stampede.js`) so 
 | # | Version | Idea |
 |---|---|---|
 | S1 | Stampede+ | 2–4 players or AI: sheep pens, chain rewards, special sheep, optional 2v2 teams and mystery boxes |
+| S2 | Sheep Saga | Solo level map: 15 levels with a sheep budget, goals, rocks, thorns, gates, lost sheep, night, the wolf and a boss rock. Levels are text maps in `LEVELS` |
 
 Balance numbers sit in a `CONFIG` object at the top of each file.
 

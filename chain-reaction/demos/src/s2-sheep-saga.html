@@ -1,0 +1,525 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Sheep Saga</title>
+<meta name="description" content="cheekyfoundlamb Stampede S2: 15 real-time Chain Reaction levels with rocks, thorns, gates, lost sheep, night and the wolf." />
+<style>
+/*@KITCSS*/
+/*@STAMPEDECSS*/
+#hero-intro { display: none; }
+.map { position: relative; height: 330px; margin: 4px auto 0; width: 100%; max-width: 330px; }
+.map canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.node {
+  position: absolute; width: 50px; height: 50px; margin: -25px 0 0 -25px; border-radius: 50%; padding: 0;
+  background: var(--sun); color: #2a2010; font-weight: 900; font-size: 1.1rem; box-shadow: 0 4px 0 rgba(0,0,0,0.35);
+}
+.node.locked { background: #50605a; color: #9fb0a6; box-shadow: none; }
+.node.done { background: #fffaf0; }
+.node.sel { outline: 4px solid #fff; outline-offset: 3px; }
+.node .st { position: absolute; left: 50%; top: 50px; transform: translateX(-50%); font-size: 0.7rem; letter-spacing: -1px; color: var(--sun); white-space: nowrap; }
+.hud .obj { display: flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 12px; background: var(--meadow-2); font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+.hud .obj.ok { background: #2fd38a; color: #10291a; }
+.stars { font-size: 2.6rem; color: var(--sun); letter-spacing: 4px; }
+.stars .off, .node .st .off { color: #50605a; }
+</style>
+</head>
+<body>
+<!--@STAMPEDEHTML-->
+<script>
+/*@ENGINE*/
+/*@KIT*/
+/*@STAMPEDE*/
+
+// ======================= S2: SHEEP SAGA =======================
+const CONFIG = {
+  wolfRefill: 1.9, // seconds per sheep for the wolf's pen
+  thornSpreadSecs: 6, // a thorn spreads if none is cleared for this long
+  rockSpecialChance: 0.35, // a broken rock loads a special this often
+  finaleGap: 260, // ms between leftover sheep in the finale
+  finaleMax: 16, // leftover sheep that fly in; the rest just score
+  points: { burst: 10, hit: 20, rock: 60, thorn: 30, gate: 30, wake: 50, leftover: 500 },
+  stars: [0.15, 0.35], // 2 and 3 stars: share of the sheep budget left over (each one is worth points.leftover)
+  fill: 0.5, // default share of empty squares that start with your sheep
+};
+
+// Level maps, 9 rows of 6. Key: . empty  R rock (2 hits)  1-5 rock with that many hits
+// T thorn  G gate  Z sleeping sheep  B boss rock (a 2x2 block; set boss: hits)
+// Goals: rocks (break them all), thorns (clear them all), wake: N, chain: N, own: percent, boss.
+// fill: share of empty squares that start with some of your sheep (like a full Candy Crush board).
+const LEVELS = [
+  { budget: 22, goals: { chain: 5 }, map: "...... ...... ...... ...... ...... ...... ...... ...... ......" },
+  { budget: 26, goals: { own: 70 }, fill: 0.3, map: "...... ...... ...... ...... ...... ...... ...... ...... ......" },
+  { budget: 30, goals: { rocks: 1 }, map: "...... ...... .1..1. ...... ...... ...... .1..1. ...... ......" },
+  { budget: 48, goals: { rocks: 1 }, map: "...... ..22.. ...... .3..3. ...... .3..3. ...... ..22.. ......" },
+  { budget: 36, goals: { wake: 6 }, map: "Z....Z ...... ...... ..ZZ.. ...... ...... ...... ...... Z....Z" },
+  { budget: 44, goals: { wake: 4 }, map: "...... .GGGG. .GZZG. .GGGG. ...... ...... Z....Z ...... ......" },
+  { budget: 38, goals: { thorns: 1 }, map: "...... ...... ..TT.. ...... T....T ...... ..TT.. ...... ......" },
+  { budget: 38, goals: { wake: 6 }, night: true, map: "Z..... ....Z. ...... .Z.... ...... ....Z. ...... .Z.... .....Z" },
+  { budget: 46, goals: { rocks: 1, chain: 10 }, map: "T....T ...... .2..2. ...... ..33.. ...... .2..2. ...... T....T" },
+  { budget: 34, goals: { own: 65 }, fill: 0.3, wolf: "easy", map: "...... ...... ...... ...... ...... ...... ...... ...... ......" },
+  { budget: 46, goals: { rocks: 1 }, wolf: "easy", map: "...... .2..2. ...... ..33.. ...... ..33.. ...... .2..2. ......" },
+  { budget: 46, goals: { thorns: 1, wake: 2 }, wolf: "easy", map: "..TT.. ...... GG..GG ZG..GZ ...... T....T ...... ...... ......" },
+  { budget: 48, goals: { wake: 6 }, wolf: "normal", night: true, map: "...... Z....Z ...... ..R... Z....Z ...R.. ...... Z....Z ......" },
+  { budget: 56, goals: { rocks: 1, chain: 10 }, wolf: "normal", map: "T....T .G..G. ..33.. Z....Z ..44.. Z....Z ..33.. .G..G. T....T" },
+  { budget: 46, goals: { boss: 1 }, boss: 15, wolf: "normal", map: "...... .2..2. ...... ..BB.. ..BB.. ...... .2..2. ...... ......" },
+];
+const ROCK_DEFAULT = 2;
+const WOLF = "#5d6170";
+const SLEEP = "#c9c9d4";
+const ICONS = { rocks: "🪨", thorns: "🌵", wake: "💤", chain: "⚡", own: "🟩", boss: "🗿" };
+
+const loadProgress = () => {
+  try {
+    return JSON.parse(localStorage.getItem("cfl-s2-progress")) || { stars: [] };
+  } catch {
+    return { stars: [] };
+  }
+};
+let progress = loadProgress();
+const saveProgress = () => {
+  try {
+    localStorage.setItem("cfl-s2-progress", JSON.stringify(progress));
+  } catch {}
+};
+const unlocked = (s) => (s.unlockAll ? LEVELS.length : Math.min(LEVELS.length, progress.stars.filter((x) => x > 0).length + 1));
+
+// ---------- level setup ----------
+function buildLevel(G, n) {
+  const L = LEVELS[n - 1];
+  const b = G.b;
+  const rows = L.map.split(" ");
+  const D = (G.data = { lvl: n, L, budget: L.budget, score: 0, maxChain: 0, woke: 0, quiet: 0, thornAt: 0, finale: null, won: false, maxHp: [], bossHp: L.boss || 0, bossCells: [] });
+  for (let r = 0; r < b.rows; r++)
+    for (let c = 0; c < b.cols; c++) {
+      const i = r * b.cols + c;
+      const ch = rows[r][c];
+      if (ch === "R" || (ch >= "1" && ch <= "5")) {
+        b.kind[i] = "rock";
+        b.hp[i] = ch === "R" ? ROCK_DEFAULT : Number(ch);
+      } else if (ch === "T") b.kind[i] = "thorn";
+      else if (ch === "G") b.kind[i] = "gate";
+      else if (ch === "Z") b.kind[i] = "sleep";
+      else if (ch === "B") {
+        b.kind[i] = "boss";
+        D.bossCells.push(i);
+      }
+      else if (Math.random() < (L.fill ?? CONFIG.fill)) {
+        b.owner[i] = 0;
+        b.count[i] = 1 + Math.floor(Math.random() * (Engine.capacity(b, i) - 1));
+      }
+      D.maxHp[i] = b.hp[i];
+    }
+  D.thornAt = performance.now() + CONFIG.thornSpreadSecs * 1000;
+}
+
+const count = (G, kind) => G.b.kind.filter((k) => k === kind).length;
+const playable = (G) => G.b.kind.filter((k) => !k).length;
+const ownPct = (G) => Math.floor((100 * Stampede.cellsOf(0)) / Math.max(1, playable(G)));
+
+function goalState(G) {
+  const D = G.data;
+  const out = [];
+  for (const [g, v] of Object.entries(D.L.goals)) {
+    if (g === "rocks") out.push([g, count(G, "rock"), count(G, "rock") === 0]);
+    if (g === "thorns") out.push([g, count(G, "thorn"), count(G, "thorn") === 0]);
+    if (g === "wake") out.push([g, `${Math.min(D.woke, v)}/${v}`, D.woke >= v]);
+    if (g === "chain") out.push([g, `${Math.min(D.maxChain, v)}/${v}`, D.maxChain >= v]);
+    if (g === "own") out.push([g, `${Math.min(ownPct(G), v)}/${v}%`, ownPct(G) >= v]);
+    if (g === "boss") out.push([g, D.bossHp, D.bossHp <= 0]);
+  }
+  return out;
+}
+
+// Keep each cursor on its square when a rock leaves or joins the path.
+function rebuildPath(G) {
+  const at = G.players.map((pl) => Stampede.cursorCell(pl));
+  Stampede.buildPath();
+  G.players.forEach((pl, k) => {
+    const p = G.path.indexOf(at[k]);
+    if (p >= 0) pl.pos = p;
+  });
+}
+
+// A sheep (from a burst or a special) arriving on a blocker. True when the blocker took it.
+function hitBlocker(G, i, who) {
+  const b = G.b;
+  const D = G.data;
+  const kind = b.kind[i];
+  if (!kind) return false;
+  const pl = G.players[who];
+  const mine = who === 0;
+  const fx = (color) => G.effects.push({ type: "hit", cells: [i], color, t0: performance.now() });
+  if (kind === "rock") {
+    b.hp[i]--;
+    if (mine) D.score += CONFIG.points.hit;
+    Kit.tone(140 + b.hp[i] * 30, 0.08, "square", 0.05);
+    fx("#ffffff");
+    if (b.hp[i] <= 0) {
+      b.kind[i] = null;
+      if (mine) D.score += CONFIG.points.rock;
+      Kit.tone(90, 0.25, "sawtooth", 0.08, 50);
+      if (Math.random() < CONFIG.rockSpecialChance) Stampede.loadSpecial(pl, D.maxHp[i] >= 3 ? "bomb" : "line");
+      rebuildPath(G);
+    }
+  } else if (kind === "boss") {
+    D.bossHp--;
+    if (mine) D.score += CONFIG.points.hit;
+    Kit.tone(70 + D.bossHp * 6, 0.1, "square", 0.06);
+    for (const k of D.bossCells) fx("#ffffff");
+    if (D.bossHp <= 0) {
+      for (const k of D.bossCells) b.kind[k] = null;
+      D.score += CONFIG.points.rock * 5;
+      Stampede.shout(G.players[0], "Crumbled!", 1.6);
+      Kit.shake(Kit.$("stage"), true);
+      rebuildPath(G);
+    }
+  } else if (kind === "thorn") {
+    b.kind[i] = null;
+    if (mine) D.score += CONFIG.points.thorn;
+    D.thornAt = performance.now() + CONFIG.thornSpreadSecs * 1000;
+    Kit.tone(700, 0.08, "triangle", 0.06, 300);
+    fx("#7bd36b");
+  } else if (kind === "gate") {
+    b.kind[i] = null;
+    if (mine) D.score += CONFIG.points.gate;
+    Kit.tone(220, 0.12, "square", 0.06, 120);
+    fx("#c08a4a");
+  } else if (kind === "sleep") {
+    // he wakes up and joins whoever reached him
+    b.kind[i] = null;
+    b.owner[i] = who;
+    b.count[i] = 1;
+    if (mine) {
+      D.woke++;
+      D.score += CONFIG.points.wake;
+      Kit.sfx.bleat(1.3);
+    }
+    fx(pl.color);
+  }
+  return true;
+}
+
+function spreadThorn(G) {
+  const b = G.b;
+  const thorns = [];
+  for (let i = 0; i < b.size; i++) if (b.kind[i] === "thorn") thorns.push(i);
+  for (const t of thorns.sort(() => Math.random() - 0.5)) {
+    const free = Engine.neighbours(b, t).filter((k) => !b.kind[k] && b.owner[k] === -1);
+    if (free.length) {
+      b.kind[free[Math.floor(Math.random() * free.length)]] = "thorn";
+      Kit.tone(160, 0.15, "sawtooth", 0.05, 110);
+      return;
+    }
+  }
+}
+
+// The Sugar-Crush moment: leftover sheep fly in as Line and Bomb sheep and go off one by one.
+function finaleStep(G, now) {
+  const D = G.data;
+  const b = G.b;
+  if (now < D.finale.next || D.budget <= 0) return;
+  D.finale.next = now + CONFIG.finaleGap;
+  D.budget--;
+  D.score += CONFIG.points.leftover;
+  if (D.finale.flown >= CONFIG.finaleMax) return;
+  D.finale.flown++;
+  const spots = [];
+  for (let i = 0; i < b.size; i++) if (!b.kind[i] && !b.tag[i] && (b.owner[i] === 0 || b.owner[i] === -1)) spots.push(i);
+  if (!spots.length) return;
+  const i = spots[Math.floor(Math.random() * spots.length)];
+  b.owner[i] = 0;
+  b.count[i] = Engine.capacity(b, i);
+  b.tag[i] = Math.random() < 0.5 ? { type: "line", dir: Math.random() < 0.5 ? "row" : "col" } : { type: "bomb", dir: null };
+  Kit.tone(500 + D.finale.flown * 40, 0.12, "triangle", 0.07, 900 + D.finale.flown * 40);
+}
+
+function starsFor(D) {
+  const left = D.finale.left / D.L.budget;
+  return left >= CONFIG.stars[1] ? 3 : left >= CONFIG.stars[0] ? 2 : 1;
+}
+
+// ---------- drawing ----------
+function eyesAt(g, x, y, r, look, anger) {
+  for (const side of [-1, 1]) {
+    const ex = x + side * r * 0.32;
+    Kit.circle(g, ex, y, r * 0.2, "#fff");
+    const dx = look.x - ex;
+    const dy = look.y - y;
+    const d = Math.hypot(dx, dy) || 1;
+    Kit.circle(g, ex + (dx / d) * r * 0.08, y + (dy / d) * r * 0.08, r * 0.1, "#1a1622");
+    // brows tilt in harder as the rock takes hits
+    g.strokeStyle = "#2e2a33";
+    g.lineWidth = r * 0.09;
+    g.beginPath();
+    g.moveTo(ex - side * r * 0.2, y - r * (0.3 - anger * 0.06));
+    g.lineTo(ex + side * r * 0.18, y - r * (0.3 + anger * 0.06));
+    g.stroke();
+  }
+}
+
+function drawRock(g, cx, cy, r, hp, maxHp, look) {
+  Kit.ellipse(g, cx, cy + r * 0.08, r * 0.95, r * 0.8, 0, "#7d828d");
+  Kit.ellipse(g, cx - r * 0.25, cy - r * 0.2, r * 0.45, r * 0.3, -0.3, "#9599a3");
+  const hits = maxHp - hp;
+  g.strokeStyle = "#3e4048";
+  g.lineWidth = Math.max(1.5, r * 0.07);
+  for (let k = 0; k < hits; k++) {
+    const a = k * 2.1 + 0.6;
+    g.beginPath();
+    g.moveTo(cx + Math.cos(a) * r * 0.85, cy + Math.sin(a) * r * 0.7);
+    g.lineTo(cx + Math.cos(a) * r * 0.45, cy + Math.sin(a + 0.4) * r * 0.4);
+    g.lineTo(cx + Math.cos(a + 0.3) * r * 0.2, cy + Math.sin(a) * r * 0.25);
+    g.stroke();
+  }
+  eyesAt(g, cx, cy - r * 0.05, r, look, Math.min(4, hits + (maxHp > 3 ? 1 : 0)));
+  // remaining hits as pips
+  if (hp > 5) {
+    g.fillStyle = "#ffcf4a";
+    g.font = `900 ${Math.round(r * 0.32)}px system-ui`;
+    g.textAlign = "center";
+    g.fillText(hp, cx, cy + r * 0.68);
+    g.textAlign = "start";
+  } else for (let k = 0; k < hp; k++) Kit.circle(g, cx - ((hp - 1) / 2) * r * 0.22 + k * r * 0.22, cy + r * 0.6, r * 0.07, "#ffcf4a");
+}
+
+function drawThorn(g, cx, cy, r, t) {
+  g.strokeStyle = "#2c5a2a";
+  g.lineWidth = r * 0.12;
+  for (let k = 0; k < 9; k++) {
+    const a = (k / 9) * Math.PI * 2 + Math.sin(t * 2) * 0.05;
+    g.beginPath();
+    g.moveTo(cx, cy);
+    g.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+    g.stroke();
+  }
+  Kit.circle(g, cx, cy, r * 0.55, "#3f7a35");
+  for (let k = 0; k < 5; k++) {
+    const a = (k / 5) * Math.PI * 2 + 0.3;
+    Kit.circle(g, cx + Math.cos(a) * r * 0.35, cy + Math.sin(a) * r * 0.35, r * 0.08, "#c94a6a");
+  }
+}
+
+function drawGate(g, x, y, c) {
+  g.fillStyle = "#8a5a2b";
+  for (const px of [0.18, 0.5, 0.82]) g.fillRect(x + c * px - c * 0.05, y + c * 0.15, c * 0.1, c * 0.75);
+  g.fillStyle = "#b07a40";
+  for (const py of [0.3, 0.62]) g.fillRect(x + c * 0.08, y + c * py, c * 0.84, c * 0.1);
+}
+
+function drawSleeper(g, cx, cy, r, t) {
+  Kit.drawSheep(g, cx, cy, r, SLEEP);
+  g.fillStyle = "#e8f0ff";
+  g.font = `900 ${Math.round(r * 0.9)}px system-ui`;
+  g.fillText("z", cx + r * 0.8, cy - r * 0.9 - Math.sin(t * 2) * r * 0.2);
+}
+
+// ---------- start screen: the level map ----------
+function renderMap(setup) {
+  const box = document.createElement("div");
+  box.className = "map";
+  const cv = document.createElement("canvas");
+  box.append(cv);
+  const W = 330;
+  const H = 330;
+  const spot = (k) => {
+    const row = Math.floor(k / 3);
+    const col = row % 2 ? 2 - (k % 3) : k % 3;
+    return [55 + col * 110 + (row % 2 ? -10 : 10), H - 32 - row * 66];
+  };
+  requestAnimationFrame(() => {
+    const g = Kit.sharp(cv, box.clientWidth, H);
+    const sx = box.clientWidth / W;
+    g.strokeStyle = "#5e8f4f";
+    g.lineWidth = 16;
+    g.lineCap = "round";
+    g.lineJoin = "round";
+    g.beginPath();
+    for (let k = 0; k < LEVELS.length; k++) {
+      const [x, y] = spot(k);
+      k ? g.lineTo(x * sx, y) : g.moveTo(x * sx, y);
+    }
+    g.stroke();
+    g.setLineDash([6, 10]);
+    g.strokeStyle = "#cfe8b8";
+    g.lineWidth = 3;
+    g.stroke();
+  });
+  const open = unlocked(setup);
+  LEVELS.forEach((L, k) => {
+    const n = k + 1;
+    const [x, y] = spot(k);
+    const btn = document.createElement("button");
+    const stars = progress.stars[k] || 0;
+    btn.className = "node" + (n > open ? " locked" : stars ? " done" : "") + (setup.lvl === n ? " sel" : "");
+    btn.style.left = `${(x / W) * 100}%`;
+    btn.style.top = `${y}px`;
+    btn.innerHTML = `${n > open ? "🔒" : n}<span class="st">${n <= open ? "★".repeat(stars) + `<span class="off">${"★".repeat(3 - stars)}</span>` : ""}</span>`;
+    btn.setAttribute("aria-label", `Level ${n}`);
+    btn.addEventListener("click", () => {
+      if (n > open) return;
+      setup.lvl = n;
+      Stampede.renderOptions();
+    });
+    box.append(btn);
+  });
+  Kit.$("opts").append(box);
+}
+
+// ---------- the version ----------
+Stampede.run({
+  key: "s2",
+  title: "Sheep Saga",
+  how: ["Tap to drop a sheep. Break rocks, clear thorns, wake lost sheep.", "Reach the goals at the top before your sheep run out."],
+  solo: true,
+  setupDefaults: { lvl: 1, unlockAll: false },
+  players(s) {
+    const L = LEVELS[s.lvl - 1];
+    const list = [{ seat: 0, kind: "human" }];
+    if (L.wolf) list.push({ seat: -1, kind: "ai", level: L.wolf, color: WOLF, name: "Wolf", pos: 30 });
+    return list;
+  },
+  options(ui, s) {
+    s.lvl = Math.min(Math.max(1, s.lvl || 1), unlocked(s));
+    renderMap(s);
+    ui.seg("Unlock all", "unlockAll", [[false, "Off"], [true, "On"]]);
+    Kit.$("play").textContent = `Play level ${s.lvl}`;
+  },
+  onPlay(start) {
+    progress = loadProgress();
+    start();
+  },
+  onAgain(start) {
+    const D = Stampede.G?.data;
+    if (D?.won && Stampede.setup.lvl < LEVELS.length) Stampede.setup.lvl++;
+    start();
+  },
+  onMenu() {
+    Kit.$("again").textContent = "Play again";
+  },
+  hooks: {
+    setup(G, s) {
+      buildLevel(G, s.lvl);
+      Kit.$("hud").textContent = "";
+    },
+    noElimination: true,
+    roundSecs: () => Infinity,
+    timerText: (G) => `🐑 ${G.data.budget}`,
+    inPath: (G, i) => G.b.kind[i] !== "rock" && G.b.kind[i] !== "boss",
+    refillMs: (G, pl) => (pl.id === 1 ? CONFIG.wolfRefill * 1000 : undefined),
+    blocked: (G, i) => !!G.b.kind[i],
+    afterDrop(G, pl) {
+      if (pl.id === 0) G.data.budget--;
+    },
+    onWaste(G, pl) {
+      if (pl.id === 0) G.data.budget--;
+    },
+    land: (G, b, from, to, who) => hitBlocker(G, to, who),
+    specialHit: (G, k, who) => hitBlocker(G, k, who),
+    onChain(G, pl, prev, now) {
+      if (pl.id === 0) G.data.maxChain = Math.max(G.data.maxChain, now);
+    },
+    afterWave(G, now, bursts) {
+      const D = G.data;
+      const p0 = G.players[0];
+      // the finale's fireworks are for show: leftover sheep score a flat bonus instead
+      if (!D.finale) D.score += bursts[0] * CONFIG.points.burst * Math.min(10, Math.max(1, p0.chain));
+      D.quiet = bursts[0] ? 0 : D.quiet + 1; // only your own chains hold the ending back
+      if (D.budget <= 0 && !D.emptyAt) D.emptyAt = now;
+    },
+    // the player's AI values squares next to blockers
+    aiValue(G, pl, i) {
+      if (pl.id !== 0) return 0;
+      const b = G.b;
+      const near = Engine.neighbours(b, i).filter((k) => b.kind[k]).length;
+      const bursts = b.count[i] + 1 >= Engine.capacity(b, i) && (b.owner[i] === -1 || b.owner[i] === 0);
+      return near * (bursts ? 4 : 0.6);
+    },
+    update(G, now) {
+      const D = G.data;
+      const p0 = G.players[0];
+      if (D.budget <= 0 && !D.finale) p0.pen = 0;
+      // thorns creep if left alone
+      if (now >= D.thornAt) {
+        D.thornAt = now + CONFIG.thornSpreadSecs * 1000;
+        if (!D.finale) spreadThorn(G);
+      }
+      if (D.finale) finaleStep(G, now);
+      const goals = goalState(G);
+      const html = goals.map(([g, v, ok]) => `<span class="obj${ok ? " ok" : ""}">${ICONS[g]} ${ok ? "✓" : v}</span>`).join("");
+      if (html !== D.hudHtml) {
+        D.hudHtml = html;
+        Kit.$("hud").innerHTML = html;
+      }
+      if (!D.finale && goals.every(([, , ok]) => ok)) {
+        // win: the leftover sheep celebrate
+        D.finale = { next: now + 500, flown: 0, left: D.budget };
+        p0.kind = "finale";
+        for (const pl of G.players) if (pl.id !== 0) pl.observer = true;
+        Stampede.shout(p0, "Hallelujah!", 1.85);
+        [523, 659, 784, 1047, 1319].forEach((f, k) => Kit.tone(f, 0.25, "triangle", 0.08, 0, k * 0.08));
+      }
+    },
+    shift(G, d) {
+      G.data.thornAt += d;
+      if (G.data.emptyAt) G.data.emptyAt += d;
+      if (G.data.finale) G.data.finale.next += d;
+    },
+    endCheck(G) {
+      const D = G.data;
+      if (D.finale) {
+        if (D.budget > 0 || D.quiet < 5) return null;
+        D.won = true;
+        const stars = starsFor(D);
+        progress.stars[D.lvl - 1] = Math.max(progress.stars[D.lvl - 1] || 0, stars);
+        saveProgress();
+        return { title: `Level ${D.lvl} done!`, sub: `Score ${D.score}`, color: "#ffcf4a", stars };
+      }
+      if (D.budget <= 0 && (D.quiet >= 7 || performance.now() - D.emptyAt > 4000)) return { title: "Out of sheep!", sub: "So close. One more go?", color: "#ff8a8a", sad: true };
+      return null;
+    },
+    endExtra(G, res, el) {
+      const D = G.data;
+      const best = progress.stars[D.lvl - 1] || 0;
+      if (res.stars) el.innerHTML = `<div class="stars">${"★".repeat(res.stars)}<span class="off">${"★".repeat(3 - res.stars)}</span></div>`;
+      else el.innerHTML = `<div class="stars"><span class="off">★★★</span></div>`;
+      Kit.$("again").textContent = D.won ? (D.lvl < LEVELS.length ? `Next: level ${D.lvl + 1}` : "Play again") : "Retry";
+      if (D.won && D.lvl === LEVELS.length && best) Kit.$("end-sub").textContent = `Score ${D.score}. The pasture is saved!`;
+    },
+    drawCell(ctx, G, i, x, y, c, t) {
+      const kind = G.b.kind[i];
+      if (!kind) return false;
+      const look = (() => {
+        const k = Stampede.cursorCell(G.players[0]);
+        return { x: (Engine.colOf(G.b, k) + 0.5) * c, y: (Engine.rowOf(G.b, k) + 0.5) * c };
+      })();
+      if (kind === "rock") drawRock(ctx, x + c / 2, y + c / 2, c * 0.4, G.b.hp[i], G.data.maxHp[i], look);
+      else if (kind === "thorn") drawThorn(ctx, x + c / 2, y + c / 2, c * 0.38, t);
+      else if (kind === "gate") drawGate(ctx, x, y, c);
+      else if (kind === "sleep") drawSleeper(ctx, x + c / 2, y + c / 2 + c * 0.05, c * 0.2, t);
+      return true; // boss cells are drawn as one big rock over the top
+    },
+    drawOver(ctx, G, c, t) {
+      const D = G.data;
+      const b = G.b;
+      const p0 = Stampede.cursorCell(G.players[0]);
+      const look = { x: (Engine.colOf(b, p0) + 0.5) * c, y: (Engine.rowOf(b, p0) + 0.5) * c };
+      if (D.bossHp > 0 && D.bossCells.length) {
+        const r0 = Math.min(...D.bossCells.map((k) => Engine.rowOf(b, k)));
+        const c0 = Math.min(...D.bossCells.map((k) => Engine.colOf(b, k)));
+        drawRock(ctx, (c0 + 1) * c, (r0 + 1) * c + Math.sin(t * 3) * 1.5, c * 0.85, D.bossHp, D.L.boss, look);
+      }
+      if (D.L.night && !D.finale) {
+        const grad = ctx.createRadialGradient(look.x, look.y, c * 1.1, look.x, look.y, c * 2.4);
+        grad.addColorStop(0, "rgba(6,10,24,0)");
+        grad.addColorStop(1, "rgba(6,10,24,0.93)");
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, b.cols * c, b.rows * c);
+      }
+    },
+  },
+});
+</script>
+</body>
+</html>

@@ -13,6 +13,7 @@ const Stampede = (() => {
   const SHOUTS = [[5, "Nice!", 1], [8, "Baa-rilliant!", 1.25], [12, "Overflowing!", 1.5], [16, "Hallelujah!", 1.85]];
   const LOCK_MS = 1000;
   const WAVE_MS = 140;
+  const MAX_RUN = 60; // waves in a row before a runaway cascade settles
   const NEUTRAL = 90; // owner id for grey neutral sheep: they never burst, and a burst claims them
   // AI skill: how picky it is, how often it taps anyway, how often it fumbles, reaction time
   const AI = {
@@ -204,6 +205,12 @@ const Stampede = (() => {
     };
     const { waves } = Engine.resolve(G.b, rules, false);
     G.flights = waves.length ? waves[0].bursts.map((x) => ({ ...x, t0: now })) : [];
+    // a board packed full can burst forever: after MAX_RUN waves in a row, let it settle
+    G.run = waves.length ? (G.run || 0) + 1 : 0;
+    if (G.run > MAX_RUN) {
+      for (let i = 0; i < G.b.size; i++) if (G.b.owner[i] >= 0 && !G.b.rock[i]) G.b.count[i] = Math.min(G.b.count[i], Engine.capacity(G.b, i) - 1);
+      G.run = 0;
+    }
     for (const sp of pending) special(sp, now);
     chains(bursts, now);
     H.afterWave?.(G, now, bursts);
@@ -444,8 +451,11 @@ const Stampede = (() => {
   }
 
   // ---------- shouts and moods ----------
+  const lastShout = new Map(); // one shout per player on screen; a new one replaces it
   function shout(pl, text, scale = 1, color) {
+    lastShout.get(pl?.id ?? -1)?.remove();
     const el = document.createElement("div");
+    lastShout.set(pl?.id ?? -1, el);
     el.className = "shout" + (pl && FLIPPED[pl.seat] ? " flip" : "");
     el.textContent = text;
     el.style.color = color ?? pl?.color ?? "#ffcf4a";

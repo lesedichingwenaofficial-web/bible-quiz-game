@@ -1,0 +1,2270 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Sheep Saga</title>
+<meta name="description" content="cheekyfoundlamb Stampede S2: 15 real-time Chain Reaction levels with rocks, thorns, gates, lost sheep, night and the wolf." />
+<style>
+/* ===== shared shell styles ===== */
+:root {
+  --night: #13201a;
+  --meadow: #1d3327;
+  --meadow-2: #274232;
+  --cream: #fbf4e6;
+  --muted: #b5c4b4;
+  --sun: #ffcf4a;
+  --wool: #ffffff;
+  --danger: #ff6b6b;
+  --round: ui-rounded, "SF Pro Rounded", "Nunito", "Segoe UI", system-ui, sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--night);
+  color: var(--cream);
+  font-family: var(--round);
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+}
+[hidden] { display: none !important; }
+button { font: inherit; color: inherit; border: 0; cursor: pointer; touch-action: manipulation; }
+button:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
+.app {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: env(safe-area-inset-top, 0px) max(10px, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px) max(10px, env(safe-area-inset-left, 0px));
+}
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 2px 6px;
+  min-height: 52px;
+}
+.status { display: flex; align-items: center; gap: 8px; min-width: 0; font-weight: 800; font-size: 1.02rem; }
+.status .dot { width: 18px; height: 18px; border-radius: 50%; flex: none; box-shadow: 0 0 10px currentColor; background: currentColor; }
+.status .txt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.btns { display: flex; gap: 6px; flex: none; }
+.ib {
+  min-width: 44px; height: 44px; padding: 0 10px; border-radius: 14px;
+  background: var(--meadow); font-size: 1.05rem; font-weight: 800;
+}
+.ib:disabled { opacity: 0.35; cursor: default; }
+.ib.on { background: var(--sun); color: #2a2010; }
+.stage { flex: 1; min-height: 0; position: relative; display: flex; align-items: center; justify-content: center; padding: 4px 0 10px; }
+.stage canvas { display: block; touch-action: manipulation; border-radius: 10px; }
+.chain {
+  position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%);
+  width: 92%; text-align: center; text-wrap: balance; line-height: 1.1;
+  font-size: clamp(1.5rem, 8vw, 2.4rem); font-weight: 900; color: var(--sun); pointer-events: none;
+  text-shadow: 0 3px 0 #6b4a00, 0 0 24px rgba(255, 207, 74, 0.6); opacity: 0;
+}
+.chain.pop { animation: pop 0.9s ease-out; }
+@keyframes pop {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+  15% { opacity: 1; transform: translate(-50%, -50%) scale(1.15); }
+  70% { opacity: 1; transform: translate(-50%, -60%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -75%) scale(0.95); }
+}
+.shake { animation: shake 0.25s linear; }
+.shake-big { animation: shake 0.45s linear; }
+@keyframes shake {
+  0%, 100% { transform: translate(0, 0); }
+  20% { transform: translate(-5px, 3px); }
+  40% { transform: translate(5px, -3px); }
+  60% { transform: translate(-4px, -2px); }
+  80% { transform: translate(3px, 2px); }
+}
+.overlay {
+  position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+  padding: max(16px, env(safe-area-inset-top, 0px)) 16px max(16px, env(safe-area-inset-bottom, 0px));
+  background: rgba(8, 14, 11, 0.86); backdrop-filter: blur(4px); overflow-y: auto;
+}
+.card {
+  width: 100%; max-width: 400px; margin: auto; padding: 22px 18px; border-radius: 24px;
+  background: var(--meadow); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45); text-align: center;
+}
+.card h1, .card h2 { margin: 4px 0 6px; line-height: 1.1; text-wrap: balance; }
+.card h1 { font-size: 2rem; color: var(--sun); letter-spacing: -0.01em; }
+.card h2 { font-size: 1.7rem; }
+.card p { margin: 6px 0; color: var(--muted); line-height: 1.4; }
+.card .how { text-align: left; font-size: 0.95rem; }
+.card canvas.hero { display: block; margin: 0 auto 4px; }
+.big {
+  display: block; width: 100%; margin-top: 14px; padding: 15px; border-radius: 16px;
+  background: var(--sun); color: #2a2010; font-weight: 900; font-size: 1.15rem;
+}
+.big.alt { background: var(--meadow-2); color: var(--cream); margin-top: 8px; }
+.opts { display: grid; gap: 8px; margin-top: 12px; text-align: left; }
+.optrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.optrow label, .optrow .lbl { font-weight: 800; }
+.seg { display: flex; flex-wrap: wrap; gap: 4px; background: var(--meadow-2); padding: 4px; border-radius: 12px; }
+.seg button { padding: 8px 10px; border-radius: 9px; background: transparent; color: var(--muted); font-weight: 800; font-size: 0.9rem; }
+.seg button.on { background: var(--sun); color: #2a2010; }
+.verse { font-style: italic; color: var(--cream) !important; }
+.verse small { display: block; margin-top: 4px; font-style: normal; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) {
+  .shake, .shake-big, .chain.pop { animation-duration: 0.01s; }
+}
+/* ===== end shared shell styles ===== */
+
+/* ===== shared Stampede styles ===== */
+.app { padding-left: max(8px, env(safe-area-inset-left, 0px)); padding-right: max(8px, env(safe-area-inset-right, 0px)); }
+.band { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 6px; height: 118px; flex: none; }
+.band.top .mid { transform: rotate(180deg); }
+.mid { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.timer { font-size: 1.6rem; font-weight: 900; font-variant-numeric: tabular-nums; }
+.rush .timer { color: #ff6b6b; animation: beat 0.5s ease-in-out infinite; }
+@keyframes beat { 50% { transform: scale(1.15); } }
+.mini { display: flex; gap: 4px; }
+.mini .ib { min-width: 40px; height: 40px; border-radius: 11px; font-size: 1rem; }
+.pbtn {
+  position: relative; width: 100%; max-width: 138px; height: 108px; padding: 0; border-radius: 28px; justify-self: start;
+  box-shadow: 0 6px 0 rgba(0,0,0,0.35); overflow: hidden; touch-action: none;
+}
+.pbtn canvas { display: block; width: 100%; height: 100%; pointer-events: none; }
+.pbtn.right { justify-self: end; }
+.pbtn.center { justify-self: center; grid-column: 2; }
+.pbtn.flip { transform: rotate(180deg); }
+.pbtn:active { translate: 0 3px; box-shadow: 0 3px 0 rgba(0,0,0,0.35); }
+.pbtn.empty { visibility: hidden; }
+.stage { padding: 4px 0; }
+.hud { display: flex; justify-content: center; align-items: center; gap: 10px; min-height: 0; padding: 4px 0; font-weight: 900; }
+.hud:empty { display: none; }
+.solo .band.top { display: none; }
+.solo .band.bottom { grid-template-columns: 1fr 150px 1fr; }
+.solo .band.bottom .mid { grid-column: 1; grid-row: 1; justify-self: start; }
+.solo #p0 { grid-column: 2; grid-row: 1; justify-self: center; max-width: 150px; }
+.solo #p3 { grid-column: 3; grid-row: 1; }
+.rush .stage { animation: rushglow 0.5s ease-in-out infinite alternate; }
+@keyframes rushglow { from { box-shadow: inset 0 0 0 rgba(255,80,80,0); } to { box-shadow: inset 0 0 30px rgba(255,80,80,0.45); } }
+.shouts { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.shout {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-weight: 900; white-space: nowrap;
+  text-shadow: 0 3px 0 rgba(0,0,0,0.45), 0 0 20px currentColor; animation: shout 0.95s ease-out forwards;
+}
+.shout.flip { rotate: 180deg; }
+@keyframes shout {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.4); }
+  18% { opacity: 1; transform: translate(-50%, -50%) scale(1.15); }
+  75% { opacity: 1; transform: translate(-50%, -62%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -80%) scale(0.95); }
+}
+.gear { position: absolute; top: 12px; right: 12px; min-width: 44px; height: 44px; }
+.card { position: relative; }
+.seats { display: grid; gap: 6px; }
+.seat { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 12px; background: var(--meadow-2); }
+.seat .dot { width: 18px; height: 18px; border-radius: 50%; background: currentColor; flex: none; }
+.seat .nm { flex: 1; font-weight: 800; text-align: left; }
+.stepper { display: flex; align-items: center; gap: 4px; background: var(--meadow-2); border-radius: 12px; padding: 4px; }
+.stepper button { width: 40px; height: 40px; border-radius: 9px; background: transparent; font-size: 1.3rem; font-weight: 900; }
+.stepper output { min-width: 22px; text-align: center; font-weight: 900; }
+.sliders { display: grid; gap: 10px; margin-top: 10px; text-align: left; }
+.sliders label { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; font-weight: 800; font-size: 0.9rem; }
+.sliders input { grid-column: 1 / -1; width: 100%; accent-color: var(--sun); }
+.sliders output { color: var(--sun); font-variant-numeric: tabular-nums; }
+.howto2 { text-align: center; color: var(--cream) !important; font-weight: 700; line-height: 1.35; }
+.row2 { display: flex; gap: 8px; }
+.row2 .big { margin-top: 10px; }
+/* ===== end shared Stampede styles ===== */
+
+#hero-intro { display: none; }
+.map { position: relative; height: 330px; margin: 4px auto 0; width: 100%; max-width: 330px; }
+.map canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.node {
+  position: absolute; width: 50px; height: 50px; margin: -25px 0 0 -25px; border-radius: 50%; padding: 0;
+  background: var(--sun); color: #2a2010; font-weight: 900; font-size: 1.1rem; box-shadow: 0 4px 0 rgba(0,0,0,0.35);
+}
+.node.locked { background: #50605a; color: #9fb0a6; box-shadow: none; }
+.node.done { background: #fffaf0; }
+.node.sel { outline: 4px solid #fff; outline-offset: 3px; }
+.node .st { position: absolute; left: 50%; top: 50px; transform: translateX(-50%); font-size: 0.7rem; letter-spacing: -1px; color: var(--sun); white-space: nowrap; }
+.hud .obj { display: flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 12px; background: var(--meadow-2); font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+.hud .obj.ok { background: #2fd38a; color: #10291a; }
+.stars { font-size: 2.6rem; color: var(--sun); letter-spacing: 4px; }
+.stars .off, .node .st .off { color: #50605a; }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <div class="band top" id="band-top">
+    <button class="pbtn" id="p2" aria-label="Player 3 button"><canvas></canvas></button>
+    <div class="mid"><span class="timer" id="timer-top"></span></div>
+    <button class="pbtn right" id="p1" aria-label="Player 2 button"><canvas></canvas></button>
+  </div>
+  <div class="hud" id="hud"></div>
+  <main class="stage" id="stage">
+    <canvas id="board" aria-label="Board"></canvas>
+    <div class="shouts" id="shouts"></div>
+    <div class="chain" id="chain"></div>
+  </main>
+  <div class="band bottom" id="band-bottom">
+    <button class="pbtn" id="p0" aria-label="Player 1 button"><canvas></canvas></button>
+    <div class="mid">
+      <span class="timer" id="timer"></span>
+      <div class="mini">
+        <button class="ib" id="pause" aria-label="Pause and tune">⏸</button>
+        <button class="ib" id="mute" aria-label="Mute">🔊</button>
+      </div>
+    </div>
+    <button class="pbtn right" id="p3" aria-label="Player 4 button"><canvas></canvas></button>
+  </div>
+</div>
+
+<section class="overlay" id="intro">
+  <div class="card">
+    <button class="ib gear" id="gear" aria-label="Tuning">⚙</button>
+    <canvas class="hero" id="hero-intro"></canvas>
+    <h1 id="title"></h1>
+    <p class="howto2" id="how"></p>
+    <div class="opts" id="opts"></div>
+    <button class="big" id="play">Play</button>
+  </div>
+</section>
+
+<section class="overlay" id="tune" hidden>
+  <div class="card">
+    <h2>Tuning</h2>
+    <p>Changes apply straight away and are remembered.</p>
+    <div class="sliders" id="sliders"></div>
+    <button class="big" id="tune-done">Resume</button>
+    <div class="row2">
+      <button class="big alt" id="tune-restart">Restart</button>
+      <button class="big alt" id="tune-menu">Menu</button>
+    </div>
+    <button class="big alt" id="tune-reset">Reset to defaults</button>
+  </div>
+</section>
+
+<section class="overlay" id="end" hidden>
+  <div class="card">
+    <canvas class="hero" id="hero-end"></canvas>
+    <h2 id="end-title"></h2>
+    <p id="end-sub"></p>
+    <div id="end-extra"></div>
+    <button class="big" id="again">Play again</button>
+    <button class="big alt" id="end-menu">Menu</button>
+  </div>
+</section>
+
+<script>
+// ===================== CHAIN REACTION ENGINE =====================
+// Shared by every cheekyfoundlamb demo. Keep this block identical across files;
+// demo-specific rules plug in through the `rules` hooks of Engine.resolve.
+//
+// Written for the Chain Burst project after studying these MIT-licensed
+// open-source Chain Reaction games:
+//   LironCareto/ChainReaction          Copyright (c) 2026 LironCareto
+//   tahmidnafees619/ChainReaction-game Copyright (c) 2026 tahmidnafees619
+//
+// MIT License
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+const Engine = (() => {
+  const ORTHO = [[-1, 0], [0, 1], [1, 0], [0, -1]];
+  const DIAG = [[-1, -1], [-1, 1], [1, 1], [1, -1]];
+  const ALL8 = ORTHO.concat(DIAG);
+
+  // A board is a set of flat arrays indexed by row * cols + col.
+  // owner: player index (>= 0), or -1 for empty. count: orbs in the cell.
+  // rock: blocked cells. `extra` adds more per-cell arrays, e.g. { water: false }.
+  function createBoard(rows, cols, extra = {}) {
+    const size = rows * cols;
+    const b = {
+      rows,
+      cols,
+      size,
+      owner: new Array(size).fill(-1),
+      count: new Array(size).fill(0),
+      rock: new Array(size).fill(false),
+    };
+    for (const [key, value] of Object.entries(extra)) b[key] = new Array(size).fill(value);
+    return b;
+  }
+
+  function clone(b) {
+    const c = {};
+    for (const key in b) c[key] = Array.isArray(b[key]) ? b[key].slice() : b[key];
+    return c;
+  }
+
+  const rowOf = (b, i) => Math.floor(i / b.cols);
+  const colOf = (b, i) => i % b.cols;
+  const inside = (b, r, c) => r >= 0 && c >= 0 && r < b.rows && c < b.cols;
+
+  function neighbours(b, i, dirs = ORTHO) {
+    const r = rowOf(b, i);
+    const c = colOf(b, i);
+    const out = [];
+    for (const [dr, dc] of dirs) {
+      const nr = r + dr;
+      const nc = c + dc;
+      if (!inside(b, nr, nc)) continue;
+      const n = nr * b.cols + nc;
+      if (!b.rock[n]) out.push(n);
+    }
+    return out;
+  }
+
+  // Critical mass: the number of open orthogonal neighbours (corner 2, edge 3, middle 4).
+  const capacity = (b, i) => neighbours(b, i).length;
+
+  const DEFAULT_RULES = {
+    cap: (b, i) => capacity(b, i), // orbs needed to burst
+    canBurst: (b, i) => b.owner[i] >= 0,
+    targets: (b, i) => neighbours(b, i), // one orb lands per entry (repeat an entry for 2 orbs)
+    spend: (b, i) => DEFAULT_RULES.cap(b, i), // orbs the bursting cell loses
+    emptied: (b, i) => {
+      b.owner[i] = -1;
+    },
+    land: (b, from, to, who) => {
+      b.owner[to] = who;
+      b.count[to]++;
+    },
+    done: () => false, // return true to stop resolving (e.g. only one side left)
+    maxWaves: 200,
+  };
+
+  function place(b, i, who, n = 1) {
+    b.owner[i] = who;
+    b.count[i] += n;
+  }
+
+  // Resolves every burst in waves: all full cells in a wave burst together.
+  // Mutates `b`. Returns { waves, capped }, where each wave is
+  // { bursts: [{ from, to, who }], board } and board is a snapshot after the wave.
+  function resolve(b, rules = {}, record = true) {
+    const R = { ...DEFAULT_RULES, ...rules };
+    if (!rules.spend) R.spend = (bb, i) => R.cap(bb, i);
+    const waves = [];
+    let capped = false;
+    for (;;) {
+      if (R.done(b)) break;
+      if (waves.length >= R.maxWaves) {
+        capped = true;
+        break;
+      }
+      const ready = [];
+      for (let i = 0; i < b.size; i++) if (b.count[i] >= R.cap(b, i) && R.canBurst(b, i)) ready.push(i);
+      if (!ready.length) break;
+      const bursts = [];
+      for (const from of ready) {
+        const who = b.owner[from];
+        const to = R.targets(b, from);
+        b.count[from] = Math.max(0, b.count[from] - R.spend(b, from));
+        if (b.count[from] === 0) R.emptied(b, from);
+        bursts.push({ from, to, who });
+      }
+      for (const { from, to, who } of bursts) for (const t of to) R.land(b, from, t, who);
+      waves.push({ bursts, board: record ? clone(b) : null });
+    }
+    return { waves, capped };
+  }
+
+  function tally(b, players) {
+    const cells = new Array(players).fill(0);
+    const orbs = new Array(players).fill(0);
+    for (let i = 0; i < b.size; i++) {
+      const o = b.owner[i];
+      if (o >= 0 && o < players) {
+        cells[o]++;
+        orbs[o] += b.count[i];
+      }
+    }
+    return { cells, orbs };
+  }
+
+  return { ORTHO, DIAG, ALL8, createBoard, clone, rowOf, colOf, inside, neighbours, capacity, place, resolve, tally };
+})();
+// =================== END CHAIN REACTION ENGINE ===================
+
+// ========================= SHARED KIT =========================
+// Sound, character art, wave animation, AI and screen helpers used by every demo.
+const Kit = (() => {
+  // ---------- sound (Web Audio, no files) ----------
+  let actx = null;
+  let muted = false;
+  try {
+    muted = localStorage.getItem("cfl-muted") === "1";
+  } catch {}
+
+  function ac() {
+    if (muted) return null;
+    try {
+      actx ??= new (window.AudioContext || window.webkitAudioContext)();
+      if (actx.state === "suspended") actx.resume();
+      return actx;
+    } catch {
+      return null;
+    }
+  }
+
+  function tone(freq, dur = 0.12, type = "sine", vol = 0.12, slideTo = 0, delay = 0) {
+    const a = ac();
+    if (!a) return;
+    const t = a.currentTime + delay;
+    const o = a.createOscillator();
+    const g = a.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t);
+    if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + dur);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(a.destination);
+    o.start(t);
+    o.stop(t + dur + 0.02);
+  }
+
+  function bleat(pitch = 1, delay = 0) {
+    const a = ac();
+    if (!a) return;
+    const t = a.currentTime + delay;
+    const o = a.createOscillator();
+    const lfo = a.createOscillator();
+    const lg = a.createGain();
+    const f = a.createBiquadFilter();
+    const g = a.createGain();
+    o.type = "sawtooth";
+    o.frequency.setValueAtTime(560 * pitch, t);
+    o.frequency.linearRampToValueAtTime(480 * pitch, t + 0.38);
+    lfo.frequency.value = 22;
+    lg.gain.value = 40 * pitch;
+    lfo.connect(lg).connect(o.frequency);
+    f.type = "lowpass";
+    f.frequency.value = 1700;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.09, t + 0.03);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
+    o.connect(f).connect(g).connect(a.destination);
+    o.start(t);
+    lfo.start(t);
+    o.stop(t + 0.42);
+    lfo.stop(t + 0.42);
+  }
+
+  const sfx = {
+    place: () => tone(660, 0.07, "triangle", 0.1),
+    // Pitch climbs a semitone per wave so long chains feel like they're building.
+    burst: (k) => tone(Math.min(240 * Math.pow(2, k / 12), 2200), 0.13, "sine", 0.13, Math.min(240 * Math.pow(2, k / 12), 2200) * 0.6),
+    bad: () => tone(140, 0.15, "square", 0.06, 100),
+    win: () => [523, 659, 784, 1047].forEach((f, k) => tone(f, 0.22, "triangle", 0.12, 0, k * 0.11)),
+    lose: () => [392, 330, 262, 196].forEach((f, k) => tone(f, 0.26, "sine", 0.12, 0, k * 0.14)),
+    howl: () => tone(300, 0.6, "sawtooth", 0.05, 520),
+    chime: (k = 0) => tone(880 * Math.pow(2, k / 12), 0.3, "sine", 0.08),
+    bleat,
+  };
+
+  function setMuted(m) {
+    muted = m;
+    try {
+      localStorage.setItem("cfl-muted", m ? "1" : "0");
+    } catch {}
+  }
+
+  // ---------- art (all drawn with code) ----------
+  function circle(ctx, x, y, r, fill) {
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = fill;
+    ctx.fill();
+  }
+
+  function ellipse(ctx, x, y, rx, ry, rot, fill) {
+    ctx.beginPath();
+    ctx.ellipse(x, y, rx, ry, rot, 0, Math.PI * 2);
+    ctx.fillStyle = fill;
+    ctx.fill();
+  }
+
+  function shade(hex, amt) {
+    const n = parseInt(hex.slice(1), 16);
+    const t = amt < 0 ? 0 : 255;
+    const p = Math.abs(amt);
+    const ch = (s) => Math.round(((n >> s) & 255) * (1 - p) + t * p);
+    return `rgb(${ch(16)},${ch(8)},${ch(0)})`;
+  }
+
+  // cheekyfoundlamb: white wool, cream face, and two same-size eyes on one level
+  // that each look a different way. s is roughly his full height in pixels.
+  // o: { t (seconds, for idle bob), mood: "happy" | "shock" | "sad" | "sleep", scarf: colour, glow }
+  function drawLamb(ctx, x, y, s, o = {}) {
+    const t = o.t ?? 0;
+    const bob = Math.sin(t * 3) * s * 0.015;
+    ctx.save();
+    ctx.translate(x, y + bob);
+    if (o.flip) ctx.scale(-1, 1);
+    if (o.glow) {
+      const g = ctx.createRadialGradient(0, 0, s * 0.1, 0, 0, s * 0.85);
+      g.addColorStop(0, o.glow);
+      g.addColorStop(1, "rgba(255,220,120,0)");
+      circle(ctx, 0, 0, s * 0.85, g);
+    }
+    // legs
+    ctx.fillStyle = "#3b3340";
+    for (const lx of [-0.2, -0.07, 0.08, 0.21]) {
+      ctx.beginPath();
+      ctx.roundRect(lx * s - s * 0.035, s * 0.12, s * 0.07, s * 0.2, s * 0.03);
+      ctx.fill();
+    }
+    // wool body: a ring of puffs around a core
+    const body = [[-0.24, 0], [-0.14, -0.13], [0.02, -0.17], [0.18, -0.12], [0.27, 0.01], [0.18, 0.13], [0, 0.16], [-0.16, 0.13]];
+    for (const [bx, by] of body) circle(ctx, bx * s, by * s, s * 0.15, "#d9d5de");
+    for (const [bx, by] of body) circle(ctx, bx * s, by * s - s * 0.012, s * 0.14, "#ffffff");
+    circle(ctx, 0, 0, s * 0.24, "#ffffff");
+    // tail puff
+    circle(ctx, -0.36 * s, -0.05 * s, s * 0.07, "#ffffff");
+    // head
+    const hx = 0.22 * s;
+    const hy = -0.2 * s;
+    // ears
+    ellipse(ctx, hx - s * 0.17, hy - s * 0.02, s * 0.1, s * 0.045, -0.5, "#f1d9cc");
+    ellipse(ctx, hx + s * 0.17, hy - s * 0.02, s * 0.1, s * 0.045, 0.5, "#f1d9cc");
+    ellipse(ctx, hx - s * 0.17, hy - s * 0.02, s * 0.06, s * 0.022, -0.5, "#f4a7b4");
+    ellipse(ctx, hx + s * 0.17, hy - s * 0.02, s * 0.06, s * 0.022, 0.5, "#f4a7b4");
+    ellipse(ctx, hx, hy + s * 0.02, s * 0.14, s * 0.16, 0, "#f6e6da");
+    // wool tuft on top
+    for (const [tx, ty] of [[-0.07, -0.13], [0, -0.16], [0.07, -0.13]]) circle(ctx, hx + tx * s, hy + ty * s, s * 0.06, "#ffffff");
+    // scarf in the owner's colour
+    if (o.scarf) {
+      ctx.fillStyle = o.scarf;
+      ctx.beginPath();
+      ctx.roundRect(hx - s * 0.13, hy + s * 0.13, s * 0.26, s * 0.06, s * 0.03);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.roundRect(hx + s * 0.04, hy + s * 0.15, s * 0.06, s * 0.12, s * 0.02);
+      ctx.fill();
+    }
+    // the eyes: equal size, equal height, pupils pointing different ways
+    const er = s * 0.045;
+    const ey = hy - s * 0.005;
+    for (const [side, px, py] of [[-1, -0.55, -0.35], [1, 0.5, 0.4]]) {
+      const ex = hx + side * s * 0.058;
+      circle(ctx, ex, ey, er, "#ffffff");
+      ctx.lineWidth = s * 0.008;
+      ctx.strokeStyle = "#3b3340";
+      ctx.stroke();
+      if (o.mood === "sleep") continue;
+      circle(ctx, ex + px * er * 0.9, ey + py * er * 0.9, er * 0.5, "#241d2a");
+      circle(ctx, ex + px * er * 0.9 - er * 0.15, ey + py * er * 0.9 - er * 0.18, er * 0.15, "#ffffff");
+    }
+    if (o.mood === "sleep") {
+      ctx.strokeStyle = "#3b3340";
+      ctx.lineWidth = s * 0.012;
+      for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.arc(hx + side * s * 0.058, ey, er * 0.7, 0.2, Math.PI - 0.2);
+        ctx.stroke();
+      }
+    }
+    // nose and mouth
+    ellipse(ctx, hx, hy + s * 0.08, s * 0.025, s * 0.016, 0, "#c9788a");
+    ctx.strokeStyle = "#3b3340";
+    ctx.lineWidth = s * 0.012;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    if (o.mood === "shock") {
+      ctx.arc(hx, hy + s * 0.125, s * 0.022, 0, Math.PI * 2);
+    } else if (o.mood === "sad") {
+      ctx.arc(hx, hy + s * 0.15, s * 0.035, Math.PI + 0.4, -0.4);
+    } else {
+      // lopsided cheeky smirk
+      ctx.moveTo(hx - s * 0.04, hy + s * 0.11);
+      ctx.quadraticCurveTo(hx + s * 0.005, hy + s * 0.15, hx + s * 0.055, hy + s * 0.1);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Cheeky grey wolf head. s is the head width.
+  function drawWolf(ctx, x, y, s, o = {}) {
+    const t = o.t ?? 0;
+    ctx.save();
+    ctx.translate(x, y + Math.sin(t * 2.4) * s * 0.012);
+    const fur = o.color ?? "#8b8f9c";
+    const dark = shade(fur.startsWith("#") ? fur : "#8b8f9c", -0.35);
+    // ears
+    for (const side of [-1, 1]) {
+      ctx.fillStyle = fur;
+      ctx.beginPath();
+      ctx.moveTo(side * s * 0.12, -s * 0.22);
+      ctx.lineTo(side * s * 0.38, -s * 0.52);
+      ctx.lineTo(side * s * 0.4, -s * 0.12);
+      ctx.fill();
+      ctx.fillStyle = "#d9a3ab";
+      ctx.beginPath();
+      ctx.moveTo(side * s * 0.18, -s * 0.22);
+      ctx.lineTo(side * s * 0.35, -s * 0.42);
+      ctx.lineTo(side * s * 0.36, -s * 0.18);
+      ctx.fill();
+    }
+    // head with cheek tufts
+    ctx.fillStyle = fur;
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.42, -s * 0.05);
+    ctx.quadraticCurveTo(-s * 0.4, -s * 0.38, 0, -s * 0.36);
+    ctx.quadraticCurveTo(s * 0.4, -s * 0.38, s * 0.42, -s * 0.05);
+    ctx.lineTo(s * 0.5, s * 0.08);
+    ctx.lineTo(s * 0.34, s * 0.1);
+    ctx.quadraticCurveTo(s * 0.2, s * 0.32, 0, s * 0.33);
+    ctx.quadraticCurveTo(-s * 0.2, s * 0.32, -s * 0.34, s * 0.1);
+    ctx.lineTo(-s * 0.5, s * 0.08);
+    ctx.closePath();
+    ctx.fill();
+    // muzzle
+    ellipse(ctx, 0, s * 0.12, s * 0.2, s * 0.15, 0, "#e3e1e6");
+    ellipse(ctx, 0, s * 0.03, s * 0.07, s * 0.045, 0, "#2a2530");
+    // half-lidded, sly eyes
+    for (const side of [-1, 1]) {
+      const ex = side * s * 0.16;
+      const ey = -s * 0.13;
+      ellipse(ctx, ex, ey, s * 0.075, s * 0.06, 0, "#ffe680");
+      circle(ctx, ex + s * 0.02, ey + s * 0.01, s * 0.03, "#2a2530");
+      ctx.fillStyle = fur;
+      ctx.beginPath();
+      ctx.ellipse(ex, ey - s * 0.03, s * 0.085, s * 0.05, side * -0.25, Math.PI, 0);
+      ctx.fill();
+      ctx.strokeStyle = dark;
+      ctx.lineWidth = s * 0.02;
+      ctx.beginPath();
+      ctx.moveTo(ex - s * 0.08, ey - s * 0.03 - side * s * 0.02);
+      ctx.lineTo(ex + s * 0.08, ey - s * 0.03 + side * s * 0.02);
+      ctx.stroke();
+    }
+    // grin with one tooth
+    ctx.strokeStyle = "#2a2530";
+    ctx.lineWidth = s * 0.022;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.11, s * 0.15);
+    ctx.quadraticCurveTo(0, o.mood === "sad" ? s * 0.12 : s * 0.24, s * 0.13, s * 0.13);
+    ctx.stroke();
+    if (o.mood !== "sad") {
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.moveTo(s * 0.03, s * 0.2);
+      ctx.lineTo(s * 0.07, s * 0.19);
+      ctx.lineTo(s * 0.05, s * 0.25);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // The Shepherd: a warm silhouette with a staff and a soft glow. h is the height.
+  function drawShepherd(ctx, x, y, h, o = {}) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.globalAlpha = o.alpha ?? 1;
+    const g = ctx.createRadialGradient(0, -h * 0.5, h * 0.05, 0, -h * 0.5, h * 0.52);
+    g.addColorStop(0, "rgba(255,214,140,0.55)");
+    g.addColorStop(1, "rgba(255,214,140,0)");
+    circle(ctx, 0, -h * 0.5, h * 0.52, g);
+    ctx.fillStyle = o.color ?? "#7a4f33";
+    // robe
+    ctx.beginPath();
+    ctx.moveTo(-h * 0.12, -h * 0.72);
+    ctx.quadraticCurveTo(-h * 0.2, -h * 0.3, -h * 0.24, 0);
+    ctx.lineTo(h * 0.24, 0);
+    ctx.quadraticCurveTo(h * 0.2, -h * 0.3, h * 0.12, -h * 0.72);
+    ctx.closePath();
+    ctx.fill();
+    // hooded head
+    circle(ctx, 0, -h * 0.8, h * 0.11, o.color ?? "#7a4f33");
+    ctx.fillStyle = "rgba(255,230,190,0.25)";
+    ctx.beginPath();
+    ctx.ellipse(h * 0.02, -h * 0.79, h * 0.06, h * 0.08, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // staff with crook
+    ctx.strokeStyle = "#c9a26b";
+    ctx.lineWidth = h * 0.025;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(h * 0.3, 0);
+    ctx.lineTo(h * 0.3, -h * 0.95);
+    ctx.arc(h * 0.38, -h * 0.95, h * 0.08, Math.PI, 0);
+    ctx.lineTo(h * 0.46, -h * 0.9);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // A small sheep in a player's colour (used as an "orb"). r is about its radius.
+  function drawSheep(ctx, x, y, r, color, o = {}) {
+    ctx.save();
+    ctx.translate(x, y);
+    if (o.flip) ctx.scale(-1, 1);
+    ctx.fillStyle = "#2b2430";
+    ctx.fillRect(-r * 0.45, r * 0.45, r * 0.18, r * 0.45);
+    ctx.fillRect(r * 0.25, r * 0.45, r * 0.18, r * 0.45);
+    const light = shade(color, 0.45);
+    for (const [bx, by] of [[-0.45, 0], [0, -0.35], [0.4, -0.05], [0.05, 0.3], [-0.3, 0.3], [0.35, 0.3]]) circle(ctx, bx * r, by * r, r * 0.48, color);
+    for (const [bx, by] of [[-0.35, -0.1], [0.05, -0.38], [0.3, -0.12]]) circle(ctx, bx * r, by * r, r * 0.26, light);
+    ellipse(ctx, r * 0.78, -r * 0.15, r * 0.3, r * 0.36, 0.3, "#2b2430");
+    circle(ctx, r * 0.84, -r * 0.24, r * 0.07, "#ffffff");
+    ctx.restore();
+  }
+
+  // ---------- wave animation ----------
+  // Plays the waves returned by Engine.resolve, one per `ms`, calling onWave(k)
+  // as each starts. Read Kit.anim.cur in the draw loop to animate.
+  const anim = {
+    cur: null,
+    play(waves, ms, onWave, pre) {
+      return new Promise((done) => {
+        if (!waves.length) return done();
+        this.cur = { waves, i: 0, start: null, ms, onWave, done, pre };
+      });
+    },
+    step(now) {
+      const c = this.cur;
+      if (!c) return;
+      if (c.start === null) {
+        c.start = now;
+        c.onWave?.(0, c.waves[0]);
+        return;
+      }
+      if (now - c.start < c.ms) return;
+      c.i++;
+      c.start = now;
+      if (c.i >= c.waves.length) {
+        this.cur = null;
+        c.done();
+      } else c.onWave?.(c.i, c.waves[c.i]);
+    },
+    // 0..1 progress of the current wave
+    t(now) {
+      const c = this.cur;
+      if (!c || c.start === null) return 0;
+      return Math.min(1, (now - c.start) / c.ms);
+    },
+    // Board to draw under the flying orbs for the current wave.
+    base() {
+      const c = this.cur;
+      if (!c) return null;
+      return c.i === 0 ? c.pre : c.waves[c.i - 1].board;
+    },
+  };
+
+  // ---------- AI helpers ----------
+  // Generic board score for `me`: orbs, safe corners/edges, near-full cells,
+  // and danger from enemy cells about to burst next to mine.
+  // isMine(owner), isFoe(owner), cap(i) are supplied by the demo.
+  function evaluate(b, isMine, isFoe, cap) {
+    let score = 0;
+    for (let i = 0; i < b.size; i++) {
+      const own = b.owner[i];
+      if (own < 0 || b.count[i] === 0) continue;
+      const mine = isMine(own);
+      if (!mine && !isFoe(own)) continue;
+      const c = cap(i);
+      let v = b.count[i] * 2 + 3;
+      let threatened = false;
+      let prey = 0;
+      for (const n of Engine.neighbours(b, i)) {
+        const o2 = b.owner[n];
+        if (o2 < 0 || b.count[n] === 0) continue;
+        if (isMine(o2) === mine) continue;
+        if (b.count[n] >= cap(n) - 1) threatened = true;
+        prey += b.count[n];
+      }
+      if (threatened) v -= 5 - c + b.count[i];
+      else {
+        if (c === 2) v += 3;
+        else if (c === 3) v += 2;
+        if (b.count[i] >= c - 1) v += 2 + prey;
+      }
+      score += mine ? v : -v;
+    }
+    return score;
+  }
+
+  // Picks the highest scoring move. With chance `mistake`, picks one of the top 3 instead.
+  function pickBest(scored, mistake = 0) {
+    if (!scored.length) return null;
+    scored.sort((a, b) => b.score - a.score);
+    if (mistake > 0 && Math.random() < mistake && scored.length > 1) return scored[Math.floor(Math.random() * Math.min(3, scored.length))].move;
+    const top = scored.filter((s) => s.score === scored[0].score);
+    return top[Math.floor(Math.random() * top.length)].move;
+  }
+
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // ---------- screen helpers ----------
+  const $ = (id) => document.getElementById(id);
+
+  // Sizes `canvas` to fit `wrap` for a cols x rows board. Returns { cell, dpr, w, h }.
+  function fitBoard(canvas, wrap, cols, rows, extraRows = 0) {
+    const cs = getComputedStyle(wrap);
+    const w = wrap.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const h = wrap.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    const cell = Math.max(12, Math.floor(Math.min(w / cols, h / (rows + extraRows))));
+    const dpr = window.devicePixelRatio || 1;
+    canvas.style.width = cell * cols + "px";
+    canvas.style.height = cell * (rows + extraRows) + "px";
+    canvas.width = Math.round(cell * cols * dpr);
+    canvas.height = Math.round(cell * (rows + extraRows) * dpr);
+    return { cell, dpr, w: cell * cols, h: cell * (rows + extraRows) };
+  }
+
+  // Sets up a fixed-size picture canvas at full screen sharpness; returns its context.
+  function sharp(cv, w, h) {
+    const dpr = window.devicePixelRatio || 1;
+    cv.style.width = w + "px";
+    cv.style.height = h + "px";
+    cv.width = Math.round(w * dpr);
+    cv.height = Math.round(h * dpr);
+    const g = cv.getContext("2d");
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return g;
+  }
+
+  function shake(el, big = false) {
+    el.classList.remove("shake", "shake-big");
+    void el.offsetWidth;
+    el.classList.add(big ? "shake-big" : "shake");
+  }
+
+  function popText(el, text) {
+    el.textContent = text;
+    el.classList.remove("pop");
+    void el.offsetWidth;
+    el.classList.add("pop");
+  }
+
+  function show(id) {
+    $(id).hidden = false;
+  }
+  function hide(id) {
+    $(id).hidden = true;
+  }
+
+  function cellAt(canvas, e, cell) {
+    const r = canvas.getBoundingClientRect();
+    return { col: Math.floor((e.clientX - r.left) / cell), row: Math.floor((e.clientY - r.top) / cell) };
+  }
+
+  // Wires the shared mute button.
+  function muteButton(btn) {
+    const render = () => {
+      btn.textContent = muted ? "🔇" : "🔊";
+      btn.setAttribute("aria-label", muted ? "Unmute" : "Mute");
+    };
+    btn.addEventListener("click", () => {
+      setMuted(!muted);
+      render();
+    });
+    render();
+  }
+
+  const COLORS = ["#ff5a5f", "#3fa7ff", "#ffc93c", "#8f6bff", "#2fd38a", "#ff8c42", "#ff6fc8", "#3ee0e0"];
+  const COLOR_NAMES = ["Red", "Blue", "Yellow", "Purple", "Green", "Orange", "Pink", "Cyan"];
+
+  return {
+    sfx, setMuted, isMuted: () => muted, tone,
+    circle, ellipse, shade, drawLamb, drawWolf, drawShepherd, drawSheep,
+    anim, evaluate, pickBest, sleep,
+    $, fitBoard, sharp, shake, popText, show, hide, cellAt, muteButton,
+    COLORS, COLOR_NAMES,
+  };
+})();
+// ======================= END SHARED KIT =======================
+
+// ======================= SHARED STAMPEDE CORE =======================
+// Real-time Chain Reaction: sweeping cursors, one button per player, the sheep pen,
+// chain rewards and special sheep, shouts, lambs on the buttons, AI seats, Stampede
+// Time, pause and the tuning panel. Each version calls Stampede.run(version) with
+// its own rules as hooks, so all versions can later share one menu.
+const Stampede = (() => {
+  const { $ } = Kit;
+  const COLORS = ["#ff5a5f", "#3fa7ff", "#ffc93c", "#2fd38a"];
+  const NAMES = ["Red", "Blue", "Yellow", "Green"];
+  const SEATS = ["p0", "p1", "p2", "p3"]; // bottom-left, top-right, top-left, bottom-right
+  const FLIPPED = [false, true, true, false];
+  const RANK = { line: 1, bomb: 2, overflow: 3 };
+  const SHOUTS = [[5, "Nice!", 1], [8, "Baa-rilliant!", 1.25], [12, "Overflowing!", 1.5], [16, "Hallelujah!", 1.85]];
+  const LOCK_MS = 1000;
+  const WAVE_MS = 140;
+  const MAX_RUN = 60; // waves in a row before a runaway cascade settles
+  const NEUTRAL = 90; // owner id for grey neutral sheep: they never burst, and a burst claims them
+  // AI skill: how picky it is, how often it taps anyway, how often it fumbles, reaction time
+  const AI = {
+    easy: { pick: 7, idle: 0.05, miss: 0.15, react: [260, 350] },
+    normal: { pick: 4, idle: 0.08, miss: 0.05, react: [190, 330] },
+    hard: { pick: 2, idle: 0.03, miss: 0, react: [150, 250] },
+  };
+  const BASE_TUNE = { pen: 5, refill: 1.1, cursorMs: 380, roundSecs: 90, stampedeSecs: 20, lineAt: 5, plusAt: 6, bombAt: 9, fullAt: 10, overflowAt: 14 };
+  const TUNE_INFO = [
+    ["pen", "Pen size", 1, 10, 1, " sheep"],
+    ["refill", "Refill time (2 players; scales up for 3–4)", 0.3, 3, 0.1, " s"],
+    ["cursorMs", "Cursor step", 150, 800, 10, " ms"],
+    ["roundSecs", "Round length", 20, 300, 5, " s"],
+    ["stampedeSecs", "Stampede Time", 0, 60, 5, " s"],
+    ["lineAt", "Line sheep at chain", 2, 20, 1, ""],
+    ["plusAt", "+2 sheep at chain", 2, 20, 1, ""],
+    ["bombAt", "Bomb sheep at chain", 2, 25, 1, ""],
+    ["fullAt", "Full pen at chain", 2, 25, 1, ""],
+    ["overflowAt", "Overflow sheep at chain", 2, 30, 1, ""],
+  ];
+  const REFILL_SCALE = [1, 1, 1, 1.4 / 1.1, 1.7 / 1.1]; // by number of players
+
+  let V = null; // the version being played
+  let H = {}; // its hooks
+  let tune = {};
+  let setup = {};
+  let G = null;
+  let geo = { cell: 40, dpr: 1, w: 0, h: 0 };
+  let canvas;
+  let ctx;
+
+  const load = (k, d) => {
+    try {
+      return { ...d, ...(JSON.parse(localStorage.getItem(k)) || {}) };
+    } catch {
+      return { ...d };
+    }
+  };
+  const save = (k, v) => {
+    try {
+      localStorage.setItem(k, JSON.stringify(v));
+    } catch {}
+  };
+  const defaults = () => ({ ...BASE_TUNE, ...(V.tune || {}) });
+  const saveTune = () => save(`cfl-${V.key}-tune`, tune);
+  const saveSetup = () => save(`cfl-${V.key}-setup`, setup);
+
+  // ---------- helpers ----------
+  const cellsOf = (p) => G.b.owner.reduce((n, o) => n + (o === p ? 1 : 0), 0);
+  const orbsOf = (p) => G.b.owner.reduce((n, o, i) => n + (o === p ? G.b.count[i] : 0), 0);
+  const sameTeam = (a, b) => a === b || (G.players[a] && G.players[b] && G.players[a].team === G.players[b].team);
+  const cursorCell = (pl) => {
+    const len = G.path.length;
+    return G.path[((pl.pos % len) + len) % len];
+  };
+
+  function buildPath() {
+    const b = G.b;
+    const path = [];
+    for (let r = 0; r < b.rows; r++)
+      for (let k = 0; k < b.cols; k++) {
+        const i = r * b.cols + (r % 2 ? b.cols - 1 - k : k);
+        if (!b.rock[i] && (H.inPath?.(G, i) ?? true)) path.push(i);
+      }
+    G.path = path.length ? path : [0];
+  }
+
+  // ---------- game ----------
+  function start() {
+    saveSetup();
+    const now = performance.now();
+    const b = Engine.createBoard(V.rows ?? 9, V.cols ?? 6, { tag: null, kind: null, hp: 0 });
+    const players = V.players(setup).map((p, id) => ({
+      id, seat: -1, kind: "human", level: setup.level || "normal", team: id, color: COLORS[id % 4], name: NAMES[id % 4],
+      speed: 1, dir: 1, pen: tune.pen, refillAt: 0, lockUntil: 0, special: null, lineDir: "row",
+      alive: true, placed: false, chain: 0, best: 0, mood: null, moodUntil: 0, aiPlan: null, score: 0, nextStep: now, pos: null,
+      ...p,
+    }));
+    G = { b, players, path: [], start: now, waveAt: now, effects: [], flights: [], over: false, paused: false, rush: false, solo: !!V.solo, data: {} };
+    H.setup?.(G, setup);
+    buildPath();
+    players.forEach((pl, k) => {
+      if (pl.pos === null) pl.pos = Math.floor((k * G.path.length) / players.length) + 3;
+    });
+    $("app").classList.remove("rush");
+    for (const id of ["intro", "end", "tune"]) Kit.hide(id);
+    resize();
+  }
+
+  const refillMs = (pl) => {
+    const n = G.players.length;
+    const base = H.refillMs?.(G, pl) ?? tune.refill * 1000 * (G.solo ? 1 : REFILL_SCALE[Math.min(4, n)]);
+    return base / (G.rush ? 2 : 1);
+  };
+
+  function defaultCanDrop(pl, i) {
+    const b = G.b;
+    if (b.rock[i] || H.blocked?.(G, i, pl)) return false;
+    const o = b.owner[i];
+    return o === -1 || o === pl.id || (o >= 0 && o < G.players.length && sameTeam(o, pl.id));
+  }
+
+  // The one action: drop a sheep (or the loaded special) where your cursor is.
+  function drop(pl, now = performance.now()) {
+    if (!G || G.over || G.paused || !pl.alive || now < pl.lockUntil) return;
+    if (pl.pen <= 0) {
+      Kit.tone(180, 0.06, "square", 0.04);
+      return;
+    }
+    const i = cursorCell(pl);
+    pl.pen--;
+    if (!pl.refillAt) pl.refillAt = now + refillMs(pl);
+    if (!(H.canDrop ? H.canDrop(G, pl, i, defaultCanDrop) : defaultCanDrop(pl, i))) {
+      pl.lockUntil = now + LOCK_MS;
+      mood(pl, "oops", LOCK_MS);
+      Kit.sfx.bad();
+      H.onWaste?.(G, pl, i);
+      return;
+    }
+    pl.placed = true;
+    const special = pl.special;
+    pl.special = null;
+    const b = G.b;
+    const o = b.owner[i];
+    if (o >= 0 && o !== pl.id && sameTeam(o, pl.id)) b.count[i]++; // a teammate's square: help it along
+    else Engine.place(b, i, pl.id);
+    H.afterDrop?.(G, pl, i, special, now);
+    if (special === "overflow") overflow(pl, now);
+    else if (special) {
+      b.tag[i] = { type: special, dir: special === "line" ? pl.lineDir : null };
+      if (special === "line") pl.lineDir = pl.lineDir === "row" ? "col" : "row";
+      Kit.tone(special === "bomb" ? 200 : 600, 0.15, "triangle", 0.1, special === "bomb" ? 120 : 900);
+    } else Kit.sfx.place();
+  }
+
+  function overflow(pl, now) {
+    const cells = [];
+    for (let i = 0; i < G.b.size; i++)
+      if (G.b.owner[i] === pl.id) {
+        G.b.count[i]++;
+        cells.push(i);
+      }
+    G.effects.push({ type: "overflow", cells, color: pl.color, t0: now });
+    shout(pl, "Overflow!", 1.3);
+    [523, 659, 784, 1047].forEach((f, k) => Kit.tone(f, 0.2, "triangle", 0.08, 0, k * 0.06));
+  }
+
+  function landOn(to, who) {
+    const b = G.b;
+    const v = b.owner[to];
+    if (v >= 0 && v < G.players.length && v !== who && sameTeam(v, who)) {
+      b.count[to]++;
+      return;
+    }
+    b.owner[to] = who;
+    b.count[to]++;
+  }
+
+  // ---------- live waves ----------
+  function tickWave(now) {
+    const n = G.players.length;
+    const bursts = new Array(n).fill(0);
+    const pending = [];
+    const rules = {
+      canBurst: (b, i) => {
+        const o = b.owner[i];
+        return o >= 0 && o < n && G.players[o].alive && (H.canBurst?.(G, b, i) ?? true);
+      },
+      targets: (b, i) => {
+        const who = b.owner[i];
+        bursts[who]++;
+        if (b.tag[i]) {
+          pending.push({ cell: i, ...b.tag[i], who });
+          b.tag[i] = null;
+        }
+        const t = Engine.neighbours(b, i);
+        return H.targets ? H.targets(G, b, i, t) : t;
+      },
+      emptied: (b, i) => {
+        b.owner[i] = -1;
+        H.emptied?.(G, b, i);
+      },
+      land: (b, from, to, who) => {
+        if (!G.players[who].alive) return;
+        if (H.land?.(G, b, from, to, who)) return;
+        landOn(to, who);
+      },
+      maxWaves: 1,
+    };
+    const { waves } = Engine.resolve(G.b, rules, false);
+    G.flights = waves.length ? waves[0].bursts.map((x) => ({ ...x, t0: now })) : [];
+    // a board packed full can burst forever: after MAX_RUN waves in a row, let it settle
+    G.run = waves.length ? (G.run || 0) + 1 : 0;
+    if (G.run > MAX_RUN) {
+      for (let i = 0; i < G.b.size; i++) if (G.b.owner[i] >= 0 && !G.b.rock[i]) G.b.count[i] = Math.min(G.b.count[i], Engine.capacity(G.b, i) - 1);
+      G.run = 0;
+    }
+    for (const sp of pending) special(sp, now);
+    chains(bursts, now);
+    H.afterWave?.(G, now, bursts);
+    if (!H.noElimination) eliminate();
+  }
+
+  function areaFor(type, dir, i) {
+    const b = G.b;
+    const r0 = Engine.rowOf(b, i);
+    const c0 = Engine.colOf(b, i);
+    const out = [];
+    const add = (r, c) => Engine.inside(b, r, c) && out.push(r * b.cols + c);
+    if (type === "line") for (let k = 0; k < (dir === "row" ? b.cols : b.rows); k++) dir === "row" ? add(r0, k) : add(k, c0);
+    else if (type === "bomb") for (const [dr, dc] of Engine.ALL8) add(r0 + dr, c0 + dc);
+    else if (type === "cross") {
+      for (let k = 0; k < b.cols; k++) add(r0, k);
+      for (let k = 0; k < b.rows; k++) if (k !== r0) add(k, c0);
+    } else if (type === "bigcross") {
+      for (let r = 0; r < b.rows; r++) for (let c = 0; c < b.cols; c++) if (Math.abs(r - r0) <= 1 || Math.abs(c - c0) <= 1) add(r, c);
+    } else if (type === "blast") for (let dr = -2; dr <= 2; dr++) for (let dc = -2; dc <= 2; dc++) add(r0 + dr, c0 + dc);
+    return out.filter((k) => k !== i);
+  }
+
+  const COMBOS = { "line+line": "cross", "bomb+line": "bigcross", "bomb+bomb": "blast" };
+  const COMBO_SHOUT = { cross: "Cross!", bigcross: "Mega cross!", blast: "Kaboom!" };
+
+  // A special sheep's square burst: take its area, combining with any special it sets off.
+  function special(sp, now) {
+    const b = G.b;
+    let type = sp.type;
+    let area = areaFor(type, sp.dir, sp.cell);
+    const other = area.find((k) => b.tag[k]);
+    if (other !== undefined) {
+      const combo = COMBOS[[type, b.tag[other].type].sort().join("+")];
+      b.tag[other] = null;
+      if (combo) {
+        type = combo;
+        area = areaFor(combo, null, sp.cell);
+        shout(G.players[sp.who], COMBO_SHOUT[combo], 1.4);
+      }
+    }
+    for (const k of area) {
+      if (b.rock[k] || H.specialHit?.(G, k, sp.who)) continue;
+      landOn(k, sp.who);
+    }
+    G.effects.push({ type, dir: sp.dir, cell: sp.cell, cells: area, color: G.players[sp.who].color, t0: now });
+    Kit.tone(type === "line" || type === "cross" ? 900 : 160, 0.3, "sawtooth", 0.07, type === "line" || type === "cross" ? 300 : 60);
+    H.onSpecial?.(G, sp, type, area);
+  }
+
+  function loadSpecial(pl, type) {
+    if (pl.special && RANK[type] <= RANK[pl.special]) return;
+    pl.special = type;
+    Kit.tone(type === "overflow" ? 1200 : 800, 0.18, "triangle", 0.09, type === "overflow" ? 1800 : 1200);
+  }
+
+  function chains(bursts, now) {
+    let top = 0;
+    G.players.forEach((pl, p) => {
+      if (bursts[p] > 0) {
+        const prev = pl.chain;
+        pl.chain += bursts[p];
+        rewards(pl, prev, pl.chain);
+        H.onChain?.(G, pl, prev, pl.chain, now);
+        top = Math.max(top, pl.chain);
+      } else if (pl.chain > 0) {
+        pl.best = Math.max(pl.best, pl.chain);
+        H.chainEnd?.(G, pl, pl.chain, now);
+        pl.chain = 0;
+      }
+    });
+    if (!top) return;
+    Kit.sfx.burst(top);
+    if (top >= 2) Kit.popText($("chain"), `Chain x${top}!`);
+    if (top === 6) Kit.shake($("stage"));
+    if (top === 12) Kit.shake($("stage"), true);
+  }
+
+  const crossed = (prev, now, at) => prev < at && now >= at;
+  function rewards(pl, prev, now) {
+    if (crossed(prev, now, tune.lineAt)) loadSpecial(pl, "line");
+    if (crossed(prev, now, tune.plusAt)) pl.pen = Math.min(tune.pen, pl.pen + 2);
+    if (crossed(prev, now, tune.bombAt)) loadSpecial(pl, "bomb");
+    if (crossed(prev, now, tune.fullAt)) pl.pen = tune.pen;
+    if (crossed(prev, now, tune.overflowAt)) loadSpecial(pl, "overflow");
+    for (const [at, word, scale] of SHOUTS) if (crossed(prev, now, at)) shout(pl, word, scale);
+    if (now >= 6) mood(pl, "cheer", 1400);
+  }
+
+  // Knock out flocks with no sheep once everyone has dropped at least once.
+  function eliminate() {
+    const live = G.players.filter((pl) => !pl.observer);
+    if (!live.every((pl) => pl.placed || !pl.alive)) return;
+    for (const pl of live) {
+      if (pl.alive && orbsOf(pl.id) === 0) {
+        pl.alive = false;
+        pl.special = null;
+        Kit.sfx.howl();
+        shout(pl, "Out!", 1.2);
+      }
+    }
+  }
+
+  // Default ending: last team standing, or most squares when time runs out.
+  function defaultEnd(left) {
+    const teams = new Map();
+    for (const pl of G.players) if (!pl.observer) teams.set(pl.team, (teams.get(pl.team) || false) || pl.alive);
+    const alive = [...teams].filter(([, a]) => a).map(([t]) => t);
+    if (alive.length === 1 && teams.size > 1) return { team: alive[0], why: "last" };
+    if (left <= 0) {
+      const score = (t) => G.players.filter((pl) => pl.team === t && pl.alive).reduce((s, pl) => s + cellsOf(pl.id) * 1000 + orbsOf(pl.id), 0);
+      const ranked = [...teams.keys()].sort((a, b) => score(b) - score(a));
+      return { team: score(ranked[0]) === score(ranked[1]) ? -1 : ranked[0], why: "time" };
+    }
+    return null;
+  }
+
+  function finish(res) {
+    G.over = true;
+    const t = $("end-title");
+    const winners = res.team >= 0 ? G.players.filter((pl) => pl.team === res.team) : [];
+    const color = res.color ?? winners[0]?.color;
+    t.textContent = res.title ?? (res.team < 0 ? "It's a tie!" : winners.length > 1 ? `${winners.map((w) => w.name).join(" & ")} win!` : `${winners[0].name} wins!`);
+    t.style.color = color ?? "";
+    $("end-sub").textContent = res.sub ?? (res.why === "last" ? "Last flock standing." : `Time's up! Squares: ${G.players.filter((p) => !p.observer).map((p) => `${p.name} ${cellsOf(p.id)}`).join(" · ")}`);
+    $("end-extra").replaceChildren();
+    H.endExtra?.(G, res, $("end-extra"));
+    const g = Kit.sharp($("hero-end"), 220, 120);
+    Kit.drawLamb(g, 110, 66, 104, { scarf: color, mood: res.sad ? "sad" : "happy" });
+    (res.sad ? Kit.sfx.lose : Kit.sfx.win)();
+    setTimeout(() => Kit.show("end"), 700);
+  }
+
+  // ---------- AI ----------
+  function aiStep(pl, now) {
+    if (pl.kind !== "ai" || !pl.alive || pl.pen <= 0 || now < pl.lockUntil) return;
+    const skill = AI[pl.level] ?? AI.normal;
+    const i = cursorCell(pl);
+    let ok = H.canDrop ? H.canDrop(G, pl, i, defaultCanDrop) : defaultCanDrop(pl, i);
+    // a fumble: tap anyway on a bad square now and then
+    if (!ok && Math.random() >= skill.miss) return;
+    let gain = 0;
+    if (ok) {
+      const b = G.b;
+      const score = (bb) => Kit.evaluate(bb, (o) => o === pl.id || (o < G.players.length && o >= 0 && sameTeam(o, pl.id)), (o) => o >= 0 && o < G.players.length && !sameTeam(o, pl.id), (c) => Engine.capacity(bb, c));
+      const after = Engine.clone(b);
+      Engine.place(after, i, pl.id);
+      Engine.resolve(after, { maxWaves: 40, canBurst: (bb, c) => bb.owner[c] >= 0 && bb.owner[c] < G.players.length }, false);
+      gain = score(after) - score(b) + (H.aiValue?.(G, pl, i) ?? 0);
+      if (pl.special && pl.special !== "overflow") gain += Engine.neighbours(b, i, Engine.ALL8).filter((k) => b.owner[k] >= 0 && b.owner[k] < G.players.length && !sameTeam(b.owner[k], pl.id)).length * 2;
+    }
+    // keep a sheep in reserve unless the move is good
+    const reserve = pl.level === "hard" && pl.pen <= 1 && gain < skill.pick * 2;
+    if (!pl.placed || (ok && !reserve && (gain >= skill.pick || Math.random() < skill.idle)) || !ok) {
+      const [lo, hi] = skill.react;
+      pl.aiPlan = { cell: i, at: now + lo + Math.random() * (hi - lo) };
+    }
+  }
+
+  // ---------- loop ----------
+  function update(now) {
+    const elapsed = (now - G.start) / 1000;
+    const secs = H.roundSecs ? H.roundSecs(G) : tune.roundSecs;
+    const left = secs - elapsed;
+    if (Number.isFinite(secs) && left <= tune.stampedeSecs && left > 0 && !G.rush) {
+      G.rush = true;
+      $("app").classList.add("rush");
+      shout(null, "STAMPEDE!", 1.6, "#ff6b6b");
+      Kit.sfx.howl();
+    }
+    for (const pl of G.players) {
+      if (!pl.alive || pl.observer) continue;
+      const stepMs = (H.stepMs?.(G, pl) ?? tune.cursorMs) / pl.speed / (G.rush ? 1.2 : 1);
+      if (now >= pl.nextStep) {
+        pl.nextStep = Math.max(pl.nextStep + stepMs, now - stepMs);
+        pl.pos += pl.dir;
+        H.onStep?.(G, pl, now);
+        aiStep(pl, now);
+      }
+      if (pl.aiPlan && now >= pl.aiPlan.at) {
+        if (cursorCell(pl) === pl.aiPlan.cell) drop(pl, now);
+        pl.aiPlan = null;
+      }
+      if (pl.pen < tune.pen) {
+        if (!pl.refillAt) pl.refillAt = now + refillMs(pl);
+        if (now >= pl.refillAt) {
+          pl.pen++;
+          pl.refillAt = pl.pen < tune.pen ? now + refillMs(pl) : 0;
+        }
+      } else pl.refillAt = 0;
+    }
+    if (now - G.waveAt >= WAVE_MS) {
+      G.waveAt = now;
+      tickWave(now);
+    }
+    H.update?.(G, now, left);
+    if (G.over) return;
+    const txt = Number.isFinite(secs) ? `${Math.floor(Math.max(0, Math.ceil(left)) / 60)}:${String(Math.max(0, Math.ceil(left)) % 60).padStart(2, "0")}` : H.timerText?.(G) ?? "";
+    $("timer").textContent = txt;
+    $("timer-top").textContent = txt;
+    if (G.rush && Math.ceil(left) !== G.lastTick) {
+      G.lastTick = Math.ceil(left);
+      Kit.tone(1000, 0.04, "square", 0.04);
+    }
+    const res = H.endCheck ? H.endCheck(G, now, left, defaultEnd) : defaultEnd(left);
+    if (res) finish(res);
+  }
+
+  function frame(now) {
+    requestAnimationFrame(frame);
+    if (G && !G.over && !G.paused) update(now);
+    drawBoard(now);
+    renderButtons(now);
+  }
+
+  function pause() {
+    if (!G || G.over) return;
+    G.paused = true;
+    G.pauseAt = performance.now();
+    openTune(true);
+  }
+
+  function resume() {
+    Kit.hide("tune");
+    if (!G || !G.paused) return;
+    const d = performance.now() - G.pauseAt;
+    G.start += d;
+    G.waveAt += d;
+    for (const pl of G.players) {
+      pl.nextStep += d;
+      if (pl.refillAt) pl.refillAt += d;
+      pl.lockUntil += d;
+      pl.moodUntil += d;
+      if (pl.aiPlan) pl.aiPlan.at += d;
+    }
+    H.shift?.(G, d);
+    G.paused = false;
+  }
+
+  // ---------- shouts and moods ----------
+  const lastShout = new Map(); // one shout per player on screen; a new one replaces it
+  function shout(pl, text, scale = 1, color) {
+    lastShout.get(pl?.id ?? -1)?.remove();
+    const el = document.createElement("div");
+    lastShout.set(pl?.id ?? -1, el);
+    el.className = "shout" + (pl && FLIPPED[pl.seat] ? " flip" : "");
+    el.textContent = text;
+    el.style.color = color ?? pl?.color ?? "#ffcf4a";
+    el.style.fontSize = `${2 * scale}rem`;
+    if (pl && pl.seat >= 0) el.style.top = FLIPPED[pl.seat] ? "36%" : "64%";
+    $("shouts").append(el);
+    setTimeout(() => el.remove(), 1000);
+    if (text.endsWith("!") && scale >= 1.5) Kit.sfx.bleat(1.2);
+  }
+
+  function mood(pl, kind, ms) {
+    pl.mood = kind;
+    pl.moodUntil = performance.now() + ms;
+  }
+
+  // ---------- drawing ----------
+  function resize() {
+    if (!G) return;
+    geo = Kit.fitBoard(canvas, $("stage"), G.b.cols, G.b.rows);
+  }
+
+  const SPOTS = {
+    1: [[0, 0]],
+    2: [[-0.2, 0], [0.2, 0.02]],
+    3: [[-0.2, 0.12], [0.2, 0.12], [0, -0.16]],
+    4: [[-0.2, -0.15], [0.2, -0.15], [-0.2, 0.17], [0.2, 0.17]],
+  };
+
+  // Special sheep: Line has stripes showing its direction, Bomb is a round woolly ball, Overflow is golden.
+  function drawSpecial(g, x, y, r, type, color, dir, t) {
+    if (type === "bomb") {
+      Kit.circle(g, x, y, r * 1.15, color);
+      g.strokeStyle = Kit.shade(color, 0.5);
+      g.lineWidth = r * 0.18;
+      g.beginPath();
+      g.arc(x, y, r * 0.6, 0.5, 4.5);
+      g.stroke();
+      g.strokeStyle = "#5b4630";
+      g.lineWidth = r * 0.16;
+      g.beginPath();
+      g.moveTo(x + r * 0.7, y - r * 0.8);
+      g.quadraticCurveTo(x + r * 1.1, y - r * 1.3, x + r * 1.4, y - r * 1.1);
+      g.stroke();
+      Kit.circle(g, x + r * 1.45, y - r * 1.15, r * (0.2 + 0.1 * Math.sin(t * 20)), "#ffcf4a");
+      return;
+    }
+    Kit.drawSheep(g, x, y, r, type === "overflow" ? "#ffcf4a" : color);
+    if (type === "overflow") {
+      g.globalAlpha = 0.5 + 0.3 * Math.sin(t * 6);
+      Kit.circle(g, x, y, r * 1.6, "rgba(255,220,100,0.35)");
+      g.globalAlpha = 1;
+      return;
+    }
+    g.strokeStyle = "rgba(255,255,255,0.95)";
+    g.lineWidth = r * 0.22;
+    g.beginPath();
+    for (const k of [-0.45, 0, 0.45]) {
+      if (dir === "row") {
+        g.moveTo(x - r * 0.8, y + k * r);
+        g.lineTo(x + r * 0.8, y + k * r);
+      } else {
+        g.moveTo(x + k * r, y - r * 0.7);
+        g.lineTo(x + k * r, y + r * 0.7);
+      }
+    }
+    g.stroke();
+  }
+
+  function drawBoard(now) {
+    const t = now / 1000;
+    ctx.setTransform(geo.dpr, 0, 0, geo.dpr, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (!G) return;
+    const b = G.b;
+    const c = geo.cell;
+    const incoming = new Array(b.size).fill(0);
+    const fp = Math.min(1, (now - (G.flights[0]?.t0 ?? 0)) / WAVE_MS);
+    if (fp < 1) for (const f of G.flights) for (const d of f.to) incoming[d]++;
+    for (let i = 0; i < b.size; i++) {
+      const x = Engine.colOf(b, i) * c;
+      const y = Engine.rowOf(b, i) * c;
+      if (b.rock[i]) {
+        ctx.fillStyle = "#59605a";
+        ctx.fillRect(x, y, c, c);
+        H.drawCell?.(ctx, G, i, x, y, c, t);
+        continue;
+      }
+      ctx.fillStyle = (Engine.rowOf(b, i) + Engine.colOf(b, i)) % 2 ? "#3d7a45" : "#46874e";
+      ctx.fillRect(x, y, c, c);
+      const o = b.owner[i];
+      if (o >= 0 && o < G.players.length) {
+        ctx.fillStyle = G.players[o].color + "40";
+        ctx.fillRect(x, y, c, c);
+      }
+      if (H.drawCell?.(ctx, G, i, x, y, c, t)) continue;
+      const n = b.count[i] - incoming[i];
+      if (n <= 0 || o < 0) continue;
+      const color = o === NEUTRAL ? "#9a9aa8" : G.players[o]?.color ?? "#fff";
+      const k = Math.min(n, 4);
+      const nervous = o !== NEUTRAL && n >= Engine.capacity(b, i) - 1;
+      for (let s = 0; s < k; s++) {
+        const [dx, dy] = SPOTS[k][s];
+        const jx = nervous ? Math.sin(t * 40 + i * 3 + s) * c * 0.02 : 0;
+        const sx = x + (0.5 + dx) * c + jx;
+        const sy = y + (0.5 + dy) * c;
+        if (s === 0 && b.tag[i]) drawSpecial(ctx, sx, sy, c * 0.14, b.tag[i].type, color, b.tag[i].dir, t);
+        else Kit.drawSheep(ctx, sx, sy, c * 0.14, color, { flip: s % 2 === 1 });
+      }
+      if (n > 4) {
+        ctx.fillStyle = "#ffcf4a";
+        ctx.font = `900 ${Math.round(c * 0.24)}px system-ui`;
+        ctx.textBaseline = "alphabetic";
+        ctx.fillText(n, x + c * 0.72, y + c * 0.95);
+      }
+    }
+    if (fp < 1) {
+      const e = 1 - (1 - fp) * (1 - fp);
+      for (const { from, to, who } of G.flights) {
+        const fx = (Engine.colOf(b, from) + 0.5) * c;
+        const fy = (Engine.rowOf(b, from) + 0.5) * c;
+        for (const d of to) {
+          const tx = (Engine.colOf(b, d) + 0.5) * c;
+          const ty = (Engine.rowOf(b, d) + 0.5) * c;
+          Kit.drawSheep(ctx, fx + (tx - fx) * e, fy + (ty - fy) * e - Math.sin(Math.PI * fp) * c * 0.3, c * 0.14, G.players[who]?.color ?? "#fff", { flip: tx < fx });
+        }
+      }
+    }
+    // special effects, about half a second each
+    G.effects = G.effects.filter((f) => now - f.t0 < 500);
+    for (const f of G.effects) {
+      const p = (now - f.t0) / 500;
+      ctx.globalAlpha = 1 - p;
+      ctx.fillStyle = f.type === "overflow" ? "#ffe680" : f.color;
+      for (const k of f.cells) {
+        const x = Engine.colOf(b, k) * c;
+        const y = Engine.rowOf(b, k) * c;
+        if (f.type === "overflow") Kit.circle(ctx, x + c / 2, y + c / 2 - p * c * 0.4, c * 0.12, "#ffe680");
+        else ctx.fillRect(x + c * 0.1 * p, y + c * 0.1 * p, c * (1 - 0.2 * p), c * (1 - 0.2 * p));
+      }
+      if (f.cell !== undefined && ["bomb", "blast"].includes(f.type)) {
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc((Engine.colOf(b, f.cell) + 0.5) * c, (Engine.rowOf(b, f.cell) + 0.5) * c, c * (0.5 + p * (f.type === "blast" ? 2.5 : 1.5)), 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
+    H.drawOver?.(ctx, G, c, t, now);
+    ctx.strokeStyle = "rgba(255,255,255,0.18)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let col = 1; col < b.cols; col++) {
+      ctx.moveTo(col * c, 0);
+      ctx.lineTo(col * c, geo.h);
+    }
+    for (let row = 1; row < b.rows; row++) {
+      ctx.moveTo(0, row * c);
+      ctx.lineTo(geo.w, row * c);
+    }
+    ctx.stroke();
+    // cursors: a thick ring in each player's colour, inset so shared squares show every ring
+    G.players.forEach((pl, q) => {
+      if (!pl.alive || pl.observer || H.hideCursor?.(G, pl)) return;
+      const i = cursorCell(pl);
+      const x = Engine.colOf(b, i) * c;
+      const y = Engine.rowOf(b, i) * c;
+      const inset = 2 + (q % 4) * 4;
+      ctx.strokeStyle = pl.color;
+      ctx.lineWidth = 4;
+      ctx.globalAlpha = now < pl.lockUntil ? 0.35 : 1;
+      ctx.strokeRect(x + inset, y + inset, c - inset * 2, c - inset * 2);
+      if (pl.special) drawSpecial(ctx, x + c - inset - c * 0.12, y + inset + c * 0.12, c * 0.08, pl.special, pl.color, pl.lineDir, t);
+      ctx.globalAlpha = 1;
+    });
+  }
+
+  // Each button: player colour, the lamb, the pen ring and any loaded special.
+  function renderButtons(now) {
+    const t = now / 1000;
+    SEATS.forEach((id, seat) => {
+      const btn = $(id);
+      const pl = G?.players.find((x) => x.seat === seat);
+      btn.classList.toggle("empty", !pl);
+      if (!pl) return;
+      btn.classList.toggle("flip", FLIPPED[seat]);
+      const cv = btn.querySelector("canvas");
+      const w = btn.clientWidth;
+      const h = btn.clientHeight;
+      if (!w) return;
+      const g = Kit.sharp(cv, w, h);
+      const empty = pl.pen <= 0;
+      const locked = now < pl.lockUntil;
+      g.fillStyle = !pl.alive || empty ? "#7b7f86" : pl.color;
+      g.fillRect(0, 0, w, h);
+      const cx = w / 2;
+      const cy = h / 2 + 2;
+      const R = Math.min(w, h) * 0.42;
+      // pen ring: one segment per sheep; the next one fills as it refills
+      const n = tune.pen;
+      const gap = n > 1 ? 0.32 : 0;
+      for (let k = 0; k < n; k++) {
+        const a0 = -Math.PI / 2 + (k / n) * Math.PI * 2 + gap / 2;
+        const a1 = -Math.PI / 2 + ((k + 1) / n) * Math.PI * 2 - gap / 2;
+        g.lineWidth = 7;
+        g.lineCap = "round";
+        g.strokeStyle = "rgba(0,0,0,0.25)";
+        g.beginPath();
+        g.arc(cx, cy, R, a0, a1);
+        g.stroke();
+        let fill = k < pl.pen ? 1 : 0;
+        if (k === pl.pen && pl.refillAt) fill = Math.max(0, 1 - (pl.refillAt - now) / refillMs(pl));
+        if (fill > 0) {
+          g.strokeStyle = "#fffaf0";
+          g.beginPath();
+          g.arc(cx, cy, R, a0, a0 + (a1 - a0) * fill);
+          g.stroke();
+        }
+      }
+      // the lamb reacts
+      const m = now < pl.moodUntil ? pl.mood : null;
+      const panic = empty && pl.alive;
+      const jump = m === "cheer" ? Math.abs(Math.sin(t * 10)) * 8 : 0;
+      const jit = panic ? Math.sin(t * 50) * 2 : 0;
+      Kit.drawLamb(g, cx + jit, cy + 6 - jump, R * 1.25, { scarf: pl.color, t, mood: !pl.alive ? "sleep" : m === "oops" ? "sleep" : panic ? "shock" : "happy" });
+      if (m === "oops") {
+        // hooves over his eyes
+        for (const side of [-1, 1]) Kit.circle(g, cx + R * 0.27 + side * R * 0.09, cy + 6 - R * 0.26, R * 0.09, "#3b3340");
+      }
+      if (panic) {
+        Kit.ellipse(g, cx + R * 0.55, cy - R * 0.25, R * 0.06, R * 0.1, 0, "#8fd3ff");
+      }
+      if (pl.special) {
+        Kit.circle(g, w - 22, 22, 17, "rgba(0,0,0,0.3)");
+        drawSpecial(g, w - 22, 23, 9, pl.special, pl.color, pl.lineDir, t);
+      }
+      if (pl.kind === "ai") {
+        g.fillStyle = "rgba(0,0,0,0.45)";
+        g.font = "900 12px system-ui";
+        g.fillText("AI", 10, h - 10);
+      }
+      if (locked) {
+        g.fillStyle = "rgba(0,0,0,0.55)";
+        g.fillRect(0, 0, w, h);
+        g.strokeStyle = "#fff";
+        g.lineWidth = 5;
+        g.beginPath();
+        g.arc(cx, cy, R * 0.5, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * ((pl.lockUntil - now) / LOCK_MS));
+        g.stroke();
+      }
+      if (!pl.alive) {
+        g.fillStyle = "rgba(0,0,0,0.5)";
+        g.fillRect(0, 0, w, h);
+        g.fillStyle = "#fff";
+        g.font = "900 22px system-ui";
+        g.textAlign = "center";
+        g.fillText("OUT", cx, cy + 8);
+        g.textAlign = "start";
+      }
+    });
+  }
+
+  // ---------- start screen helpers ----------
+  const ui = {
+    clear: () => $("opts").replaceChildren(),
+    row(label, el) {
+      const r = document.createElement("div");
+      r.className = "optrow";
+      r.innerHTML = `<span class="lbl">${label}</span>`;
+      r.append(el);
+      $("opts").append(r);
+      return r;
+    },
+    seg(label, key, options, after) {
+      const s = document.createElement("div");
+      s.className = "seg";
+      for (const [value, text] of options) {
+        const btn = document.createElement("button");
+        btn.textContent = text;
+        btn.className = setup[key] === value ? "on" : "";
+        btn.addEventListener("click", () => {
+          setup[key] = value;
+          saveSetup();
+          renderOptions();
+          after?.();
+        });
+        s.append(btn);
+      }
+      return ui.row(label, s);
+    },
+    stepper(label, key, min, max) {
+      const s = document.createElement("div");
+      s.className = "stepper";
+      s.innerHTML = `<button aria-label="Fewer">−</button><output>${setup[key]}</output><button aria-label="More">+</button>`;
+      const [less, , more] = s.children;
+      less.addEventListener("click", () => {
+        setup[key] = Math.max(min, setup[key] - 1);
+        saveSetup();
+        renderOptions();
+      });
+      more.addEventListener("click", () => {
+        setup[key] = Math.min(max, setup[key] + 1);
+        saveSetup();
+        renderOptions();
+      });
+      return ui.row(label, s);
+    },
+    seats(count) {
+      const box = document.createElement("div");
+      box.className = "seats";
+      setup.seats ??= ["human", "ai", "ai", "ai"];
+      for (let p = 0; p < count; p++) {
+        const row = document.createElement("div");
+        row.className = "seat";
+        row.innerHTML = `<span class="dot" style="color:${COLORS[p]}"></span><span class="nm">${NAMES[p]}</span>`;
+        const seg = document.createElement("div");
+        seg.className = "seg";
+        for (const [k, text] of [["human", "Human"], ["ai", "AI"]]) {
+          const btn = document.createElement("button");
+          btn.textContent = text;
+          btn.className = setup.seats[p] === k ? "on" : "";
+          btn.addEventListener("click", () => {
+            setup.seats[p] = k;
+            saveSetup();
+            renderOptions();
+          });
+          seg.append(btn);
+        }
+        row.append(seg);
+        box.append(row);
+      }
+      $("opts").append(box);
+    },
+    level() {
+      return ui.seg("AI", "level", [["easy", "Easy"], ["normal", "Normal"], ["hard", "Hard"]]);
+    },
+  };
+
+  function renderOptions() {
+    ui.clear();
+    V.options?.(ui, setup);
+  }
+
+  // ---------- tuning panel ----------
+  function openTune(inGame) {
+    const box = $("sliders");
+    box.replaceChildren();
+    for (const [key, label, min, max, step, unit] of TUNE_INFO.concat(V.tuneInfo || [])) {
+      const el = document.createElement("label");
+      el.innerHTML = `<span>${label}</span><output></output><input type="range" min="${min}" max="${max}" step="${step}" />`;
+      const input = el.querySelector("input");
+      const out = el.querySelector("output");
+      input.value = tune[key];
+      out.textContent = tune[key] + unit;
+      input.addEventListener("input", () => {
+        tune[key] = Number(input.value);
+        out.textContent = tune[key] + unit;
+        saveTune();
+        if (key === "pen" && G) for (const pl of G.players) pl.pen = Math.min(pl.pen, tune.pen);
+      });
+      box.append(el);
+    }
+    $("tune-done").textContent = inGame ? "Resume" : "Done";
+    $("tune-restart").parentElement.hidden = !inGame;
+    Kit.show("tune");
+  }
+
+  // ---------- wiring ----------
+  function run(version) {
+    V = version;
+    H = V.hooks || {};
+    tune = load(`cfl-${V.key}-tune`, defaults());
+    setup = load(`cfl-${V.key}-setup`, V.setupDefaults || {});
+    canvas = $("board");
+    ctx = canvas.getContext("2d");
+    $("title").textContent = V.title;
+    $("how").innerHTML = V.how.join("<br>");
+    if (V.solo) $("app").classList.add("solo");
+    SEATS.forEach((id) =>
+      $(id).addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        const pl = G?.players.find((x) => x.seat === SEATS.indexOf(id));
+        if (pl && pl.kind === "human") drop(pl);
+      })
+    );
+    $("play").addEventListener("click", () => (V.onPlay ? V.onPlay(start) : start()));
+    $("again").addEventListener("click", () => (V.onAgain ? V.onAgain(start) : start()));
+    $("end-menu").addEventListener("click", menu);
+    $("pause").addEventListener("click", pause);
+    $("gear").addEventListener("click", () => openTune(false));
+    $("tune-done").addEventListener("click", resume);
+    $("tune-restart").addEventListener("click", () => (V.onAgain ? V.onAgain(start) : start()));
+    $("tune-menu").addEventListener("click", menu);
+    $("tune-reset").addEventListener("click", () => {
+      tune = defaults();
+      saveTune();
+      openTune(!!G && G.paused);
+    });
+    Kit.muteButton($("mute"));
+    new ResizeObserver(resize).observe($("stage"));
+    renderOptions();
+    const g = Kit.sharp($("hero-intro"), 220, 120);
+    if (V.hero) V.hero(g);
+    else {
+      COLORS.forEach((col, k) => Kit.drawSheep(g, 30 + k * 54, 108 - (k % 2) * 6, 12, col, { flip: k > 1 }));
+      Kit.drawLamb(g, 110, 60, 96, { scarf: COLORS[0], mood: "happy" });
+    }
+    requestAnimationFrame(frame);
+  }
+
+  function menu() {
+    if (G) G.over = true;
+    G = null;
+    $("app").classList.remove("rush");
+    for (const id of ["end", "tune"]) Kit.hide(id);
+    renderOptions();
+    V.onMenu?.();
+    Kit.show("intro");
+  }
+
+  return {
+    run, start, menu, drop, shout, mood, loadSpecial, landOn, buildPath, cursorCell, cellsOf, orbsOf, sameTeam, refillMs, resize, ui, renderOptions,
+    COLORS, NAMES, NEUTRAL, RANK, FLIPPED,
+    get G() { return G; }, get tune() { return tune; }, get setup() { return setup; }, get geo() { return geo; },
+  };
+})();
+// ===================== END SHARED STAMPEDE CORE =====================
+
+
+// ======================= S2: SHEEP SAGA =======================
+const CONFIG = {
+  wolfRefill: 1.9, // seconds per sheep for the wolf's pen
+  thornSpreadSecs: 6, // a thorn spreads if none is cleared for this long
+  rockSpecialChance: 0.35, // a broken rock loads a special this often
+  finaleGap: 260, // ms between leftover sheep in the finale
+  finaleMax: 16, // leftover sheep that fly in; the rest just score
+  points: { burst: 10, hit: 20, rock: 60, thorn: 30, gate: 30, wake: 50, leftover: 500 },
+  stars: [0.15, 0.35], // 2 and 3 stars: share of the sheep budget left over (each one is worth points.leftover)
+  fill: 0.5, // default share of empty squares that start with your sheep
+};
+
+// Level maps, 9 rows of 6. Key: . empty  R rock (2 hits)  1-5 rock with that many hits
+// T thorn  G gate  Z sleeping sheep  B boss rock (a 2x2 block; set boss: hits)
+// Goals: rocks (break them all), thorns (clear them all), wake: N, chain: N, own: percent, boss.
+// fill: share of empty squares that start with some of your sheep (like a full Candy Crush board).
+const LEVELS = [
+  { budget: 22, goals: { chain: 5 }, map: "...... ...... ...... ...... ...... ...... ...... ...... ......" },
+  { budget: 26, goals: { own: 70 }, fill: 0.3, map: "...... ...... ...... ...... ...... ...... ...... ...... ......" },
+  { budget: 30, goals: { rocks: 1 }, map: "...... ...... .1..1. ...... ...... ...... .1..1. ...... ......" },
+  { budget: 48, goals: { rocks: 1 }, map: "...... ..22.. ...... .3..3. ...... .3..3. ...... ..22.. ......" },
+  { budget: 36, goals: { wake: 6 }, map: "Z....Z ...... ...... ..ZZ.. ...... ...... ...... ...... Z....Z" },
+  { budget: 44, goals: { wake: 4 }, map: "...... .GGGG. .GZZG. .GGGG. ...... ...... Z....Z ...... ......" },
+  { budget: 38, goals: { thorns: 1 }, map: "...... ...... ..TT.. ...... T....T ...... ..TT.. ...... ......" },
+  { budget: 38, goals: { wake: 6 }, night: true, map: "Z..... ....Z. ...... .Z.... ...... ....Z. ...... .Z.... .....Z" },
+  { budget: 46, goals: { rocks: 1, chain: 10 }, map: "T....T ...... .2..2. ...... ..33.. ...... .2..2. ...... T....T" },
+  { budget: 34, goals: { own: 65 }, fill: 0.3, wolf: "easy", map: "...... ...... ...... ...... ...... ...... ...... ...... ......" },
+  { budget: 46, goals: { rocks: 1 }, wolf: "easy", map: "...... .2..2. ...... ..33.. ...... ..33.. ...... .2..2. ......" },
+  { budget: 46, goals: { thorns: 1, wake: 2 }, wolf: "easy", map: "..TT.. ...... GG..GG ZG..GZ ...... T....T ...... ...... ......" },
+  { budget: 48, goals: { wake: 6 }, wolf: "normal", night: true, map: "...... Z....Z ...... ..R... Z....Z ...R.. ...... Z....Z ......" },
+  { budget: 56, goals: { rocks: 1, chain: 10 }, wolf: "normal", map: "T....T .G..G. ..33.. Z....Z ..44.. Z....Z ..33.. .G..G. T....T" },
+  { budget: 46, goals: { boss: 1 }, boss: 15, wolf: "normal", map: "...... .2..2. ...... ..BB.. ..BB.. ...... .2..2. ...... ......" },
+];
+const ROCK_DEFAULT = 2;
+const WOLF = "#5d6170";
+const SLEEP = "#c9c9d4";
+const ICONS = { rocks: "🪨", thorns: "🌵", wake: "💤", chain: "⚡", own: "🟩", boss: "🗿" };
+
+const loadProgress = () => {
+  try {
+    return JSON.parse(localStorage.getItem("cfl-s2-progress")) || { stars: [] };
+  } catch {
+    return { stars: [] };
+  }
+};
+let progress = loadProgress();
+const saveProgress = () => {
+  try {
+    localStorage.setItem("cfl-s2-progress", JSON.stringify(progress));
+  } catch {}
+};
+const unlocked = (s) => (s.unlockAll ? LEVELS.length : Math.min(LEVELS.length, progress.stars.filter((x) => x > 0).length + 1));
+
+// ---------- level setup ----------
+function buildLevel(G, n) {
+  const L = LEVELS[n - 1];
+  const b = G.b;
+  const rows = L.map.split(" ");
+  const D = (G.data = { lvl: n, L, budget: L.budget, score: 0, maxChain: 0, woke: 0, quiet: 0, thornAt: 0, finale: null, won: false, maxHp: [], bossHp: L.boss || 0, bossCells: [] });
+  for (let r = 0; r < b.rows; r++)
+    for (let c = 0; c < b.cols; c++) {
+      const i = r * b.cols + c;
+      const ch = rows[r][c];
+      if (ch === "R" || (ch >= "1" && ch <= "5")) {
+        b.kind[i] = "rock";
+        b.hp[i] = ch === "R" ? ROCK_DEFAULT : Number(ch);
+      } else if (ch === "T") b.kind[i] = "thorn";
+      else if (ch === "G") b.kind[i] = "gate";
+      else if (ch === "Z") b.kind[i] = "sleep";
+      else if (ch === "B") {
+        b.kind[i] = "boss";
+        D.bossCells.push(i);
+      }
+      else if (Math.random() < (L.fill ?? CONFIG.fill)) {
+        b.owner[i] = 0;
+        b.count[i] = 1 + Math.floor(Math.random() * (Engine.capacity(b, i) - 1));
+      }
+      D.maxHp[i] = b.hp[i];
+    }
+  D.thornAt = performance.now() + CONFIG.thornSpreadSecs * 1000;
+}
+
+const count = (G, kind) => G.b.kind.filter((k) => k === kind).length;
+const playable = (G) => G.b.kind.filter((k) => !k).length;
+const ownPct = (G) => Math.floor((100 * Stampede.cellsOf(0)) / Math.max(1, playable(G)));
+
+function goalState(G) {
+  const D = G.data;
+  const out = [];
+  for (const [g, v] of Object.entries(D.L.goals)) {
+    if (g === "rocks") out.push([g, count(G, "rock"), count(G, "rock") === 0]);
+    if (g === "thorns") out.push([g, count(G, "thorn"), count(G, "thorn") === 0]);
+    if (g === "wake") out.push([g, `${Math.min(D.woke, v)}/${v}`, D.woke >= v]);
+    if (g === "chain") out.push([g, `${Math.min(D.maxChain, v)}/${v}`, D.maxChain >= v]);
+    if (g === "own") out.push([g, `${Math.min(ownPct(G), v)}/${v}%`, ownPct(G) >= v]);
+    if (g === "boss") out.push([g, D.bossHp, D.bossHp <= 0]);
+  }
+  return out;
+}
+
+// Keep each cursor on its square when a rock leaves or joins the path.
+function rebuildPath(G) {
+  const at = G.players.map((pl) => Stampede.cursorCell(pl));
+  Stampede.buildPath();
+  G.players.forEach((pl, k) => {
+    const p = G.path.indexOf(at[k]);
+    if (p >= 0) pl.pos = p;
+  });
+}
+
+// A sheep (from a burst or a special) arriving on a blocker. True when the blocker took it.
+function hitBlocker(G, i, who) {
+  const b = G.b;
+  const D = G.data;
+  const kind = b.kind[i];
+  if (!kind) return false;
+  const pl = G.players[who];
+  const mine = who === 0;
+  const fx = (color) => G.effects.push({ type: "hit", cells: [i], color, t0: performance.now() });
+  if (kind === "rock") {
+    b.hp[i]--;
+    if (mine) D.score += CONFIG.points.hit;
+    Kit.tone(140 + b.hp[i] * 30, 0.08, "square", 0.05);
+    fx("#ffffff");
+    if (b.hp[i] <= 0) {
+      b.kind[i] = null;
+      if (mine) D.score += CONFIG.points.rock;
+      Kit.tone(90, 0.25, "sawtooth", 0.08, 50);
+      if (Math.random() < CONFIG.rockSpecialChance) Stampede.loadSpecial(pl, D.maxHp[i] >= 3 ? "bomb" : "line");
+      rebuildPath(G);
+    }
+  } else if (kind === "boss") {
+    D.bossHp--;
+    if (mine) D.score += CONFIG.points.hit;
+    Kit.tone(70 + D.bossHp * 6, 0.1, "square", 0.06);
+    for (const k of D.bossCells) fx("#ffffff");
+    if (D.bossHp <= 0) {
+      for (const k of D.bossCells) b.kind[k] = null;
+      D.score += CONFIG.points.rock * 5;
+      Stampede.shout(G.players[0], "Crumbled!", 1.6);
+      Kit.shake(Kit.$("stage"), true);
+      rebuildPath(G);
+    }
+  } else if (kind === "thorn") {
+    b.kind[i] = null;
+    if (mine) D.score += CONFIG.points.thorn;
+    D.thornAt = performance.now() + CONFIG.thornSpreadSecs * 1000;
+    Kit.tone(700, 0.08, "triangle", 0.06, 300);
+    fx("#7bd36b");
+  } else if (kind === "gate") {
+    b.kind[i] = null;
+    if (mine) D.score += CONFIG.points.gate;
+    Kit.tone(220, 0.12, "square", 0.06, 120);
+    fx("#c08a4a");
+  } else if (kind === "sleep") {
+    // he wakes up and joins whoever reached him
+    b.kind[i] = null;
+    b.owner[i] = who;
+    b.count[i] = 1;
+    if (mine) {
+      D.woke++;
+      D.score += CONFIG.points.wake;
+      Kit.sfx.bleat(1.3);
+    }
+    fx(pl.color);
+  }
+  return true;
+}
+
+function spreadThorn(G) {
+  const b = G.b;
+  const thorns = [];
+  for (let i = 0; i < b.size; i++) if (b.kind[i] === "thorn") thorns.push(i);
+  for (const t of thorns.sort(() => Math.random() - 0.5)) {
+    const free = Engine.neighbours(b, t).filter((k) => !b.kind[k] && b.owner[k] === -1);
+    if (free.length) {
+      b.kind[free[Math.floor(Math.random() * free.length)]] = "thorn";
+      Kit.tone(160, 0.15, "sawtooth", 0.05, 110);
+      return;
+    }
+  }
+}
+
+// The Sugar-Crush moment: leftover sheep fly in as Line and Bomb sheep and go off one by one.
+function finaleStep(G, now) {
+  const D = G.data;
+  const b = G.b;
+  if (now < D.finale.next || D.budget <= 0) return;
+  D.finale.next = now + CONFIG.finaleGap;
+  D.budget--;
+  D.score += CONFIG.points.leftover;
+  if (D.finale.flown >= CONFIG.finaleMax) return;
+  D.finale.flown++;
+  const spots = [];
+  for (let i = 0; i < b.size; i++) if (!b.kind[i] && !b.tag[i] && (b.owner[i] === 0 || b.owner[i] === -1)) spots.push(i);
+  if (!spots.length) return;
+  const i = spots[Math.floor(Math.random() * spots.length)];
+  b.owner[i] = 0;
+  b.count[i] = Engine.capacity(b, i);
+  b.tag[i] = Math.random() < 0.5 ? { type: "line", dir: Math.random() < 0.5 ? "row" : "col" } : { type: "bomb", dir: null };
+  Kit.tone(500 + D.finale.flown * 40, 0.12, "triangle", 0.07, 900 + D.finale.flown * 40);
+}
+
+function starsFor(D) {
+  const left = D.finale.left / D.L.budget;
+  return left >= CONFIG.stars[1] ? 3 : left >= CONFIG.stars[0] ? 2 : 1;
+}
+
+// ---------- drawing ----------
+function eyesAt(g, x, y, r, look, anger) {
+  for (const side of [-1, 1]) {
+    const ex = x + side * r * 0.32;
+    Kit.circle(g, ex, y, r * 0.2, "#fff");
+    const dx = look.x - ex;
+    const dy = look.y - y;
+    const d = Math.hypot(dx, dy) || 1;
+    Kit.circle(g, ex + (dx / d) * r * 0.08, y + (dy / d) * r * 0.08, r * 0.1, "#1a1622");
+    // brows tilt in harder as the rock takes hits
+    g.strokeStyle = "#2e2a33";
+    g.lineWidth = r * 0.09;
+    g.beginPath();
+    g.moveTo(ex - side * r * 0.2, y - r * (0.3 - anger * 0.06));
+    g.lineTo(ex + side * r * 0.18, y - r * (0.3 + anger * 0.06));
+    g.stroke();
+  }
+}
+
+function drawRock(g, cx, cy, r, hp, maxHp, look) {
+  Kit.ellipse(g, cx, cy + r * 0.08, r * 0.95, r * 0.8, 0, "#7d828d");
+  Kit.ellipse(g, cx - r * 0.25, cy - r * 0.2, r * 0.45, r * 0.3, -0.3, "#9599a3");
+  const hits = maxHp - hp;
+  g.strokeStyle = "#3e4048";
+  g.lineWidth = Math.max(1.5, r * 0.07);
+  for (let k = 0; k < hits; k++) {
+    const a = k * 2.1 + 0.6;
+    g.beginPath();
+    g.moveTo(cx + Math.cos(a) * r * 0.85, cy + Math.sin(a) * r * 0.7);
+    g.lineTo(cx + Math.cos(a) * r * 0.45, cy + Math.sin(a + 0.4) * r * 0.4);
+    g.lineTo(cx + Math.cos(a + 0.3) * r * 0.2, cy + Math.sin(a) * r * 0.25);
+    g.stroke();
+  }
+  eyesAt(g, cx, cy - r * 0.05, r, look, Math.min(4, hits + (maxHp > 3 ? 1 : 0)));
+  // remaining hits as pips
+  if (hp > 5) {
+    g.fillStyle = "#ffcf4a";
+    g.font = `900 ${Math.round(r * 0.32)}px system-ui`;
+    g.textAlign = "center";
+    g.fillText(hp, cx, cy + r * 0.68);
+    g.textAlign = "start";
+  } else for (let k = 0; k < hp; k++) Kit.circle(g, cx - ((hp - 1) / 2) * r * 0.22 + k * r * 0.22, cy + r * 0.6, r * 0.07, "#ffcf4a");
+}
+
+function drawThorn(g, cx, cy, r, t) {
+  g.strokeStyle = "#2c5a2a";
+  g.lineWidth = r * 0.12;
+  for (let k = 0; k < 9; k++) {
+    const a = (k / 9) * Math.PI * 2 + Math.sin(t * 2) * 0.05;
+    g.beginPath();
+    g.moveTo(cx, cy);
+    g.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+    g.stroke();
+  }
+  Kit.circle(g, cx, cy, r * 0.55, "#3f7a35");
+  for (let k = 0; k < 5; k++) {
+    const a = (k / 5) * Math.PI * 2 + 0.3;
+    Kit.circle(g, cx + Math.cos(a) * r * 0.35, cy + Math.sin(a) * r * 0.35, r * 0.08, "#c94a6a");
+  }
+}
+
+function drawGate(g, x, y, c) {
+  g.fillStyle = "#8a5a2b";
+  for (const px of [0.18, 0.5, 0.82]) g.fillRect(x + c * px - c * 0.05, y + c * 0.15, c * 0.1, c * 0.75);
+  g.fillStyle = "#b07a40";
+  for (const py of [0.3, 0.62]) g.fillRect(x + c * 0.08, y + c * py, c * 0.84, c * 0.1);
+}
+
+function drawSleeper(g, cx, cy, r, t) {
+  Kit.drawSheep(g, cx, cy, r, SLEEP);
+  g.fillStyle = "#e8f0ff";
+  g.font = `900 ${Math.round(r * 0.9)}px system-ui`;
+  g.fillText("z", cx + r * 0.8, cy - r * 0.9 - Math.sin(t * 2) * r * 0.2);
+}
+
+// ---------- start screen: the level map ----------
+function renderMap(setup) {
+  const box = document.createElement("div");
+  box.className = "map";
+  const cv = document.createElement("canvas");
+  box.append(cv);
+  const W = 330;
+  const H = 330;
+  const spot = (k) => {
+    const row = Math.floor(k / 3);
+    const col = row % 2 ? 2 - (k % 3) : k % 3;
+    return [55 + col * 110 + (row % 2 ? -10 : 10), H - 32 - row * 66];
+  };
+  requestAnimationFrame(() => {
+    const g = Kit.sharp(cv, box.clientWidth, H);
+    const sx = box.clientWidth / W;
+    g.strokeStyle = "#5e8f4f";
+    g.lineWidth = 16;
+    g.lineCap = "round";
+    g.lineJoin = "round";
+    g.beginPath();
+    for (let k = 0; k < LEVELS.length; k++) {
+      const [x, y] = spot(k);
+      k ? g.lineTo(x * sx, y) : g.moveTo(x * sx, y);
+    }
+    g.stroke();
+    g.setLineDash([6, 10]);
+    g.strokeStyle = "#cfe8b8";
+    g.lineWidth = 3;
+    g.stroke();
+  });
+  const open = unlocked(setup);
+  LEVELS.forEach((L, k) => {
+    const n = k + 1;
+    const [x, y] = spot(k);
+    const btn = document.createElement("button");
+    const stars = progress.stars[k] || 0;
+    btn.className = "node" + (n > open ? " locked" : stars ? " done" : "") + (setup.lvl === n ? " sel" : "");
+    btn.style.left = `${(x / W) * 100}%`;
+    btn.style.top = `${y}px`;
+    btn.innerHTML = `${n > open ? "🔒" : n}<span class="st">${n <= open ? "★".repeat(stars) + `<span class="off">${"★".repeat(3 - stars)}</span>` : ""}</span>`;
+    btn.setAttribute("aria-label", `Level ${n}`);
+    btn.addEventListener("click", () => {
+      if (n > open) return;
+      setup.lvl = n;
+      Stampede.renderOptions();
+    });
+    box.append(btn);
+  });
+  Kit.$("opts").append(box);
+}
+
+// ---------- the version ----------
+Stampede.run({
+  key: "s2",
+  title: "Sheep Saga",
+  how: ["Tap to drop a sheep. Break rocks, clear thorns, wake lost sheep.", "Reach the goals at the top before your sheep run out."],
+  solo: true,
+  setupDefaults: { lvl: 1, unlockAll: false },
+  players(s) {
+    const L = LEVELS[s.lvl - 1];
+    const list = [{ seat: 0, kind: "human" }];
+    if (L.wolf) list.push({ seat: -1, kind: "ai", level: L.wolf, color: WOLF, name: "Wolf", pos: 30 });
+    return list;
+  },
+  options(ui, s) {
+    s.lvl = Math.min(Math.max(1, s.lvl || 1), unlocked(s));
+    renderMap(s);
+    ui.seg("Unlock all", "unlockAll", [[false, "Off"], [true, "On"]]);
+    Kit.$("play").textContent = `Play level ${s.lvl}`;
+  },
+  onPlay(start) {
+    progress = loadProgress();
+    start();
+  },
+  onAgain(start) {
+    const D = Stampede.G?.data;
+    if (D?.won && Stampede.setup.lvl < LEVELS.length) Stampede.setup.lvl++;
+    start();
+  },
+  onMenu() {
+    Kit.$("again").textContent = "Play again";
+  },
+  hooks: {
+    setup(G, s) {
+      buildLevel(G, s.lvl);
+      Kit.$("hud").textContent = "";
+    },
+    noElimination: true,
+    roundSecs: () => Infinity,
+    timerText: (G) => `🐑 ${G.data.budget}`,
+    inPath: (G, i) => G.b.kind[i] !== "rock" && G.b.kind[i] !== "boss",
+    refillMs: (G, pl) => (pl.id === 1 ? CONFIG.wolfRefill * 1000 : undefined),
+    blocked: (G, i) => !!G.b.kind[i],
+    afterDrop(G, pl) {
+      if (pl.id === 0) G.data.budget--;
+    },
+    onWaste(G, pl) {
+      if (pl.id === 0) G.data.budget--;
+    },
+    land: (G, b, from, to, who) => hitBlocker(G, to, who),
+    specialHit: (G, k, who) => hitBlocker(G, k, who),
+    onChain(G, pl, prev, now) {
+      if (pl.id === 0) G.data.maxChain = Math.max(G.data.maxChain, now);
+    },
+    afterWave(G, now, bursts) {
+      const D = G.data;
+      const p0 = G.players[0];
+      // the finale's fireworks are for show: leftover sheep score a flat bonus instead
+      if (!D.finale) D.score += bursts[0] * CONFIG.points.burst * Math.min(10, Math.max(1, p0.chain));
+      D.quiet = bursts[0] ? 0 : D.quiet + 1; // only your own chains hold the ending back
+      if (D.budget <= 0 && !D.emptyAt) D.emptyAt = now;
+    },
+    // the player's AI values squares next to blockers
+    aiValue(G, pl, i) {
+      if (pl.id !== 0) return 0;
+      const b = G.b;
+      const near = Engine.neighbours(b, i).filter((k) => b.kind[k]).length;
+      const bursts = b.count[i] + 1 >= Engine.capacity(b, i) && (b.owner[i] === -1 || b.owner[i] === 0);
+      return near * (bursts ? 4 : 0.6);
+    },
+    update(G, now) {
+      const D = G.data;
+      const p0 = G.players[0];
+      if (D.budget <= 0 && !D.finale) p0.pen = 0;
+      // thorns creep if left alone
+      if (now >= D.thornAt) {
+        D.thornAt = now + CONFIG.thornSpreadSecs * 1000;
+        if (!D.finale) spreadThorn(G);
+      }
+      if (D.finale) finaleStep(G, now);
+      const goals = goalState(G);
+      const html = goals.map(([g, v, ok]) => `<span class="obj${ok ? " ok" : ""}">${ICONS[g]} ${ok ? "✓" : v}</span>`).join("");
+      if (html !== D.hudHtml) {
+        D.hudHtml = html;
+        Kit.$("hud").innerHTML = html;
+      }
+      if (!D.finale && goals.every(([, , ok]) => ok)) {
+        // win: the leftover sheep celebrate
+        D.finale = { next: now + 500, flown: 0, left: D.budget };
+        p0.kind = "finale";
+        for (const pl of G.players) if (pl.id !== 0) pl.observer = true;
+        Stampede.shout(p0, "Hallelujah!", 1.85);
+        [523, 659, 784, 1047, 1319].forEach((f, k) => Kit.tone(f, 0.25, "triangle", 0.08, 0, k * 0.08));
+      }
+    },
+    shift(G, d) {
+      G.data.thornAt += d;
+      if (G.data.emptyAt) G.data.emptyAt += d;
+      if (G.data.finale) G.data.finale.next += d;
+    },
+    endCheck(G) {
+      const D = G.data;
+      if (D.finale) {
+        if (D.budget > 0 || D.quiet < 5) return null;
+        D.won = true;
+        const stars = starsFor(D);
+        progress.stars[D.lvl - 1] = Math.max(progress.stars[D.lvl - 1] || 0, stars);
+        saveProgress();
+        return { title: `Level ${D.lvl} done!`, sub: `Score ${D.score}`, color: "#ffcf4a", stars };
+      }
+      if (D.budget <= 0 && (D.quiet >= 7 || performance.now() - D.emptyAt > 4000)) return { title: "Out of sheep!", sub: "So close. One more go?", color: "#ff8a8a", sad: true };
+      return null;
+    },
+    endExtra(G, res, el) {
+      const D = G.data;
+      const best = progress.stars[D.lvl - 1] || 0;
+      if (res.stars) el.innerHTML = `<div class="stars">${"★".repeat(res.stars)}<span class="off">${"★".repeat(3 - res.stars)}</span></div>`;
+      else el.innerHTML = `<div class="stars"><span class="off">★★★</span></div>`;
+      Kit.$("again").textContent = D.won ? (D.lvl < LEVELS.length ? `Next: level ${D.lvl + 1}` : "Play again") : "Retry";
+      if (D.won && D.lvl === LEVELS.length && best) Kit.$("end-sub").textContent = `Score ${D.score}. The pasture is saved!`;
+    },
+    drawCell(ctx, G, i, x, y, c, t) {
+      const kind = G.b.kind[i];
+      if (!kind) return false;
+      const look = (() => {
+        const k = Stampede.cursorCell(G.players[0]);
+        return { x: (Engine.colOf(G.b, k) + 0.5) * c, y: (Engine.rowOf(G.b, k) + 0.5) * c };
+      })();
+      if (kind === "rock") drawRock(ctx, x + c / 2, y + c / 2, c * 0.4, G.b.hp[i], G.data.maxHp[i], look);
+      else if (kind === "thorn") drawThorn(ctx, x + c / 2, y + c / 2, c * 0.38, t);
+      else if (kind === "gate") drawGate(ctx, x, y, c);
+      else if (kind === "sleep") drawSleeper(ctx, x + c / 2, y + c / 2 + c * 0.05, c * 0.2, t);
+      return true; // boss cells are drawn as one big rock over the top
+    },
+    drawOver(ctx, G, c, t) {
+      const D = G.data;
+      const b = G.b;
+      const p0 = Stampede.cursorCell(G.players[0]);
+      const look = { x: (Engine.colOf(b, p0) + 0.5) * c, y: (Engine.rowOf(b, p0) + 0.5) * c };
+      if (D.bossHp > 0 && D.bossCells.length) {
+        const r0 = Math.min(...D.bossCells.map((k) => Engine.rowOf(b, k)));
+        const c0 = Math.min(...D.bossCells.map((k) => Engine.colOf(b, k)));
+        drawRock(ctx, (c0 + 1) * c, (r0 + 1) * c + Math.sin(t * 3) * 1.5, c * 0.85, D.bossHp, D.L.boss, look);
+      }
+      if (D.L.night && !D.finale) {
+        const grad = ctx.createRadialGradient(look.x, look.y, c * 1.1, look.x, look.y, c * 2.4);
+        grad.addColorStop(0, "rgba(6,10,24,0)");
+        grad.addColorStop(1, "rgba(6,10,24,0.93)");
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, b.cols * c, b.rows * c);
+      }
+    },
+  },
+});
+</script>
+</body>
+</html>
