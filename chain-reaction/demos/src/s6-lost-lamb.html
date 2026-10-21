@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Lost Lamb</title>
+<meta name="description" content="cheekyfoundlamb Stampede S6: real-time king of the hill for 2-4 players. Own the square the wandering lamb stands on to score." />
+<style>
+/*@KITCSS*/
+/*@STAMPEDECSS*/
+.hud { flex-direction: column; gap: 4px; width: 100%; max-width: 360px; margin: 0 auto; padding: 6px 4px; }
+.bar { position: relative; width: 100%; height: 12px; border-radius: 6px; background: var(--meadow-2); overflow: hidden; }
+.bar i { position: absolute; inset: 0 auto 0 0; border-radius: 6px; transition: width 0.25s; }
+.bar.lead { box-shadow: 0 0 0 2px #fff; }
+</style>
+</head>
+<body>
+<!--@STAMPEDEHTML-->
+<script>
+/*@ENGINE*/
+/*@KIT*/
+/*@STAMPEDE*/
+
+// ======================= S6: LOST LAMB =======================
+const CONFIG = {
+  hopMs: 2000, // the lamb hops to a neighbouring square this often
+  scoreMs: 500, // the owner of his square scores this often
+  target: 60, // first to this many points wins
+  hopAnimMs: 320,
+};
+
+Stampede.run({
+  key: "s6",
+  title: "Lost Lamb",
+  how: ["Tap to drop a sheep. Own the square the lamb stands on to fill your bar.", "A burst on his square makes him jump. First to fill the bar wins!"],
+  setupDefaults: { n: 2, seats: ["human", "ai", "ai", "ai"], level: "normal" },
+  players: (s) => Array.from({ length: s.n }, (_, p) => ({ seat: p, kind: s.seats[p], level: s.level })),
+  options(ui, s) {
+    ui.stepper("Players", "n", 2, 4);
+    ui.seats(s.n);
+    if (s.seats.slice(0, s.n).includes("ai")) ui.level();
+  },
+  hooks: {
+    setup(G) {
+      const now = performance.now();
+      const start = 4 * G.b.cols + 2 + Math.floor(Math.random() * 2);
+      G.data = { lamb: start, from: start, hopAt: now, nextHop: now + CONFIG.hopMs, nextScore: now + CONFIG.scoreMs, startled: false, shockUntil: 0, last: "" };
+      bars(G);
+    },
+    noElimination: true, // a wiped-out flock just drops back in: only the lamb decides
+    targets(G, b, i, t) {
+      if (i === G.data.lamb) G.data.startled = true;
+      return t;
+    },
+    afterWave(G, now) {
+      const D = G.data;
+      if (!D.startled) return;
+      // startled: he bounces two squares away
+      D.startled = false;
+      const b = G.b;
+      const far = [];
+      for (let k = 0; k < b.size; k++) {
+        const d = Math.abs(Engine.rowOf(b, k) - Engine.rowOf(b, D.lamb)) + Math.abs(Engine.colOf(b, k) - Engine.colOf(b, D.lamb));
+        if (d === 2 && !b.rock[k]) far.push(k);
+      }
+      hop(G, far[Math.floor(Math.random() * far.length)], now);
+      D.shockUntil = now + 700;
+      D.nextHop = now + CONFIG.hopMs;
+      Kit.sfx.bleat(1.4);
+    },
+    update(G, now) {
+      const D = G.data;
+      if (now >= D.nextHop) {
+        D.nextHop = now + CONFIG.hopMs;
+        const n = Engine.neighbours(G.b, D.lamb);
+        hop(G, n[Math.floor(Math.random() * n.length)], now);
+      }
+      if (now >= D.nextScore) {
+        D.nextScore = now + CONFIG.scoreMs;
+        const o = G.b.owner[D.lamb];
+        const pl = G.players[o];
+        if (pl && pl.alive) {
+          pl.score++;
+          Kit.tone(660 + o * 110, 0.05, "sine", 0.025);
+          if (pl.score === CONFIG.target - 10) Stampede.shout(pl, "Nearly!", 1.1);
+        }
+      }
+      bars(G);
+    },
+    shift(G, d) {
+      G.data.nextHop += d;
+      G.data.nextScore += d;
+      G.data.hopAt += d;
+      G.data.shockUntil += d;
+    },
+    aiValue(G, pl, i) {
+      const L = G.data.lamb;
+      const b = G.b;
+      if (i === L) return 6;
+      if (Engine.neighbours(b, i).includes(L)) return b.count[i] + 1 >= Engine.capacity(b, i) ? 5 : 1.5;
+      return 0;
+    },
+    endCheck(G, now, left) {
+      const win = G.players.find((p) => p.score >= CONFIG.target);
+      if (win) return { team: win.team, sub: "Filled the bar first!" };
+      if (left > 0) return null;
+      const ranked = [...G.players].sort((a, b) => b.score - a.score);
+      const sub = "Time's up! Most time with the lamb.";
+      if (ranked.length > 1 && ranked[0].score === ranked[1].score) return { team: -1, sub };
+      return { team: ranked[0].team, sub };
+    },
+    endExtra(G, res, el) {
+      el.innerHTML = G.players.map((p) => `<div class="bar" style="margin:6px 0"><i style="width:${Math.min(100, (100 * p.score) / CONFIG.target)}%;background:${p.color}"></i></div>`).join("");
+    },
+    drawOver(ctx, G, c, t, now) {
+      const D = G.data;
+      const b = G.b;
+      const p = Math.min(1, (now - D.hopAt) / CONFIG.hopAnimMs);
+      const fx = (Engine.colOf(b, D.from) + 0.5) * c;
+      const fy = (Engine.rowOf(b, D.from) + 0.5) * c;
+      const tx = (Engine.colOf(b, D.lamb) + 0.5) * c;
+      const ty = (Engine.rowOf(b, D.lamb) + 0.5) * c;
+      const x = fx + (tx - fx) * p;
+      const y = fy + (ty - fy) * p - Math.sin(Math.PI * p) * c * 0.5;
+      const o = b.owner[D.lamb];
+      const owner = p >= 1 && o >= 0 && o < G.players.length ? G.players[o] : null;
+      // a glow in his owner's colour
+      if (owner) {
+        ctx.globalAlpha = 0.45 + 0.2 * Math.sin(t * 6);
+        Kit.circle(ctx, tx, ty, c * 0.5, owner.color);
+        ctx.globalAlpha = 1;
+      }
+      // he looks toward his owner's corner
+      const looksLeft = owner ? owner.seat === 0 || owner.seat === 2 : Math.sin(t) > 0;
+      Kit.drawLamb(ctx, x, y - c * 0.08, c * 0.85, { t, scarf: owner ? owner.color : "#fffaf0", mood: now < D.shockUntil ? "shock" : "happy", flip: looksLeft });
+    },
+  },
+});
+
+function hop(G, to, now) {
+  const D = G.data;
+  D.from = D.lamb;
+  D.lamb = to;
+  D.hopAt = now;
+  Kit.tone(520, 0.08, "triangle", 0.04, 780);
+}
+
+function bars(G) {
+  const D = G.data;
+  const top = Math.max(...G.players.map((p) => p.score));
+  const html = G.players
+    .map((p) => `<div class="bar${p.score === top && top > 0 ? " lead" : ""}"><i style="width:${Math.min(100, (100 * p.score) / CONFIG.target)}%;background:${p.alive ? p.color : "#666"}"></i></div>`)
+    .join("");
+  if (html !== D.last) {
+    D.last = html;
+    Kit.$("hud").innerHTML = html;
+  }
+}
+</script>
+</body>
+</html>
