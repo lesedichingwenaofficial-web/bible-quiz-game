@@ -1,0 +1,1008 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Lost &amp; Found</title>
+<meta name="description" content="cheekyfoundlamb demo 10: a four-board run where the lamb faces the wolf, finds lost sheep and earns blessings." />
+<style>
+/*@KITCSS*/
+.bar { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; padding: 0 0 8px; min-height: 48px; }
+.bar .ib { height: 46px; }
+.bar .ib.wide { padding: 0 14px; }
+.bar .ib.spec { font-size: 1.3rem; position: relative; }
+.bar .ib.spec.used { opacity: 0.3; }
+.bar .bl { width: 34px; height: 34px; min-width: 0; padding: 0; font-size: 1.05rem; border-radius: 10px; align-self: center; }
+.toast {
+  position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); width: min(340px, 92%); z-index: 5;
+  padding: 12px 14px; border-radius: 16px; background: rgba(19, 32, 26, 0.95); box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+  text-align: left; font-size: 0.95rem; line-height: 1.35;
+}
+.toast b { color: var(--sun); }
+.picks { display: grid; gap: 8px; margin-top: 12px; }
+.pick { display: flex; gap: 12px; align-items: center; text-align: left; padding: 12px; border-radius: 16px; background: var(--meadow-2); }
+.pick .ic { font-size: 1.8rem; flex: none; }
+.pick b { display: block; color: var(--sun); }
+.pick span { color: var(--cream); font-size: 0.92rem; line-height: 1.3; }
+.pick small { color: var(--muted); font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.7rem; }
+.rule { margin-top: 10px; padding: 10px 12px; border-radius: 14px; background: var(--meadow-2); text-align: left; color: var(--cream) !important; }
+.boards { display: flex; justify-content: center; gap: 6px; margin: 8px 0 2px; }
+.boards i { width: 34px; height: 8px; border-radius: 4px; background: var(--meadow-2); }
+.boards i.done { background: var(--sun); }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="status"><span class="dot" id="dot"></span><span class="txt" id="status">Lost &amp; Found</span></div>
+    <div class="btns">
+      <button class="ib" id="restart" aria-label="Restart board">↻</button>
+      <button class="ib" id="mute" aria-label="Mute">🔊</button>
+      <button class="ib" id="menu" aria-label="Menu">☰</button>
+    </div>
+  </header>
+  <main class="stage" id="stage">
+    <canvas id="board" aria-label="Board"></canvas>
+    <div class="chain" id="chain"></div>
+    <div class="toast" id="toast" hidden></div>
+  </main>
+  <div class="bar" id="bar"></div>
+</div>
+
+<section class="overlay" id="intro">
+  <div class="card">
+    <canvas class="hero" id="hero-intro"></canvas>
+    <h1>Lost &amp; Found</h1>
+    <div class="how">
+      <p>Lead the lamb through 4 boards against the wolf. Your bursts turn shadow into light. Grey lost sheep belong to whoever's burst reaches them first.</p>
+      <p>The lamb's square is always yours, and you can step him onto a light square instead of placing. If a wolf burst reaches him, the run ends. Win a board to choose a blessing or a special sheep.</p>
+    </div>
+    <p id="kept" class="rule" hidden></p>
+    <button class="big" id="play">Start a run</button>
+    <button class="big alt" id="versus">Versus (2 players)</button>
+  </div>
+</section>
+
+<section class="overlay" id="title" hidden>
+  <div class="card">
+    <canvas class="hero" id="hero-title"></canvas>
+    <div class="boards" id="title-boards"></div>
+    <h2 id="t-name"></h2>
+    <p class="rule" id="t-rule"></p>
+    <p class="verse" id="t-verse" hidden></p>
+    <button class="big" id="begin">Begin</button>
+  </div>
+</section>
+
+<section class="overlay" id="pick" hidden>
+  <div class="card">
+    <h2 id="pick-title">Board won!</h2>
+    <div class="boards" id="pick-boards"></div>
+    <p>Choose one to carry through the rest of the run.</p>
+    <div class="picks" id="picks"></div>
+  </div>
+</section>
+
+<section class="overlay" id="lost" hidden>
+  <div class="card">
+    <canvas class="hero" id="hero-lost"></canvas>
+    <p class="verse">"And when he hath found it, he layeth it on his shoulders, rejoicing."<small>Luke 15:5</small></p>
+    <p id="lost-sub"></p>
+    <div class="picks" id="keep"></div>
+    <button class="big" id="go-again">Go again</button>
+  </div>
+</section>
+
+<section class="overlay" id="end" hidden>
+  <div class="card">
+    <canvas class="hero" id="hero-end"></canvas>
+    <h2 id="end-title" style="color:var(--sun)"></h2>
+    <p id="end-sub"></p>
+    <button class="big" id="again">Play again</button>
+    <button class="big alt" id="end-menu">Menu</button>
+  </div>
+</section>
+
+<script>
+/*@ENGINE*/
+/*@KIT*/
+
+// ---------- balance ----------
+const CONFIG = {
+  rows: 9,
+  cols: 6,
+  lostSheep: [4, 6], // grey lost sheep per board (min, max)
+  bossCells: 6, // squares you start the boss board with
+  bossFakes: 2, // how many of them secretly belong to the wolf
+  cupChain: 10,
+  goodnessChain: 5,
+  woollyTurns: 2,
+  maxTurns: 160, // safety net: if reached, whoever holds more squares wins
+  wolfKeepAway: 1, // the wolf can't place within this many steps of the lamb (0 = anywhere); his bursts still reach
+  lambDanger: 60, // wolf AI: value of shadow about to burst onto the lamb
+  wolfHunt: 6, // wolf AI: pull toward the lamb
+  waveMs: 130,
+  maxWaves: 200,
+  aiDelayMs: 650,
+  chainShakeAt: 5,
+  chainBigShakeAt: 10,
+};
+
+// Map key: . grass   g green pasture   w water   t table
+const BOARDS = [
+  { name: "Green Pastures", rule: "Bright green squares burst one sheep earlier (never below 2).", map: ["gg..gg", "gg..gg", "..gg..", "..gg..", "gg..gg", "gg..gg", "..gg..", "..gg..", "gg..gg"], wolf: { mistake: 0.5, look: 0 } },
+  { name: "Still Waters", rule: "Water squares can't be flipped: whoever claims one keeps it, and enemy sheep landing there are lost. Sheep on water don't keep you in the game.", map: ["......", "w....w", "......", "..ww..", "..ww..", "......", "......", "w....w", "......"], wolf: { mistake: 0.4, look: 2 } },
+  { name: "Valley of the Shadow", rule: "Fog: you only see squares next to your own.", fog: true, wolf: { mistake: 0.3, look: 4 } },
+  {
+    name: "The Table",
+    rule: `Boss! A wolf in sheep's clothing: 2 of your 6 starting squares are secretly his, and burst as shadow. Watch what grows when a square gains a sheep. Hold all 3 table squares to place twice next turn. A chain of ${CONFIG.cupChain}+ overflows your cup: +1 on all your squares.`,
+    verse: "Ye shall know them by their fruits.",
+    ref: "Matthew 7:16",
+    map: ["......", "......", "......", ".ttt..", "......", "......", "......", "......", "......"],
+    table: true,
+    boss: true,
+    wolf: { mistake: 0.2, look: 5 },
+  },
+];
+
+const BLESSINGS = {
+  love: { icon: "❤️", name: "Love", text: "Squares you take from the wolf can't be taken back on his next turn." },
+  joy: { icon: "☀️", name: "Joy", text: "Your bursts also hit the diagonal neighbours." },
+  peace: { icon: "🕊️", name: "Peace", text: "Your first placement each board gets a dove. The wolf can never take that square." },
+  patience: { icon: "⏳", name: "Patience", text: "Your squares hold 1 extra sheep before bursting, then send 2 into each neighbour." },
+  kindness: { icon: "🤝", name: "Kindness", text: "When you place, one of your neighbouring squares also gets +1." },
+  goodness: { icon: "🌟", name: "Goodness", text: `A chain of ${CONFIG.goodnessChain}+ bursts gives you a bonus turn (once per turn).` },
+  faithfulness: { icon: "⚓", name: "Faithfulness", text: "Start every board holding all 4 corners with 1 sheep." },
+  gentleness: { icon: "🪶", name: "Gentleness", text: "When the wolf hits a square of yours with 2+ sheep, it loses 1 instead of flipping." },
+  selfcontrol: { icon: "🛡️", name: "Self-control", text: "Wolf chains stop at your squares: they still flip, but can't burst that turn." },
+};
+const SPECIALS = {
+  xburst: { icon: "✖️", name: "Criss-Cross", text: "Once per board: a sheep whose square bursts to the 4 diagonals." },
+  star: { icon: "⭐", name: "Twinkle Toes", text: "Once per board: a sheep whose square bursts to all 8 neighbours." },
+  sleepy: { icon: "💤", name: "Snoozy", text: "Once per board: its square needs 1 extra sheep, then sends 2 into each neighbour." },
+  zoomies: { icon: "💨", name: "Zoomies", text: "Once per board: when its square bursts, each sheep runs straight until it reaches sheep or the edge." },
+  magnet: { icon: "🧲", name: "Magnet Mutton", text: "Once per board: pulls 1 sheep from each neighbouring wolf square into its own." },
+  woolly: { icon: "🧶", name: "Woolly Jumper", text: `Once per board: its square can't be flipped for the wolf's next ${CONFIG.woollyTurns} turns.` },
+  popcorn: { icon: "🍿", name: "Popcorn", text: "Once per board: its square bursts straight away." },
+  bell: { icon: "🔔", name: "Ding-a-Ling", text: "Once per board: when its square bursts, all your squares in that row get +1." },
+};
+
+const { $ } = Kit;
+const ME = 0;
+const WOLF = 1;
+const LOST = 2;
+const canvas = $("board");
+const ctx = canvas.getContext("2d");
+let geo = { cell: 40, dpr: 1 };
+let run = null; // { board: 0..3, blessings: Set, specials: Set, versus }
+let S = null;
+let busy = false;
+let action = "place"; // place | move | a special's key
+let gameId = 0;
+let scene = null; // cutscene state for the Shepherd and the win cascade
+let autoplay = false; // tests only: the AI also plays the lamb
+let kept = null;
+try {
+  kept = localStorage.getItem("cfl-10-kept");
+} catch {}
+
+const B = () => run.blessings;
+const has = (k) => !run.versus && B().has(k);
+const BD = () => (run.versus ? BOARDS[0] : BOARDS[run.board]);
+
+// ---------- rules ----------
+function shuffle(a) {
+  return a.sort(() => Math.random() - 0.5);
+}
+
+function newBoard() {
+  const def = BD();
+  const b = Engine.createBoard(CONFIG.rows, CONFIG.cols, { green: false, water: false, table: false, dove: false, love: -1, tag: null, woolly: -1, disguise: false, mark: 0 });
+  if (def.map)
+    def.map.forEach((row, r) =>
+      [...row].forEach((ch, c) => {
+        const i = r * b.cols + c;
+        b.green[i] = ch === "g";
+        b.water[i] = ch === "w";
+        b.table[i] = ch === "t";
+      })
+    );
+  const plain = (i) => b.owner[i] === -1 && !b.water[i] && !b.table[i];
+  const st = { b, lamb: -1, current: ME, turn: 0, moved: [false, false], winner: -1, why: "", movesLeft: 1, tableBonus: false, cupUsed: false, bonusUsed: false, bonus: false, cupFired: false, dovePlaced: false, used: [], boss: !!def.boss };
+  if (def.boss) {
+    // the lamb starts at the bottom; 6 squares around him look like his, 2 are the wolf's
+    st.lamb = 8 * b.cols + 2;
+    Engine.place(b, st.lamb, ME);
+    const spots = shuffle([...Array(b.size).keys()].filter((i) => Engine.rowOf(b, i) >= 4 && Engine.rowOf(b, i) <= 7 && plain(i))).slice(0, CONFIG.bossCells);
+    spots.forEach((i, k) => {
+      const fake = k < CONFIG.bossFakes;
+      Engine.place(b, i, fake ? WOLF : ME);
+      b.disguise[i] = fake;
+    });
+    st.moved[ME] = true;
+  } else {
+    Engine.place(b, 0, WOLF); // the wolf waits in the top-left corner
+  }
+  if (has("faithfulness")) for (const i of [0, b.cols - 1, b.size - b.cols, b.size - 1]) if (plain(i) && i !== st.lamb) Engine.place(b, i, ME);
+  const [lo, hi] = CONFIG.lostSheep;
+  const n = lo + Math.floor(Math.random() * (hi - lo + 1));
+  for (const i of shuffle([...Array(b.size).keys()].filter((i) => Engine.rowOf(b, i) >= 2 && Engine.rowOf(b, i) <= 6 && plain(i))).slice(0, n)) Engine.place(b, i, LOST);
+  return st;
+}
+
+const cloneState = (st) => ({ ...st, b: Engine.clone(st.b), moved: st.moved.slice(), used: st.used.slice() });
+const realOrbs = (b, p) => b.owner.reduce((n, o, i) => n + (o === p && !b.water[i] ? b.count[i] : 0), 0);
+const cellsOf = (b, p) => b.owner.reduce((n, o) => n + (o === p ? 1 : 0), 0);
+const looksMine = (b, i) => b.owner[i] === ME || (b.owner[i] === WOLF && b.disguise[i]);
+
+function capOf(b, i) {
+  let c = Engine.capacity(b, i);
+  if (b.green[i]) c = Math.max(2, c - 1);
+  if (b.owner[i] === ME && has("patience")) c++;
+  if (b.tag[i] === "sleepy") c++;
+  return Math.max(1, c);
+}
+
+// What the current player may do. Moves: { kind: "start" | "place" | "move", i, special? }
+function legalMoves(st, special = null) {
+  const b = st.b;
+  const out = [];
+  if (st.current === ME) {
+    if (st.lamb < 0) {
+      for (let i = Math.floor(b.rows / 2) * b.cols; i < b.size; i++) if (b.owner[i] === -1 && !b.water[i]) out.push({ kind: "start", i });
+      return out;
+    }
+    for (let i = 0; i < b.size; i++) if (b.owner[i] === -1 || looksMine(b, i)) out.push({ kind: "place", i, special });
+    if (!special) for (const n of Engine.neighbours(b, st.lamb)) if (looksMine(b, n) && b.count[n] > 0) out.push({ kind: "move", i: n });
+  } else {
+    const near = (i) => st.lamb >= 0 && Math.abs(Engine.rowOf(b, i) - Engine.rowOf(b, st.lamb)) + Math.abs(Engine.colOf(b, i) - Engine.colOf(b, st.lamb)) <= CONFIG.wolfKeepAway;
+    for (let i = 0; i < b.size; i++) {
+      if (i === st.lamb || b.dove[i] || near(i)) continue;
+      if (b.owner[i] === -1 || b.owner[i] === WOLF) out.push({ kind: "place", i });
+    }
+  }
+  return out;
+}
+
+function zoom(b, i) {
+  const out = [];
+  for (const [dr, dc] of Engine.ORTHO) {
+    let r = Engine.rowOf(b, i) + dr;
+    let c = Engine.colOf(b, i) + dc;
+    if (!Engine.inside(b, r, c)) continue;
+    while (b.count[r * b.cols + c] === 0 && Engine.inside(b, r + dr, c + dc)) {
+      r += dr;
+      c += dc;
+    }
+    out.push(r * b.cols + c);
+  }
+  return out;
+}
+
+function simulate(st0, m, record) {
+  const st = cloneState(st0);
+  const b = st.b;
+  const p = st.current;
+  const turn = st.turn;
+  let lambHit = false;
+  let revealed = false;
+  st.cupFired = false;
+  if (m.kind === "move") {
+    if (b.disguise[m.i]) {
+      b.disguise[m.i] = false; // the lamb sniffs out the wolf and stays put
+      revealed = true;
+    } else {
+      if (b.count[st.lamb] === 0 && !b.dove[st.lamb]) b.owner[st.lamb] = -1;
+      st.lamb = m.i;
+    }
+  } else {
+    const i = m.i;
+    if (m.kind === "start") st.lamb = i;
+    if (p === ME && b.disguise[i]) {
+      b.count[i]++; // you fed the wolf's square
+      b.mark[i] = 2;
+    } else {
+      Engine.place(b, i, p);
+      if (p === ME && st.boss) b.mark[i] = 1;
+    }
+    if (p === ME && m.kind === "place" && has("peace") && !st.dovePlaced) {
+      b.dove[i] = true;
+      st.dovePlaced = true;
+    }
+    if (p === ME && m.kind === "place" && has("kindness")) {
+      const mine = Engine.neighbours(b, i).filter((n) => b.owner[n] === ME && b.count[n] > 0);
+      if (mine.length) b.count[mine[Math.floor(Math.random() * mine.length)]]++;
+    }
+    const sp = m.special;
+    if (sp) {
+      st.used.push(sp);
+      if (sp === "popcorn") b.count[i] = Math.max(b.count[i], capOf(b, i));
+      else if (sp === "magnet") {
+        for (const n of Engine.neighbours(b, i)) {
+          if (b.owner[n] !== WOLF || b.count[n] === 0) continue;
+          b.count[n]--;
+          if (b.count[n] === 0) (b.owner[n] = -1), (b.disguise[n] = false);
+          b.count[i]++;
+        }
+      } else if (sp === "woolly") b.woolly[i] = turn + CONFIG.woollyTurns * 2 - 1;
+      else b.tag[i] = sp;
+    }
+  }
+  st.moved[p] = true;
+  const pre = record ? Engine.clone(b) : null;
+  const frozen = new Set();
+  let spend = 0;
+  const settled = () => st.moved[ME] && st.moved[WOLF];
+  const rules = {
+    cap: capOf,
+    canBurst: (bb, c) => (bb.owner[c] === ME || bb.owner[c] === WOLF) && !frozen.has(c),
+    targets: (bb, c) => {
+      spend = capOf(bb, c);
+      const tag = bb.tag[c];
+      bb.tag[c] = null;
+      bb.disguise[c] = false; // bursting gives the disguise away
+      const who = bb.owner[c];
+      if (tag === "xburst") return Engine.neighbours(bb, c, Engine.DIAG);
+      if (tag === "star") return Engine.neighbours(bb, c, Engine.ALL8);
+      if (tag === "sleepy") return Engine.neighbours(bb, c).flatMap((n) => [n, n]);
+      if (tag === "zoomies") return zoom(bb, c);
+      if (tag === "bell") {
+        const r = Engine.rowOf(bb, c);
+        for (let col = 0; col < bb.cols; col++) {
+          const j = r * bb.cols + col;
+          if (j !== c && bb.owner[j] === who) bb.count[j]++;
+        }
+      }
+      if (who !== ME) return Engine.neighbours(bb, c);
+      const t = Engine.neighbours(bb, c, has("joy") ? Engine.ALL8 : Engine.ORTHO);
+      return has("patience") ? t.concat(t) : t;
+    },
+    spend: () => spend,
+    emptied: (bb, c) => {
+      if (c !== st.lamb && !bb.water[c] && !bb.dove[c]) bb.owner[c] = -1;
+      bb.mark[c] = 0;
+    },
+    land: (bb, from, to, who) => {
+      if (who === WOLF && to === st.lamb) {
+        lambHit = true;
+        return;
+      }
+      const owner = bb.owner[to];
+      if (owner === LOST) {
+        bb.owner[to] = who;
+        bb.count[to]++;
+        if (who === ME && st.boss) bb.mark[to] = 1;
+        return;
+      }
+      if (bb.water[to] && owner >= 0 && owner !== who) return;
+      if (who === WOLF && owner === ME) {
+        if (bb.dove[to] || bb.love[to] === turn || bb.woolly[to] >= turn) return;
+        if (has("gentleness") && bb.count[to] >= 2) {
+          bb.count[to]--;
+          return;
+        }
+        if (has("selfcontrol")) frozen.add(to);
+      }
+      if (who === ME && owner === WOLF) {
+        if (has("love")) bb.love[to] = turn + 1;
+        bb.disguise[to] = false;
+      }
+      if (st.boss) bb.mark[to] = who === ME ? 1 : bb.disguise[to] ? 2 : 0;
+      bb.owner[to] = who;
+      bb.count[to]++;
+    },
+    done: (bb) => lambHit || (settled() && realOrbs(bb, WOLF) === 0),
+    maxWaves: CONFIG.maxWaves,
+  };
+  let { waves, capped } = m.kind === "move" ? { waves: [], capped: false } : Engine.resolve(b, rules, record);
+  const bursts = waves.reduce((n, w) => n + w.bursts.length, 0);
+  if (BD().table && p === ME && bursts >= CONFIG.cupChain && !st.cupUsed && !lambHit && !capped) {
+    st.cupUsed = true;
+    st.cupFired = true;
+    for (let c = 0; c < b.size; c++) if (b.owner[c] === ME) b.count[c]++;
+    const more = Engine.resolve(b, rules, record);
+    waves = waves.concat(more.waves);
+    capped = more.capped;
+  }
+  for (const c of frozen) if (b.owner[c] === WOLF) b.count[c] = Math.min(b.count[c], capOf(b, c) - 1);
+  st.turn++;
+  st.bonus = false;
+  if (lambHit || (capped && p === WOLF)) [st.winner, st.why] = [WOLF, "caught"];
+  else if (settled() && (realOrbs(b, WOLF) === 0 || (capped && p === ME))) [st.winner, st.why] = [ME, "cleared"];
+  else if (st.turn >= CONFIG.maxTurns) [st.winner, st.why] = cellsOf(b, ME) >= cellsOf(b, WOLF) ? [ME, "time"] : [WOLF, "time"];
+  if (st.winner >= 0) return { st, pre, waves, revealed };
+  if (p === ME) {
+    if (has("goodness") && bursts >= CONFIG.goodnessChain && !st.bonusUsed) {
+      st.bonusUsed = true;
+      st.bonus = true;
+    } else if (--st.movesLeft <= 0) {
+      st.tableBonus = !!BD().table && b.table.every((tt, c) => !tt || b.owner[c] === ME);
+      st.current = WOLF;
+    }
+  } else {
+    st.current = ME;
+    st.movesLeft = st.tableBonus ? 2 : 1;
+    st.tableBonus = false;
+    st.cupUsed = false;
+    st.bonusUsed = false;
+  }
+  return { st, pre, waves, revealed };
+}
+
+// ---------- AI ----------
+function scoreFor(st, side) {
+  if (st.winner >= 0) return st.winner === side ? 1e6 : -1e6;
+  const b = st.b;
+  const isMine = (o) => o === side;
+  const isFoe = (o) => o === 1 - side;
+  let s = Kit.evaluate(b, isMine, isFoe, (i) => capOf(b, i)) + (cellsOf(b, side) - cellsOf(b, 1 - side)) * 1.5;
+  if (st.lamb >= 0) {
+    const lr = Engine.rowOf(b, st.lamb);
+    const lc = Engine.colOf(b, st.lamb);
+    let hunt = 0;
+    for (let i = 0; i < b.size; i++) {
+      if (b.owner[i] !== WOLF) continue;
+      const d = Math.abs(Engine.rowOf(b, i) - lr) + Math.abs(Engine.colOf(b, i) - lc);
+      hunt += (b.count[i] / capOf(b, i)) * (CONFIG.wolfHunt / (1 + d));
+    }
+    s += side === WOLF ? hunt * 4 : -hunt;
+    for (const n of Engine.neighbours(b, st.lamb)) {
+      if (b.owner[n] === ME && b.count[n] > 0) continue;
+      const left = capOf(b, n) - (b.owner[n] === WOLF ? b.count[n] : 0);
+      const danger = left <= 1 ? CONFIG.lambDanger : CONFIG.lambDanger / (left * left);
+      s += side === WOLF ? danger : -danger;
+    }
+  }
+  return s;
+}
+
+function aiMove(st, level) {
+  const me = st.current;
+  const first = legalMoves(st).map((move) => {
+    const r = simulate(st, move, false);
+    return { move, r, score: scoreFor(r.st, me) };
+  });
+  first.sort((a, b) => b.score - a.score);
+  for (const cand of first.slice(0, level.look)) {
+    const after = cand.r.st;
+    if (after.winner >= 0 || after.current === me) continue;
+    let best = -Infinity;
+    let mine = cand.score;
+    for (const m of legalMoves(after)) {
+      const r2 = simulate(after, m, false);
+      const theirs = scoreFor(r2.st, after.current);
+      if (theirs > best) {
+        best = theirs;
+        mine = scoreFor(r2.st, me);
+      }
+    }
+    cand.score = mine;
+  }
+  const pool = level.look ? first.slice(0, level.look) : first;
+  return Kit.pickBest(pool.map(({ move, score }) => ({ move, score })), level.mistake);
+}
+
+const aiPlays = (side) => autoplay || (!run.versus && side === WOLF);
+
+// ---------- flow ----------
+async function play(m) {
+  busy = true;
+  const myGame = gameId;
+  const p = S.current;
+  action = "place";
+  const r = simulate(S, m, true);
+  if (m.kind === "move") Kit.sfx.bleat(1.15);
+  else Kit.sfx.place();
+  if (m.special) Kit.popText($("chain"), `${SPECIALS[m.special].icon} ${SPECIALS[m.special].name}!`);
+  S = { ...S, b: r.pre, lamb: r.st.lamb, used: r.st.used };
+  renderBar();
+  await Kit.anim.play(r.waves, CONFIG.waveMs, (k) => {
+    Kit.sfx.burst(p === WOLF ? k - 7 : k);
+    if (k >= 1) Kit.popText($("chain"), `Chain x${k + 1}!`);
+    if (k === CONFIG.chainShakeAt) Kit.shake($("stage"));
+    if (k === CONFIG.chainBigShakeAt) Kit.shake($("stage"), true);
+  }, r.pre);
+  if (myGame !== gameId) return;
+  S = r.st;
+  if (r.revealed) {
+    Kit.popText($("chain"), "A wolf in sheep's clothing!");
+    Kit.sfx.howl();
+  } else if (S.cupFired) {
+    Kit.popText($("chain"), "My cup runneth over!");
+    Kit.sfx.win();
+  } else if (S.bonus) Kit.popText($("chain"), "🌟 Bonus turn!");
+  else if (S.current === ME && S.movesLeft === 2) Kit.popText($("chain"), "The table is yours: place twice!");
+  busy = false;
+  next();
+}
+
+async function next() {
+  hud();
+  renderBar();
+  if (S.winner >= 0) {
+    busy = true;
+    if (S.winner === WOLF) Kit.sfx.howl();
+    await Kit.sleep(700);
+    return boardOver();
+  }
+  if (aiPlays(S.current)) {
+    busy = true;
+    hud();
+    const myGame = gameId;
+    await Kit.sleep(CONFIG.aiDelayMs);
+    if (myGame !== gameId) return;
+    play(aiMove(S, S.current === WOLF ? BD().wolf : BOARDS[2].wolf));
+  }
+}
+
+function boardOver() {
+  if (run.versus) {
+    $("end-title").textContent = S.winner === ME ? "The lamb wins!" : "The wolf wins!";
+    $("end-sub").textContent = S.why === "caught" ? "A wolf burst reached the lamb." : S.why === "time" ? "Time ran out; more squares wins." : "Every bit of shadow is gone.";
+    $("again").textContent = "Play again";
+    hero($("hero-end"), S.winner === ME ? "happy" : "shock", S.winner === WOLF);
+    Kit.show("end");
+    return;
+  }
+  if (S.winner === WOLF) return startCarry();
+  Kit.sfx.win();
+  if (run.board === BOARDS.length - 1) return startCascade();
+  showPick();
+}
+
+function showPick() {
+  const options = shuffle([
+    ...Object.keys(BLESSINGS).filter((k) => !run.blessings.has(k)).map((k) => ["blessing", k]),
+    ...Object.keys(SPECIALS).filter((k) => !run.specials.has(k)).map((k) => ["special", k]),
+  ]).slice(0, 3);
+  $("pick-title").textContent = `${BD().name}: won!`;
+  $("pick-boards").innerHTML = boardsHtml(run.board + 1);
+  const box = $("picks");
+  box.replaceChildren();
+  for (const [type, k] of options) {
+    const info = type === "blessing" ? BLESSINGS[k] : SPECIALS[k];
+    const btn = document.createElement("button");
+    btn.className = "pick";
+    btn.innerHTML = `<span class="ic">${info.icon}</span><div><small>${type === "blessing" ? "Blessing" : "Special sheep"}</small><b>${info.name}</b><span>${info.text}</span></div>`;
+    btn.addEventListener("click", () => {
+      (type === "blessing" ? run.blessings : run.specials).add(k);
+      Kit.hide("pick");
+      run.board++;
+      openTitle();
+    });
+    box.append(btn);
+  }
+  Kit.show("pick");
+}
+
+const boardsHtml = (doneCount) => BOARDS.map((_, k) => `<i class="${k < doneCount ? "done" : ""}"></i>`).join("");
+
+function openTitle() {
+  const def = BD();
+  $("title-boards").innerHTML = boardsHtml(run.board);
+  $("t-name").textContent = run.versus ? "Versus: Lamb vs Wolf" : `Board ${run.board + 1}: ${def.name}`;
+  $("t-rule").textContent = (run.versus ? "Pass the phone. Lamb plays light, wolf plays shadow. " : "") + `${def.rule} ${def.boss ? "" : "Grey lost sheep join whoever's burst reaches them first."}`;
+  $("t-verse").hidden = !def.verse;
+  if (def.verse) $("t-verse").innerHTML = `"${def.verse}"<small>${def.ref}</small>`;
+  hero($("hero-title"), "happy", def.boss);
+  for (const id of ["intro", "end", "lost", "pick"]) Kit.hide(id);
+  Kit.show("title");
+}
+
+function startBoard() {
+  gameId++;
+  Kit.anim.cur = null;
+  scene = null;
+  busy = false;
+  action = "place";
+  S = newBoard();
+  Kit.hide("title");
+  Kit.hide("toast");
+  resize();
+  next();
+}
+
+function startRun(versus = false) {
+  run = { board: 0, blessings: new Set(), specials: new Set(), versus };
+  if (!versus && kept && BLESSINGS[kept]) run.blessings.add(kept);
+  openTitle();
+}
+
+// ---------- the Shepherd carries the lamb home ----------
+function startCarry() {
+  Kit.sfx.lose();
+  scene = { kind: "carry", t0: performance.now(), lamb: S.lamb };
+  setTimeout(() => {
+    if (!scene || scene.kind !== "carry") return;
+    $("lost-sub").textContent = run.blessings.size ? "Keep one blessing for your next run:" : `The wolf caught up on board ${run.board + 1}. The Shepherd always comes back for his lamb.`;
+    const box = $("keep");
+    box.replaceChildren();
+    let choice = null;
+    for (const k of run.blessings) {
+      const btn = document.createElement("button");
+      btn.className = "pick";
+      btn.innerHTML = `<span class="ic">${BLESSINGS[k].icon}</span><div><b>${BLESSINGS[k].name}</b><span>${BLESSINGS[k].text}</span></div>`;
+      btn.addEventListener("click", () => {
+        choice = k;
+        for (const el of box.children) el.style.outline = "";
+        btn.style.outline = "3px solid var(--sun)";
+      });
+      box.append(btn);
+    }
+    $("go-again").onclick = () => {
+      kept = choice;
+      try {
+        if (kept) localStorage.setItem("cfl-10-kept", kept);
+        else localStorage.removeItem("cfl-10-kept");
+      } catch {}
+      scene = null;
+      Kit.hide("lost");
+      startRun();
+    };
+    hero($("hero-lost"), "sleep", false, true);
+    Kit.show("lost");
+  }, 4200);
+}
+
+// ---------- the whole board turns to light ----------
+function startCascade() {
+  const b = S.b;
+  const dist = new Array(b.size).fill(99);
+  const q = [S.lamb >= 0 ? S.lamb : 0];
+  dist[q[0]] = 0;
+  while (q.length) {
+    const i = q.shift();
+    for (const n of Engine.neighbours(b, i)) if (dist[n] === 99) (dist[n] = dist[i] + 1), q.push(n);
+  }
+  scene = { kind: "cascade", t0: performance.now(), dist };
+  const max = Math.max(...dist);
+  for (let k = 0; k <= max; k++) setTimeout(() => Kit.sfx.chime(k * 2), k * 110);
+  setTimeout(() => {
+    $("end-title").textContent = "Rejoice!";
+    $("end-sub").textContent = `The lamb is home, with ${run.blessings.size} blessing${run.blessings.size === 1 ? "" : "s"} and ${run.specials.size} special sheep.`;
+    $("again").textContent = "New run";
+    hero($("hero-end"), "happy");
+    Kit.sfx.win();
+    Kit.show("end");
+  }, max * 110 + 900);
+}
+
+// ---------- HUD and controls ----------
+function hud() {
+  if (!S) return;
+  const p = S.winner >= 0 ? S.winner : S.current;
+  $("dot").style.color = p === ME ? "#fff4d6" : "#8a87a3";
+  const where = run.versus ? "Versus" : `${run.board + 1}/4 ${BD().name}`;
+  let t;
+  if (S.winner >= 0) t = S.winner === ME ? "Board won!" : "The wolf got the lamb";
+  else if (S.current === WOLF) t = run.versus ? `${where} · Wolf's turn` : `${where} · Wolf…`;
+  else if (S.lamb < 0) t = `${where} · Pick the lamb's start`;
+  else if (action === "move") t = "Tap where the lamb goes";
+  else if (SPECIALS[action]) t = `Place ${SPECIALS[action].name}`;
+  else t = `${where} · ${S.bonus ? "Bonus turn!" : S.movesLeft === 2 ? "Place twice!" : "Your turn"}`;
+  const left = CONFIG.maxTurns - S.turn;
+  if (S.winner < 0 && left <= 30) t = `${left} turns left · ${S.current === ME ? "Your turn" : "Wolf"}`;
+  $("status").textContent = t;
+}
+
+function renderBar() {
+  const bar = $("bar");
+  bar.replaceChildren();
+  if (!S) return;
+  const mine = !busy && S.winner < 0 && S.current === ME && !aiPlays(ME);
+  const mv = document.createElement("button");
+  mv.className = "ib wide" + (action === "move" ? " on" : "");
+  mv.textContent = "🐑 Move lamb";
+  mv.disabled = !mine || S.lamb < 0 || !legalMoves(S).some((m) => m.kind === "move");
+  mv.addEventListener("click", () => {
+    action = action === "move" ? "place" : "move";
+    renderBar();
+    hud();
+  });
+  bar.append(mv);
+  if (run.versus) return;
+  for (const k of run.specials) {
+    const btn = document.createElement("button");
+    const used = S.used.includes(k);
+    btn.className = "ib spec" + (used ? " used" : "") + (action === k ? " on" : "");
+    btn.textContent = SPECIALS[k].icon;
+    btn.setAttribute("aria-label", SPECIALS[k].name);
+    btn.disabled = !mine || used || S.lamb < 0;
+    btn.addEventListener("click", () => {
+      action = action === k ? "place" : k;
+      toast(SPECIALS[k]);
+      renderBar();
+      hud();
+    });
+    bar.append(btn);
+  }
+  for (const k of run.blessings) {
+    const btn = document.createElement("button");
+    btn.className = "ib bl";
+    btn.textContent = BLESSINGS[k].icon;
+    btn.setAttribute("aria-label", BLESSINGS[k].name);
+    btn.addEventListener("click", () => toast(BLESSINGS[k]));
+    bar.append(btn);
+  }
+}
+
+let toastTimer = 0;
+function toast(info) {
+  const el = $("toast");
+  el.innerHTML = `<b>${info.icon} ${info.name}</b><br>${info.text}`;
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => (el.hidden = true), 3500);
+}
+
+canvas.addEventListener("pointerdown", (e) => {
+  Kit.hide("toast");
+  if (!S || busy || scene || S.winner >= 0 || aiPlays(S.current)) return;
+  const { row, col } = Kit.cellAt(canvas, e, geo.cell);
+  if (!Engine.inside(S.b, row, col)) return;
+  const i = row * S.b.cols + col;
+  const special = SPECIALS[action] ? action : null;
+  const want = S.current === ME && S.lamb < 0 ? "start" : action === "move" ? "move" : "place";
+  const m = legalMoves(S, special).find((x) => x.kind === want && x.i === i);
+  if (m) play({ ...m, special: want === "place" ? special : undefined });
+  else Kit.sfx.bad();
+});
+
+// ---------- drawing ----------
+function resize() {
+  if (!S) return;
+  geo = Kit.fitBoard(canvas, $("stage"), CONFIG.cols, CONFIG.rows);
+}
+
+const SPOTS = {
+  1: [[0, 0]],
+  2: [[-0.2, 0], [0.2, 0.02]],
+  3: [[-0.2, 0.12], [0.2, 0.12], [0, -0.16]],
+  4: [[-0.2, -0.15], [0.2, -0.15], [-0.2, 0.17], [0.2, 0.17]],
+};
+
+function piece(x, y, c, who, flip, t, small) {
+  const r = c * (small ? 0.11 : 0.14);
+  if (who === ME) Kit.drawSheep(ctx, x, y, r, "#fff4d6", { flip });
+  else if (who === LOST) Kit.drawSheep(ctx, x, y, r, "#9a9aa8", { flip });
+  else Kit.drawWolf(ctx, x, y + c * 0.03, r * 2, { t, color: "#8a87a3" });
+}
+
+const visible = (b, i) => !BD().fog || b.owner[i] === ME || i === S.lamb || Engine.neighbours(b, i, Engine.ALL8).some((n) => b.owner[n] === ME || n === S.lamb);
+
+function flower(x, y, s) {
+  for (let k = 0; k < 5; k++) Kit.circle(ctx, x + Math.cos(k * 1.26) * s, y + Math.sin(k * 1.26) * s, s * 0.7, "#ffb3d1");
+  Kit.circle(ctx, x, y, s * 0.6, "#ffd25a");
+}
+
+function thistle(x, y, s) {
+  ctx.strokeStyle = "#6e8f4a";
+  ctx.lineWidth = s * 0.5;
+  ctx.beginPath();
+  ctx.moveTo(x, y + s * 1.6);
+  ctx.lineTo(x, y + s * 0.4);
+  ctx.stroke();
+  Kit.circle(ctx, x, y + s * 0.4, s * 0.8, "#6e8f4a");
+  ctx.strokeStyle = "#a35fc4";
+  ctx.lineWidth = s * 0.35;
+  ctx.beginPath();
+  for (let k = -2; k <= 2; k++) {
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + k * s * 0.45, y - s * 1.1);
+  }
+  ctx.stroke();
+}
+
+function tile(b, i, x, y, c, t) {
+  const chk = (Engine.rowOf(b, i) + Engine.colOf(b, i)) % 2;
+  const o = b.owner[i];
+  let base = chk ? "#3d6a45" : "#44734c";
+  if (b.green[i]) base = chk ? "#5aa83f" : "#63b347";
+  if (b.water[i]) base = chk ? "#2f6f9a" : "#3479a6";
+  if (b.table[i]) base = "#8a5a2b";
+  ctx.fillStyle = base;
+  ctx.fillRect(x, y, c, c);
+  if (b.green[i]) for (const [fx, fy] of [[0.18, 0.2], [0.82, 0.78]]) Kit.circle(ctx, x + fx * c, y + fy * c, c * 0.04, "#fff3a0");
+  if (b.water[i]) {
+    ctx.strokeStyle = "rgba(255,255,255,0.35)";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    const w = Math.sin(t * 2 + i) * c * 0.04;
+    ctx.moveTo(x + c * 0.15, y + c * 0.8 + w);
+    ctx.quadraticCurveTo(x + c * 0.5, y + c * 0.7 - w, x + c * 0.85, y + c * 0.8 + w);
+    ctx.stroke();
+  }
+  if (b.table[i]) {
+    ctx.strokeStyle = "#6d4420";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x + 3, y + 3, c - 6, c - 6);
+  }
+  const lightLook = o === ME || (o === WOLF && b.disguise[i]);
+  if (lightLook) {
+    const g = ctx.createRadialGradient(x + c / 2, y + c / 2, 0, x + c / 2, y + c / 2, c * 0.7);
+    g.addColorStop(0, "rgba(255,236,160,0.45)");
+    g.addColorStop(1, "rgba(255,236,160,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(x, y, c, c);
+  } else if (o === WOLF) {
+    ctx.fillStyle = "rgba(25,20,40,0.55)";
+    ctx.fillRect(x, y, c, c);
+  }
+  ctx.font = `${Math.round(c * 0.22)}px system-ui`;
+  ctx.textBaseline = "top";
+  if (b.tag[i]) ctx.fillText(SPECIALS[b.tag[i]].icon, x + c * 0.03, y + c * 0.03);
+  if (b.woolly[i] >= S.turn && o === ME) ctx.fillText("🧶", x + c * 0.7, y + c * 0.03);
+  if (b.love[i] === S.turn && o === ME && S.current === WOLF) ctx.fillText("❤️", x + c * 0.7, y + c * 0.72);
+  if (b.dove[i]) {
+    Kit.ellipse(ctx, x + c * 0.75, y + c * 0.2, c * 0.1, c * 0.06, -0.2, "#ffffff");
+    Kit.circle(ctx, x + c * 0.84, y + c * 0.15, c * 0.04, "#ffffff");
+  }
+  if (b.mark[i] === 1) flower(x + c * 0.16, y + c * 0.82, c * 0.045);
+  if (b.mark[i] === 2) thistle(x + c * 0.16, y + c * 0.8, c * 0.05);
+}
+
+function draw(now) {
+  Kit.anim.step(now);
+  const t = now / 1000;
+  ctx.setTransform(geo.dpr, 0, 0, geo.dpr, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (!S) return requestAnimationFrame(draw);
+  const a = Kit.anim.cur;
+  const b = a ? Kit.anim.base() : S.b;
+  const wave = a && a.start !== null ? a.waves[a.i] : null;
+  const counts = b.count.slice();
+  if (wave) for (const { from } of wave.bursts) counts[from] = Math.max(0, counts[from] - capOf(b, from));
+  const c = geo.cell;
+  for (let i = 0; i < b.size; i++) tile(b, i, Engine.colOf(b, i) * c, Engine.rowOf(b, i) * c, c, t);
+  // the cascade of light at the end of a run
+  if (scene?.kind === "cascade") {
+    const step = (now - scene.t0) / 110;
+    for (let i = 0; i < b.size; i++) {
+      if (scene.dist[i] > step) continue;
+      const k = Math.min(1, step - scene.dist[i]);
+      ctx.fillStyle = `rgba(255,230,150,${0.65 * k})`;
+      ctx.fillRect(Engine.colOf(b, i) * c, Engine.rowOf(b, i) * c, c, c);
+    }
+  }
+  const lamb = S.lamb;
+  for (let i = 0; i < b.size; i++) {
+    if (i === lamb && scene?.kind !== "carry") {
+      const scared = Engine.neighbours(b, i).some((n) => b.owner[n] === WOLF && !b.disguise[n] && b.count[n] >= capOf(b, n) - 1);
+      Kit.drawLamb(ctx, (Engine.colOf(b, i) + 0.5) * c, (Engine.rowOf(b, i) + 0.6) * c, c * 0.62, { t, mood: S.winner === WOLF ? "shock" : scared ? "shock" : "happy", glow: "rgba(255,230,150,0.5)" });
+    }
+    const n = counts[i];
+    if (n <= 0 || b.owner[i] < 0 || !visible(b, i)) continue;
+    const shown = b.owner[i] === WOLF && b.disguise[i] ? ME : b.owner[i];
+    const nervous = n >= capOf(b, i) - 1 && b.owner[i] !== LOST;
+    const k = Math.min(n, 4);
+    for (let s = 0; s < k; s++) {
+      let [dx, dy] = SPOTS[k][s];
+      if (i === lamb) dy = -0.32 + dy * 0.3;
+      const jx = nervous ? Math.sin(t * 40 + i * 3 + s) * c * 0.02 : 0;
+      piece((Engine.colOf(b, i) + 0.5 + dx) * c + jx, (Engine.rowOf(b, i) + 0.5 + dy) * c, c, shown, s % 2 === 1, t + i + s, i === lamb);
+    }
+  }
+  if (BD().fog) {
+    for (let i = 0; i < b.size; i++) {
+      if (visible(b, i)) continue;
+      ctx.fillStyle = "rgba(18,18,30,0.92)";
+      ctx.fillRect(Engine.colOf(b, i) * c, Engine.rowOf(b, i) * c, c, c);
+    }
+  }
+  if (wave) {
+    const p = Kit.anim.t(now);
+    const e = 1 - (1 - p) * (1 - p);
+    for (const { from, to, who } of wave.bursts) {
+      if (BD().fog && who === WOLF && !visible(b, from)) continue;
+      const fx = (Engine.colOf(b, from) + 0.5) * c;
+      const fy = (Engine.rowOf(b, from) + 0.5) * c;
+      for (const d of to) {
+        const tx = (Engine.colOf(b, d) + 0.5) * c;
+        const ty = (Engine.rowOf(b, d) + 0.5) * c;
+        piece(fx + (tx - fx) * e, fy + (ty - fy) * e - Math.sin(Math.PI * p) * c * 0.3, c, who, tx < fx, t);
+      }
+    }
+  }
+  if (S.current === ME && !busy && !scene) {
+    ctx.strokeStyle = "#ffcf4a";
+    ctx.lineWidth = 3;
+    const hl = S.lamb < 0 ? legalMoves(S).map((m) => m.i) : action === "move" ? legalMoves(S).filter((m) => m.kind === "move").map((m) => m.i) : [];
+    if (S.lamb < 0) ctx.globalAlpha = 0.35 + 0.25 * Math.sin(t * 4);
+    for (const i of hl) ctx.strokeRect(Engine.colOf(b, i) * c + 3, Engine.rowOf(b, i) * c + 3, c - 6, c - 6);
+    ctx.globalAlpha = 1;
+  }
+  ctx.strokeStyle = S.current === ME ? "rgba(255,233,168,0.45)" : "rgba(140,130,180,0.55)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let col = 0; col <= b.cols; col++) {
+    const x = Math.min(Math.max(col * c, 0.5), geo.w - 0.5);
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, geo.h);
+  }
+  for (let row = 0; row <= b.rows; row++) {
+    const y = Math.min(Math.max(row * c, 0.5), geo.h - 0.5);
+    ctx.moveTo(0, y);
+    ctx.lineTo(geo.w, y);
+  }
+  ctx.stroke();
+  if (scene?.kind === "carry") drawCarry(now, b, c);
+  requestAnimationFrame(draw);
+}
+
+// The Shepherd walks in, lifts the lamb onto his shoulders and carries him home.
+function drawCarry(now, b, c) {
+  const s = (now - scene.t0) / 1000;
+  ctx.fillStyle = `rgba(10,14,12,${Math.min(0.55, s * 0.4)})`;
+  ctx.fillRect(0, 0, geo.w, geo.h);
+  const lx = (Engine.colOf(b, scene.lamb) + 0.5) * c;
+  const ly = (Engine.rowOf(b, scene.lamb) + 0.6) * c;
+  const h = c * 2.6;
+  const standX = lx + c * 0.55;
+  const footY = Math.min(geo.h - 4, ly + c * 0.5);
+  let sx;
+  let lambX = lx;
+  let lambY = ly;
+  let carried = 0;
+  if (s < 1.4) sx = geo.w + h * 0.5 - (geo.w + h * 0.5 - standX) * (s / 1.4);
+  else if (s < 2.2) {
+    sx = standX;
+    carried = (s - 1.4) / 0.8;
+  } else {
+    sx = standX - (s - 2.2) * (geo.w / 1.5);
+    carried = 1;
+  }
+  const shoulderX = sx;
+  const shoulderY = footY - h * 0.78;
+  lambX = lx + (shoulderX - lx) * carried;
+  lambY = ly + (shoulderY - ly) * carried - Math.sin(Math.PI * Math.min(carried, 1)) * c * 0.4;
+  Kit.drawShepherd(ctx, sx, footY, h, {});
+  Kit.drawLamb(ctx, lambX, lambY, c * 0.75, { mood: carried > 0.5 ? "sleep" : "sad", t: now / 1000 });
+}
+
+function hero(cv, mood, wolf = false, shepherd = false) {
+  const g = Kit.sharp(cv, 240, 130);
+  if (shepherd) {
+    Kit.drawShepherd(g, 130, 128, 116);
+    Kit.drawLamb(g, 128, 36, 56, { mood });
+    return;
+  }
+  if (wolf) Kit.drawWolf(g, 190, 70, 76, { mood: "happy" });
+  else {
+    Kit.drawSheep(g, 205, 100, 13, "#9a9aa8", { flip: true });
+    Kit.drawSheep(g, 36, 100, 13, "#9a9aa8");
+  }
+  Kit.drawLamb(g, wolf ? 92 : 120, 74, 106, { mood });
+}
+
+// ---------- menu ----------
+function renderKept() {
+  $("kept").hidden = !(kept && BLESSINGS[kept]);
+  if (kept && BLESSINGS[kept]) $("kept").textContent = `Kept from your last run: ${BLESSINGS[kept].icon} ${BLESSINGS[kept].name}`;
+}
+$("play").addEventListener("click", () => startRun(false));
+$("versus").addEventListener("click", () => startRun(true));
+$("begin").addEventListener("click", startBoard);
+$("again").addEventListener("click", () => startRun(run?.versus));
+$("restart").addEventListener("click", () => {
+  if (run && !scene) startBoard();
+});
+const toMenu = () => {
+  gameId++;
+  Kit.anim.cur = null;
+  scene = null;
+  busy = false;
+  for (const id of ["end", "pick", "title", "lost"]) Kit.hide(id);
+  renderKept();
+  Kit.show("intro");
+};
+$("menu").addEventListener("click", toMenu);
+$("end-menu").addEventListener("click", toMenu);
+Kit.muteButton($("mute"));
+new ResizeObserver(resize).observe($("stage"));
+
+renderKept();
+hero($("hero-intro"), "happy");
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>
