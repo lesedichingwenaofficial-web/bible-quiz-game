@@ -123,6 +123,7 @@ const Stampede = (() => {
       Kit.tone(180, 0.06, "square", 0.04);
       return;
     }
+    H.beforeDrop?.(G, pl, now);
     const i = cursorCell(pl);
     pl.pen--;
     if (!pl.refillAt) pl.refillAt = now + refillMs(pl);
@@ -366,7 +367,7 @@ const Stampede = (() => {
     const reserve = pl.level === "hard" && pl.pen <= 1 && gain < skill.pick * 2;
     if (!pl.placed || (ok && !reserve && (gain >= skill.pick || Math.random() < skill.idle)) || !ok) {
       const [lo, hi] = skill.react;
-      pl.aiPlan = { cell: i, at: now + lo + Math.random() * (hi - lo) };
+      pl.aiPlan = { cell: i, at: H.aiTime?.(G, pl, now, skill) ?? now + lo + Math.random() * (hi - lo) };
     }
   }
 
@@ -680,7 +681,8 @@ const Stampede = (() => {
       const panic = empty && pl.alive;
       const jump = m === "cheer" ? Math.abs(Math.sin(t * 10)) * 8 : 0;
       const jit = panic ? Math.sin(t * 50) * 2 : 0;
-      Kit.drawLamb(g, cx + jit, cy + 6 - jump, R * 1.25, { scarf: pl.color, t, mood: !pl.alive ? "sleep" : m === "oops" ? "sleep" : panic ? "shock" : "happy" });
+      const bob = (G.bob || 0) * 5; // versions with a beat make the lambs bounce to it
+      Kit.drawLamb(g, cx + jit, cy + 6 - jump - bob, R * 1.25, { scarf: pl.color, t, mood: !pl.alive ? "sleep" : m === "oops" ? "sleep" : panic ? "shock" : "happy" });
       if (m === "oops") {
         // hooves over his eyes
         for (const side of [-1, 1]) Kit.circle(g, cx + R * 0.27 + side * R * 0.09, cy + 6 - R * 0.26, R * 0.09, "#3b3340");

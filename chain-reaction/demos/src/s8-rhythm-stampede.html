@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Rhythm Stampede</title>
+<meta name="description" content="cheekyfoundlamb Stampede S8: real-time Chain Reaction to a beat. Tap right on the step for a PERFECT double sheep." />
+<style>
+/*@KITCSS*/
+/*@STAMPEDECSS*/
+.hud { gap: 10px; font-variant-numeric: tabular-nums; }
+.dots { display: flex; gap: 6px; }
+.dots i { width: 12px; height: 12px; border-radius: 50%; background: var(--meadow-2); }
+.dots i.on { background: var(--sun); box-shadow: 0 0 10px var(--sun); }
+.dots i.on.one { background: #ff6b6b; box-shadow: 0 0 10px #ff6b6b; }
+#board { transform-origin: 50% 50%; }
+</style>
+</head>
+<body>
+<!--@STAMPEDEHTML-->
+<script>
+/*@ENGINE*/
+/*@KIT*/
+/*@STAMPEDE*/
+
+// ======================= S8: RHYTHM STAMPEDE =======================
+const CONFIG = {
+  tempoUpSecs: 30, // the tempo goes up a notch this often
+  tempoStep: 10, // BPM per notch
+  goodShare: 0.42, // a tap this far from a step (share of a half beat) still counts; beyond it is wasted
+  streakForLine: 4, // perfects in a row that load a Line sheep
+  aiTiming: { easy: 140, normal: 70, hard: 35 }, // how far off the beat AI taps land (ms, typical)
+  lookahead: 120, // drums are scheduled this far ahead (ms)
+};
+
+// ---------- drums (own audio context so they can be timed exactly) ----------
+const Drums = (() => {
+  let ctx = null;
+  let noise = null;
+  const ready = () => {
+    if (Kit.isMuted()) return null;
+    try {
+      ctx ??= new (window.AudioContext || window.webkitAudioContext)();
+      if (ctx.state === "suspended") ctx.resume();
+      if (!noise) {
+        noise = ctx.createBuffer(1, ctx.sampleRate * 0.3, ctx.sampleRate);
+        const d = noise.getChannelData(0);
+        for (let k = 0; k < d.length; k++) d[k] = Math.random() * 2 - 1;
+      }
+      return ctx;
+    } catch {
+      return null;
+    }
+  };
+  function env(a, t, vol, dur) {
+    const g = a.createGain();
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    g.connect(a.destination);
+    return g;
+  }
+  function kick(a, t, vol) {
+    const o = a.createOscillator();
+    o.frequency.setValueAtTime(150, t);
+    o.frequency.exponentialRampToValueAtTime(45, t + 0.14);
+    o.connect(env(a, t, vol, 0.18));
+    o.start(t);
+    o.stop(t + 0.2);
+  }
+  function hiss(a, t, vol, dur, freq, type) {
+    const s = a.createBufferSource();
+    s.buffer = noise;
+    const f = a.createBiquadFilter();
+    f.type = type;
+    f.frequency.value = freq;
+    s.connect(f).connect(env(a, t, vol, dur));
+    s.start(t);
+    s.stop(t + dur + 0.02);
+  }
+  // k: half-beat index; at: performance.now() time it should sound
+  function play(k, at, rush) {
+    const a = ready();
+    if (!a) return;
+    const t = a.currentTime + Math.max(0, (at - performance.now()) / 1000);
+    const bar = k % 8;
+    if (bar === 0 || bar === 4 || (rush && bar === 5)) kick(a, t, 0.5);
+    if (bar === 2 || bar === 6) hiss(a, t, 0.32, 0.12, 1500, "bandpass");
+    hiss(a, t, k % 2 ? 0.05 : 0.09, 0.04, 7000, "highpass");
+  }
+  return { play, ready };
+})();
+
+// ---------- the beat grid: drums and cursors share it ----------
+function bpm(G, now) {
+  return Stampede.tune.bpm + CONFIG.tempoStep * Math.floor((now - G.start) / 1000 / CONFIG.tempoUpSecs);
+}
+const halfMs = (G, now) => 60000 / bpm(G, now) / 2 / (G.rush ? 1.2 : 1);
+
+function schedule(G, now) {
+  const D = G.data;
+  while (D.next - now < CONFIG.lookahead) {
+    D.grid.push({ at: D.next, k: D.k });
+    Drums.play(D.k, D.next, G.rush);
+    D.k++;
+    D.next += halfMs(G, D.next);
+  }
+  // the latest step that has passed
+  while (D.grid.length > 1 && D.grid[1].at <= now) D.grid.shift();
+}
+// the latest grid step at or before time t (safe to call before this frame's schedule)
+function stepBefore(G, t) {
+  let at = -Infinity;
+  for (const g of G.data.grid) if (g.at <= t + 1 && g.at > at) at = g.at;
+  return at;
+}
+// the first grid step after time t
+function stepAfter(G, t) {
+  const D = G.data;
+  const s = D.grid.find((g) => g.at > t + 1);
+  return s ? s.at : D.next;
+}
+
+Stampede.run({
+  key: "s8",
+  title: "Rhythm Stampede",
+  how: ["Your cursor steps on the beat. Tap right on a step for a PERFECT double sheep.", "4 perfects in a row load a Line sheep. The beat speeds up!"],
+  tune: { bpm: 110, perfectMs: 70 },
+  tuneInfo: [
+    ["bpm", "Starting tempo", 70, 170, 5, " BPM"],
+    ["perfectMs", "Perfect window", 30, 130, 5, " ms"],
+  ],
+  setupDefaults: { vs: "ai", level: "normal" },
+  players: (s) => [
+    { seat: 0, kind: "human" },
+    { seat: 1, kind: s.vs, level: s.level },
+  ],
+  options(ui, s) {
+    ui.seg("Opponent", "vs", [["ai", "AI"], ["human", "Friend"]]);
+    if (s.vs === "ai") ui.level();
+  },
+  onPlay(start) {
+    Drums.ready(); // start audio inside the tap
+    start();
+  },
+  onAgain(start) {
+    Drums.ready();
+    start();
+  },
+  onMenu() {
+    Kit.$("board").style.transform = "";
+  },
+  hooks: {
+    setup(G) {
+      const now = performance.now();
+      G.data = { k: 0, next: now, grid: [], bpm: 0, beatAt: 0, last: "" };
+      for (const pl of G.players) pl.streak = 0;
+      schedule(G, now);
+    },
+    update(G, now) {
+      const D = G.data;
+      schedule(G, now);
+      const cur = D.grid[0];
+      if (cur.k % 2 === 0 && cur.at > D.beatAt) D.beatAt = cur.at;
+      G.bob = Math.max(0, 1 - (now - D.beatAt) / 200);
+      Kit.$("board").style.transform = `scale(${1 + 0.012 * G.bob})`;
+      const b = bpm(G, now);
+      if (b !== D.bpm) {
+        if (D.bpm) Stampede.shout(null, "Faster!", 1.4, "#ffcf4a");
+        D.bpm = b;
+      }
+      const beat = Math.floor(cur.k / 2) % 4;
+      const html = `<span>♩ ${Math.round(b * (G.rush ? 1.2 : 1))}</span><div class="dots">${[0, 1, 2, 3].map((k) => `<i class="${k === beat ? "on" : ""}${k === 0 ? " one" : ""}"></i>`).join("")}</div>`;
+      if (html !== D.last) {
+        D.last = html;
+        Kit.$("hud").innerHTML = html;
+      }
+    },
+    shift(G, d) {
+      const D = G.data;
+      D.next += d;
+      D.beatAt += d;
+      for (const g of D.grid) g.at += d;
+    },
+    // cursors step exactly on the drum grid
+    onStep(G, pl, now) {
+      pl.nextStep = stepAfter(G, now);
+    },
+    refillMs: (G) => 4 * halfMs(G, performance.now()), // 1 sheep per 2 beats (twice as fast in Stampede Time)
+    // judge the tap against the nearest step; an early tap counts for the square the cursor is about to reach
+    beforeDrop(G, pl, now) {
+      const last = stepBefore(G, now);
+      const next = stepAfter(G, now);
+      const half = next - last;
+      let off = now - last;
+      if (next - now < off) {
+        off = next - now;
+        pl.pos += pl.dir;
+        pl.nextStep = stepAfter(G, next);
+      }
+      pl.hit = off <= Stampede.tune.perfectMs ? "perfect" : off <= half * CONFIG.goodShare ? "good" : "miss";
+    },
+    canDrop: (G, pl, i, def) => pl.hit !== "miss" && def(pl, i),
+    onWaste(G, pl) {
+      pl.streak = 0;
+      pl.hit = null; // the judgement only lives for its own tap (AI seats ask canDrop too)
+    },
+    afterDrop(G, pl, i) {
+      const hit = pl.hit;
+      pl.hit = null;
+      if (hit !== "perfect") {
+        pl.streak = 0;
+        return;
+      }
+      // PERFECT: a second sheep for free
+      G.b.count[i]++;
+      pl.streak++;
+      G.effects.push({ type: "hit", cells: [i], color: "#ffcf4a", t0: performance.now() });
+      Kit.tone(1320, 0.08, "triangle", 0.06);
+      if (pl.streak % CONFIG.streakForLine === 0) {
+        Stampede.loadSpecial(pl, "line");
+        Stampede.shout(pl, "On fire!", 1.2);
+      } else Stampede.shout(pl, "Perfect!", 0.8, "#ffcf4a");
+    },
+    // AI seats tap on the step, a little off depending on skill
+    aiTime(G, pl, now) {
+      const sigma = CONFIG.aiTiming[pl.level] ?? CONFIG.aiTiming.normal;
+      const gauss = (Math.random() + Math.random() + Math.random() - 1.5) * 1.4;
+      return Math.max(now, stepBefore(G, now) + Math.abs(gauss) * sigma);
+    },
+  },
+});
+</script>
+</body>
+</html>
