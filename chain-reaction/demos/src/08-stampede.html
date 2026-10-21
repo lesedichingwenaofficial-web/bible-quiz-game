@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Stampede</title>
+<meta name="description" content="cheekyfoundlamb demo 8: real-time party Chain Reaction for 2-4 players around one phone." />
+<style>
+/*@KITCSS*/
+.app { padding-left: max(8px, env(safe-area-inset-left, 0px)); padding-right: max(8px, env(safe-area-inset-right, 0px)); }
+.band { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 6px; height: 112px; flex: none; }
+.band.top .mid { transform: rotate(180deg); }
+.mid { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.timer { font-size: 1.6rem; font-weight: 900; font-variant-numeric: tabular-nums; }
+.mini { display: flex; gap: 4px; }
+.mini .ib { min-width: 38px; height: 38px; border-radius: 11px; font-size: 0.95rem; }
+.pbtn {
+  position: relative; width: 100%; max-width: 132px; height: 100px; border-radius: 26px; justify-self: start;
+  font-weight: 900; font-size: 1.15rem; color: #1a1622; box-shadow: 0 6px 0 rgba(0,0,0,0.35); overflow: hidden;
+}
+.pbtn.right { justify-self: end; }
+.pbtn.flip { transform: rotate(180deg); }
+.pbtn:active { translate: 0 3px; box-shadow: 0 3px 0 rgba(0,0,0,0.35); }
+.pbtn small { display: block; font-size: 0.75rem; opacity: 0.8; }
+.pbtn .lock { position: absolute; inset: 0; background: rgba(0,0,0,0.55); color: #fff; display: grid; place-items: center; font-size: 1.6rem; }
+.pbtn.out { filter: grayscale(1) brightness(0.5); }
+.pbtn.empty { visibility: hidden; }
+.stage { padding: 4px 0; }
+.seats { display: grid; gap: 6px; }
+.seat { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 12px; background: var(--meadow-2); }
+.seat .dot { width: 18px; height: 18px; border-radius: 50%; background: currentColor; flex: none; }
+.seat .nm { flex: 1; font-weight: 800; text-align: left; }
+.stepper { display: flex; align-items: center; gap: 4px; background: var(--meadow-2); border-radius: 12px; padding: 4px; }
+.stepper button { width: 40px; height: 40px; border-radius: 9px; background: transparent; font-size: 1.3rem; font-weight: 900; }
+.stepper output { min-width: 22px; text-align: center; font-weight: 900; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="band top">
+    <button class="pbtn" id="p2"></button>
+    <div class="mid"><span class="timer" id="timer-top">1:30</span></div>
+    <button class="pbtn right" id="p1"></button>
+  </div>
+  <main class="stage" id="stage">
+    <canvas id="board" aria-label="Board"></canvas>
+    <div class="chain" id="chain"></div>
+  </main>
+  <div class="band bottom">
+    <button class="pbtn" id="p0"></button>
+    <div class="mid">
+      <span class="timer" id="timer">1:30</span>
+      <div class="mini">
+        <button class="ib" id="restart" aria-label="Restart">↻</button>
+        <button class="ib" id="mute" aria-label="Mute">🔊</button>
+        <button class="ib" id="menu" aria-label="Menu">☰</button>
+      </div>
+    </div>
+    <button class="pbtn right" id="p3"></button>
+  </div>
+</div>
+
+<section class="overlay" id="intro">
+  <div class="card">
+    <canvas class="hero" id="hero-intro"></canvas>
+    <h1>Stampede</h1>
+    <div class="how">
+      <p>Lay the phone flat. Everyone gets a button in their corner and a cursor that sweeps the board.</p>
+      <p>Tap your button to drop a sheep where your cursor is: on an empty square or one of yours. Tap a wrong square and your button locks for a second. No turns, so be quick! Last colour standing wins, or most squares after 90 seconds.</p>
+    </div>
+    <div class="opts">
+      <div class="optrow"><span class="lbl">Players</span>
+        <div class="stepper"><button id="fewer" aria-label="Fewer players">−</button><output id="count">2</output><button id="more" aria-label="More players">+</button></div>
+      </div>
+      <div class="seats" id="seats"></div>
+    </div>
+    <button class="big" id="play">Play</button>
+  </div>
+</section>
+
+<section class="overlay" id="end" hidden>
+  <div class="card">
+    <canvas class="hero" id="hero-end"></canvas>
+    <h2 id="end-title"></h2>
+    <p id="end-sub"></p>
+    <button class="big" id="again">Play again</button>
+    <button class="big alt" id="end-menu">Change players</button>
+  </div>
+</section>
+
+<script>
+/*@ENGINE*/
+/*@KIT*/
+
+// ---------- balance ----------
+const CONFIG = {
+  rows: 9,
+  cols: 6,
+  seconds: 90,
+  cursorMs: 380, // time the cursor spends on each square
+  lockMs: 1000, // button lock after a wrong tap
+  waveMs: 140, // one burst wave per tick, live
+  aiReactMs: [300, 900], // pause after each AI drop before it can drop again
+  aiPickiness: 4, // AI taps only when a drop improves its position by at least this much
+  aiIdleTapChance: 0.08, // otherwise it sometimes taps anyway on a legal square
+  bigChain: 6,
+};
+
+const { $ } = Kit;
+const COLORS = ["#ff5a5f", "#3fa7ff", "#ffc93c", "#2fd38a"];
+const NAMES = ["Red", "Blue", "Yellow", "Green"];
+// seat order around the phone: bottom-left, top-right, top-left, bottom-right
+const canvas = $("board");
+const ctx = canvas.getContext("2d");
+let geo = { cell: 40, dpr: 1 };
+let setup = { n: 2, seats: ["human", "ai", "ai", "ai"] };
+try {
+  Object.assign(setup, JSON.parse(localStorage.getItem("cfl-08")) || {});
+} catch {}
+let G = null; // live game
+
+// ---------- rules ----------
+const cap = (b, i) => Engine.capacity(b, i);
+const orbsOf = (b, p) => b.owner.reduce((n, o, i) => n + (o === p ? b.count[i] : 0), 0);
+const cellsOf = (b, p) => b.owner.reduce((n, o) => n + (o === p ? 1 : 0), 0);
+
+// Snake path: row 0 left to right, row 1 right to left, and so on.
+function snake(b) {
+  const path = [];
+  for (let r = 0; r < b.rows; r++) for (let k = 0; k < b.cols; k++) path.push(r * b.cols + (r % 2 ? b.cols - 1 - k : k));
+  return path;
+}
+
+function newGame() {
+  const b = Engine.createBoard(CONFIG.rows, CONFIG.cols);
+  const path = snake(b);
+  const n = setup.n;
+  const players = Array.from({ length: n }, (_, p) => ({
+    kind: setup.seats[p],
+    pos: Math.floor((p * path.length) / n) + 3,
+    lockUntil: 0,
+    alive: true,
+    placed: false,
+    aiAt: 0,
+  }));
+  return { b, path, players, start: performance.now(), stepAt: performance.now(), waveAt: performance.now(), chainLen: 0, flights: [], over: false, winner: -1 };
+}
+
+const cursorCell = (p) => G.path[G.players[p].pos % G.path.length];
+const isLegal = (p, i) => G.b.owner[i] === -1 || G.b.owner[i] === p;
+const everyonePlaced = () => G.players.every((pl) => pl.placed);
+
+function drop(p, now) {
+  const pl = G.players[p];
+  if (G.over || !pl.alive || now < pl.lockUntil) return;
+  const i = cursorCell(p);
+  if (!isLegal(p, i)) {
+    pl.lockUntil = now + CONFIG.lockMs;
+    Kit.sfx.bad();
+    renderButtons(now);
+    return;
+  }
+  Engine.place(G.b, i, p);
+  pl.placed = true;
+  Kit.sfx.place();
+}
+
+// One live wave: every full square bursts now, whoever owns it.
+function tickWave(now) {
+  const { waves } = Engine.resolve(G.b, { maxWaves: 1, canBurst: (b, i) => b.owner[i] >= 0 && G.players[b.owner[i]].alive }, false);
+  G.flights = waves.length ? waves[0].bursts.map((x) => ({ ...x, t0: now })) : [];
+  if (waves.length) {
+    G.chainLen++;
+    Kit.sfx.burst(G.chainLen);
+    if (G.chainLen >= 2) Kit.popText($("chain"), `Chain x${G.chainLen}!`);
+    if (G.chainLen === CONFIG.bigChain) Kit.shake($("stage"));
+    if (G.chainLen === CONFIG.bigChain * 2) Kit.shake($("stage"), true);
+  } else G.chainLen = 0;
+  if (everyonePlaced()) {
+    for (const [p, pl] of G.players.entries()) {
+      if (pl.alive && orbsOf(G.b, p) === 0) {
+        pl.alive = false;
+        Kit.sfx.howl();
+        Kit.popText($("chain"), `${NAMES[p]} is out!`);
+      }
+    }
+    const alive = G.players.filter((pl) => pl.alive);
+    if (alive.length === 1) end(G.players.indexOf(alive[0]), "last");
+  }
+}
+
+function end(winner, why) {
+  G.over = true;
+  G.winner = winner;
+  const t = $("end-title");
+  if (winner < 0) {
+    t.textContent = "It's a tie!";
+    t.style.color = "";
+  } else {
+    t.textContent = `${NAMES[winner]} wins!`;
+    t.style.color = COLORS[winner];
+  }
+  const counts = G.players.map((_, p) => `${NAMES[p]} ${cellsOf(G.b, p)}`).join(" · ");
+  $("end-sub").textContent = why === "last" ? "Last colour standing." : `Time's up! Squares: ${counts}`;
+  hero($("hero-end"), winner >= 0 ? COLORS[winner] : null);
+  Kit.sfx.win();
+  setTimeout(() => Kit.show("end"), 600);
+}
+
+function timeUp() {
+  const scores = G.players.map((pl, p) => (pl.alive ? cellsOf(G.b, p) * 1000 + orbsOf(G.b, p) : -1));
+  const best = Math.max(...scores);
+  const winners = scores.filter((s) => s === best).length;
+  end(winners > 1 ? -1 : scores.indexOf(best), "time");
+}
+
+// ---------- AI ----------
+function aiThink(p, now) {
+  const pl = G.players[p];
+  if (!pl.alive || now < pl.lockUntil || now < pl.aiAt) return;
+  const i = cursorCell(p);
+  if (!isLegal(p, i)) return;
+  const b = G.b;
+  const score = (bb) => Kit.evaluate(bb, (o) => o === p, (o) => o !== p && o >= 0, (c) => cap(bb, c));
+  const before = score(b);
+  const after = Engine.clone(b);
+  Engine.place(after, i, p);
+  Engine.resolve(after, { maxWaves: 60 }, false);
+  const gain = score(after) - before;
+  if (!pl.placed || gain >= CONFIG.aiPickiness || Math.random() < CONFIG.aiIdleTapChance) {
+    const [lo, hi] = CONFIG.aiReactMs;
+    pl.aiAt = now + lo + Math.random() * (hi - lo);
+    drop(p, now);
+  }
+}
+
+// ---------- loop ----------
+function frame(now) {
+  if (G && !G.over) {
+    if (now - G.stepAt >= CONFIG.cursorMs) {
+      G.stepAt = now;
+      for (const [p, pl] of G.players.entries()) {
+        pl.pos++;
+        if (pl.kind === "ai") aiThink(p, now);
+      }
+    }
+    if (now - G.waveAt >= CONFIG.waveMs) {
+      G.waveAt = now;
+      tickWave(now);
+    }
+    const left = Math.max(0, CONFIG.seconds - (now - G.start) / 1000);
+    const secs = Math.ceil(left);
+    const txt = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
+    $("timer").textContent = txt;
+    $("timer-top").textContent = txt;
+    if (left <= 0 && !G.over) timeUp();
+    renderButtons(now);
+  }
+  drawBoard(now);
+  requestAnimationFrame(frame);
+}
+
+// ---------- drawing ----------
+function resize() {
+  if (!G) return;
+  geo = Kit.fitBoard(canvas, $("stage"), CONFIG.cols, CONFIG.rows);
+}
+
+const SPOTS = {
+  1: [[0, 0]],
+  2: [[-0.2, 0], [0.2, 0.02]],
+  3: [[-0.2, 0.12], [0.2, 0.12], [0, -0.16]],
+  4: [[-0.2, -0.15], [0.2, -0.15], [-0.2, 0.17], [0.2, 0.17]],
+};
+
+function drawBoard(now) {
+  const t = now / 1000;
+  ctx.setTransform(geo.dpr, 0, 0, geo.dpr, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (!G) return;
+  const b = G.b;
+  const c = geo.cell;
+  // sheep still in the air aren't in their new square yet
+  const incoming = new Array(b.size).fill(0);
+  const p = Math.min(1, (now - (G.flights[0]?.t0 ?? 0)) / CONFIG.waveMs);
+  if (p < 1) for (const f of G.flights) for (const d of f.to) incoming[d]++;
+  for (let i = 0; i < b.size; i++) {
+    const x = Engine.colOf(b, i) * c;
+    const y = Engine.rowOf(b, i) * c;
+    ctx.fillStyle = (Engine.rowOf(b, i) + Engine.colOf(b, i)) % 2 ? "#3d7a45" : "#46874e";
+    ctx.fillRect(x, y, c, c);
+    if (b.owner[i] >= 0) {
+      ctx.fillStyle = COLORS[b.owner[i]] + "40";
+      ctx.fillRect(x, y, c, c);
+    }
+    const n = b.count[i] - incoming[i];
+    if (n <= 0 || b.owner[i] < 0) continue;
+    const k = Math.min(n, 4);
+    const nervous = n >= cap(b, i) - 1;
+    for (let s = 0; s < k; s++) {
+      const [dx, dy] = SPOTS[k][s];
+      const jx = nervous ? Math.sin(t * 40 + i * 3 + s) * c * 0.02 : 0;
+      Kit.drawSheep(ctx, x + (0.5 + dx) * c + jx, y + (0.5 + dy) * c, c * 0.14, COLORS[b.owner[i]], { flip: s % 2 === 1 });
+    }
+  }
+  if (p < 1) {
+    const e = 1 - (1 - p) * (1 - p);
+    for (const { from, to, who } of G.flights) {
+      const fx = (Engine.colOf(b, from) + 0.5) * c;
+      const fy = (Engine.rowOf(b, from) + 0.5) * c;
+      for (const d of to) {
+        const tx = (Engine.colOf(b, d) + 0.5) * c;
+        const ty = (Engine.rowOf(b, d) + 0.5) * c;
+        Kit.drawSheep(ctx, fx + (tx - fx) * e, fy + (ty - fy) * e - Math.sin(Math.PI * p) * c * 0.3, c * 0.14, COLORS[who], { flip: tx < fx });
+      }
+    }
+  }
+  ctx.strokeStyle = "rgba(255,255,255,0.18)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let col = 1; col < b.cols; col++) {
+    ctx.moveTo(col * c, 0);
+    ctx.lineTo(col * c, geo.h);
+  }
+  for (let row = 1; row < b.rows; row++) {
+    ctx.moveTo(0, row * c);
+    ctx.lineTo(geo.w, row * c);
+  }
+  ctx.stroke();
+  // cursors: a thick ring in each player's colour, inset so shared squares show every ring
+  G.players.forEach((pl, q) => {
+    if (!pl.alive) return;
+    const i = cursorCell(q);
+    const x = Engine.colOf(b, i) * c;
+    const y = Engine.rowOf(b, i) * c;
+    const inset = 2 + q * 4;
+    ctx.strokeStyle = COLORS[q];
+    ctx.lineWidth = 4;
+    ctx.globalAlpha = now < pl.lockUntil ? 0.35 : 1;
+    ctx.strokeRect(x + inset, y + inset, c - inset * 2, c - inset * 2);
+    ctx.globalAlpha = 1;
+  });
+}
+
+const BTN_IDS = ["p0", "p1", "p2", "p3"];
+function renderButtons(now) {
+  BTN_IDS.forEach((id, p) => {
+    const btn = $(id);
+    const pl = G?.players[p];
+    btn.classList.toggle("empty", !pl);
+    if (!pl) return;
+    btn.style.background = COLORS[p];
+    btn.classList.toggle("flip", p === 1 || p === 2);
+    btn.classList.toggle("out", !pl.alive);
+    const lock = now < pl.lockUntil ? `<span class="lock">🔒 ${Math.ceil((pl.lockUntil - now) / 100) / 10}</span>` : "";
+    const label = !pl.alive ? "OUT" : pl.kind === "ai" ? "AI" : "TAP!";
+    const html = `${label}<small>${NAMES[p]} · ${cellsOf(G.b, p)}</small>${lock}`;
+    if (btn.dataset.html !== html) {
+      btn.innerHTML = html;
+      btn.dataset.html = html;
+    }
+  });
+}
+
+BTN_IDS.forEach((id, p) =>
+  $(id).addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    if (!G || G.over || !G.players[p] || G.players[p].kind !== "human") return;
+    drop(p, performance.now());
+  })
+);
+
+function hero(cv, color) {
+  const g = Kit.sharp(cv, 240, 130);
+  COLORS.forEach((col, k) => Kit.drawSheep(g, 30 + k * 60, 108 - (k % 2) * 6, 13, col, { flip: k > 1 }));
+  Kit.drawLamb(g, 120, 62, 100, { mood: "happy", scarf: color ?? undefined });
+}
+
+// ---------- menu ----------
+function renderSeats() {
+  $("count").textContent = setup.n;
+  const box = $("seats");
+  box.replaceChildren();
+  const where = ["bottom-left", "top-right", "top-left", "bottom-right"];
+  for (let p = 0; p < setup.n; p++) {
+    const row = document.createElement("div");
+    row.className = "seat";
+    row.innerHTML = `<span class="dot" style="color:${COLORS[p]}"></span><span class="nm">${NAMES[p]} <small style="color:var(--muted)">${where[p]}</small></span>`;
+    const seg = document.createElement("div");
+    seg.className = "seg";
+    for (const [k, label] of [["human", "Human"], ["ai", "AI"]]) {
+      const btn = document.createElement("button");
+      btn.textContent = label;
+      btn.className = setup.seats[p] === k ? "on" : "";
+      btn.addEventListener("click", () => {
+        setup.seats[p] = k;
+        renderSeats();
+      });
+      seg.append(btn);
+    }
+    row.append(seg);
+    box.append(row);
+  }
+}
+
+function start() {
+  try {
+    localStorage.setItem("cfl-08", JSON.stringify(setup));
+  } catch {}
+  G = newGame();
+  Kit.hide("intro");
+  Kit.hide("end");
+  resize();
+  renderButtons(performance.now());
+}
+
+$("fewer").addEventListener("click", () => {
+  setup.n = Math.max(2, setup.n - 1);
+  renderSeats();
+});
+$("more").addEventListener("click", () => {
+  setup.n = Math.min(4, setup.n + 1);
+  renderSeats();
+});
+$("play").addEventListener("click", start);
+$("again").addEventListener("click", start);
+$("restart").addEventListener("click", () => G && start());
+const toMenu = () => {
+  if (G) G.over = true;
+  Kit.hide("end");
+  renderSeats();
+  Kit.show("intro");
+};
+$("menu").addEventListener("click", toMenu);
+$("end-menu").addEventListener("click", toMenu);
+Kit.muteButton($("mute"));
+new ResizeObserver(resize).observe($("stage"));
+
+renderSeats();
+hero($("hero-intro"));
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
