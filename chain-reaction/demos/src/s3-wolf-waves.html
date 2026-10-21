@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Wolf Waves</title>
+<meta name="description" content="cheekyfoundlamb Stampede S3: real-time Chain Reaction survival against waves of wolves, solo or 2-player co-op." />
+<style>
+/*@KITCSS*/
+/*@STAMPEDECSS*/
+.banner {
+  position: fixed; inset: 0; z-index: 15; display: grid; place-items: center; pointer-events: none;
+  background: radial-gradient(circle, rgba(10,16,12,0.75), rgba(10,16,12,0.3));
+}
+.banner[hidden] { display: none; }
+.banner div { text-align: center; font-weight: 900; color: var(--sun); font-size: clamp(3rem, 18vw, 5.5rem); line-height: 1; animation: bannerpop 0.6s ease-out; text-shadow: 0 4px 0 rgba(0,0,0,0.4); }
+@keyframes bannerpop { from { transform: scale(0.4); opacity: 0; } 60% { transform: scale(1.12); opacity: 1; } to { transform: scale(1); } }
+.banner small { display: block; font-size: 0.3em; color: var(--cream); margin-top: 8px; }
+.hud .pill { padding: 4px 12px; border-radius: 12px; background: var(--meadow-2); font-size: 1.05rem; }
+</style>
+</head>
+<body>
+<!--@STAMPEDEHTML-->
+<div class="banner" id="banner" hidden><div id="banner-text"></div></div>
+<script>
+/*@ENGINE*/
+/*@KIT*/
+/*@STAMPEDE*/
+
+// ======================= S3: WOLF WAVES =======================
+const CONFIG = {
+  waveSecs: 45,
+  bannerMs: 1700, // how long "Wave N" shows between waves
+  wolves: (wave) => (wave >= 5 ? 3 : wave >= 3 ? 2 : 1), // waves 3 and 5 add a wolf
+  wolfSpeed: (wave) => Math.min(1.6, 0.7 + (wave - 1) * 0.1), // cursor speed, 1 = yours
+  wolfRefill: (wave) => Math.max(1.0, 2.2 - (wave - 1) * 0.15), // seconds per sheep
+  wolfLevel: (wave, base) => ["easy", "normal", "hard"][Math.min(2, ["easy", "normal", "hard"].indexOf(base) + Math.floor((wave - 1) / 3))],
+};
+const WOLF_COLORS = ["#a3a8b5", "#b39ad1", "#86b0c4"];
+const WOLF_NAMES = ["Wolf", "Shadow", "Grey"];
+let wave = 1;
+
+const best = () => {
+  try {
+    return Number(localStorage.getItem("cfl-s3-best")) || 0;
+  } catch {
+    return 0;
+  }
+};
+const saveBest = (n) => {
+  try {
+    if (n > best()) localStorage.setItem("cfl-s3-best", n);
+  } catch {}
+};
+
+function banner(text, sub) {
+  Kit.$("banner-text").innerHTML = `${text}${sub ? `<small>${sub}</small>` : ""}`;
+  Kit.$("banner").hidden = false;
+  setTimeout(() => (Kit.$("banner").hidden = true), CONFIG.bannerMs);
+}
+
+Stampede.run({
+  key: "s3",
+  title: "Wolf Waves",
+  how: ["Tap to drop a sheep. Own more squares than the wolves when time runs out.", "Each wave the wolves get faster, and more of them come."],
+  tune: { roundSecs: CONFIG.waveSecs },
+  setupDefaults: { n: 1, level: "easy" },
+  players(s) {
+    const list = [{ seat: 0, kind: "human", team: 0 }];
+    if (s.n === 2) list.push({ seat: 1, kind: "human", team: 0 });
+    for (let k = 0; k < CONFIG.wolves(wave); k++)
+      list.push({ seat: -1, kind: "ai", team: 1, level: CONFIG.wolfLevel(wave, s.level), speed: CONFIG.wolfSpeed(wave), color: WOLF_COLORS[k], name: WOLF_NAMES[k] });
+    return list;
+  },
+  options(ui, s) {
+    ui.seg("Players", "n", [[1, "Solo"], [2, "2 co-op"]]);
+    ui.seg("Wolves", "level", [["easy", "Easy"], ["normal", "Normal"], ["hard", "Hard"]]);
+    const b = best();
+    if (b) ui.row("Best", Object.assign(document.createElement("b"), { textContent: `Wave ${b}` }));
+  },
+  hero(g) {
+    Kit.drawWolf(g, 62, 66, 84, { mood: "happy" });
+    Kit.drawLamb(g, 160, 64, 88, { scarf: Stampede.COLORS[0], mood: "happy", flip: true });
+  },
+  onPlay(start) {
+    wave = 1;
+    start();
+    banner("Wave 1");
+  },
+  onAgain(start) {
+    wave = 1;
+    start();
+    banner("Wave 1");
+  },
+  onMenu() {
+    wave = 1;
+    Kit.$("banner").hidden = true;
+  },
+  hooks: {
+    setup(G, s) {
+      G.solo = s.n === 1;
+      Kit.$("app").classList.toggle("solo", G.solo);
+      Kit.$("hud").innerHTML = `<span class="pill">🐺 Wave ${wave}</span>`;
+      // humans start in the bottom half, wolves on the far side of the path
+      const humans = G.players.filter((p) => p.team === 0).length;
+      G.players.forEach((pl, k) => {
+        if (pl.team === 1) pl.pos = 27 + (k - humans) * 9;
+        else pl.pos = 3 + k * 27;
+      });
+    },
+    refillMs: (G, pl) => (pl.team === 1 ? CONFIG.wolfRefill(wave) * 1000 : Stampede.tune.refill * 1000),
+    endCheck(G, now, left, defaultEnd) {
+      const res = defaultEnd(left);
+      if (!res) return null;
+      if (res.team === 0) {
+        // wave cleared: a short banner, then a fresh board with faster wolves
+        G.over = true;
+        saveBest(wave);
+        Kit.sfx.win();
+        Stampede.shout(G.players[0], "Cleared!", 1.6);
+        wave++;
+        const more = CONFIG.wolves(wave) > CONFIG.wolves(wave - 1);
+        setTimeout(() => {
+          if (Stampede.G !== G) return; // went to the menu meanwhile
+          Stampede.start();
+          banner(`Wave ${wave}`, more ? "Another wolf joins!" : "The wolves are faster");
+        }, 1200);
+        return null;
+      }
+      saveBest(wave);
+      const humans = G.players.filter((p) => p.team === 0);
+      const wolves = G.players.filter((p) => p.team === 1);
+      const sum = (list) => list.reduce((n, p) => n + Stampede.cellsOf(p.id), 0);
+      return {
+        team: 1,
+        title: `Wave ${wave} lost`,
+        color: "#ff8a8a",
+        sad: true,
+        sub: res.why === "last" ? "The wolves took the whole flock." : `Squares: you ${sum(humans)}, wolves ${sum(wolves)}.`,
+      };
+    },
+    endExtra(G, res, el) {
+      el.innerHTML = `<p style="font-weight:900;color:var(--sun)">Best: wave ${Math.max(best(), 1)}</p>`;
+    },
+  },
+});
+</script>
+</body>
+</html>

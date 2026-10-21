@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Big Bad Wolf</title>
+<meta name="description" content="cheekyfoundlamb Stampede S4: a real-time co-op boss fight for 1-4 players against a giant wolf in the middle of the board." />
+<style>
+/*@KITCSS*/
+/*@STAMPEDECSS*/
+.hud { width: 100%; padding: 6px 4px; }
+.hp { position: relative; flex: 1; max-width: 360px; height: 22px; border-radius: 11px; background: var(--meadow-2); overflow: hidden; }
+.hp i { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, #ff5a5f, #ff9a5c); border-radius: 11px; transition: width 0.2s; }
+.hp.angry i { background: linear-gradient(90deg, #c2185b, #ff3d3d); }
+.hp b { position: absolute; inset: 0; display: grid; place-items: center; font-size: 0.8rem; color: #fff; text-shadow: 0 1px 0 rgba(0,0,0,0.5); }
+.hud .icon { font-size: 1.3rem; }
+</style>
+</head>
+<body>
+<!--@STAMPEDEHTML-->
+<script>
+/*@ENGINE*/
+/*@KIT*/
+/*@STAMPEDE*/
+
+// ======================= S4: BIG BAD WOLF =======================
+const CONFIG = {
+  wolfCells: [20, 21, 26, 27], // the 2x2 block in the middle of the 9x6 board
+  warnMs: 1000, // every attack flashes this long first
+  howlMs: 3000, // cursors run backwards this long
+  pupGrowMs: 3000, // pups gain a sheep this often
+  shadowLose: 0.7, // shadow covering this share of the board loses
+  attacks: ["swipe", "howl", "pups", "stomp"],
+  hpScale: [0.75, 1, 1.6, 3.6], // wolf health x this for 1, 2, 3, 4 players
+};
+const SHADOW = "#3b2d52";
+const SHOUT = { swipe: "Swipe!", howl: "Howl!", pups: "Pups!", stomp: "Stomp!" };
+
+Stampede.run({
+  key: "s4",
+  title: "Big Bad Wolf",
+  how: ["Tap to drop a sheep. Bursts next to the wolf hurt him.", "Dodge his attacks and bring his health to zero together!"],
+  tune: { roundSecs: 120, bossHp: 60, attackSecs: 7 },
+  tuneInfo: [
+    ["bossHp", "Wolf health (2 players; scales with team size)", 10, 200, 5, ""],
+    ["attackSecs", "Seconds between attacks", 2, 15, 0.5, " s"],
+  ],
+  setupDefaults: { n: 2, seats: ["human", "ai", "ai", "ai"], level: "normal" },
+  players(s) {
+    const list = Array.from({ length: s.n }, (_, p) => ({ seat: p, kind: s.seats[p], level: s.level, team: 0 }));
+    // the shadow is a flock with no cursor or button: the wolf's pups and their spread
+    list.push({ seat: -1, kind: "none", team: 1, observer: true, color: SHADOW, name: "Shadow", placed: true });
+    return list;
+  },
+  options(ui, s) {
+    ui.stepper("Players", "n", 1, 4);
+    ui.seats(s.n);
+    if (s.seats.slice(0, s.n).includes("ai")) ui.level();
+  },
+  hero(g) {
+    Kit.drawWolf(g, 110, 62, 110, { mood: "happy" });
+    Stampede.COLORS.forEach((col, k) => Kit.drawSheep(g, 30 + k * 54, 110, 11, col, { flip: k > 1 }));
+  },
+  hooks: {
+    setup(G) {
+      const b = G.b;
+      for (const i of CONFIG.wolfCells) b.kind[i] = "wolf";
+      const now = performance.now();
+      // health scales with the team, since teammates' chains feed each other
+      const hp = Math.round(Stampede.tune.bossHp * CONFIG.hpScale[G.players.length - 2]);
+      G.data = { hp, max: hp, attack: null, nextAttack: now + Stampede.tune.attackSecs * 1000, howlUntil: 0, pups: [], pupAt: now + CONFIG.pupGrowMs, hitAt: 0, angry: false, won: 0, last: "" };
+      G.shadow = G.players.length - 1;
+      hud(G);
+    },
+    noElimination: true, // a wiped-out flock can always drop back in
+    inPath: (G, i) => G.b.kind[i] !== "wolf",
+    blocked: (G, i) => G.b.kind[i] === "wolf",
+    land(G, b, from, to, who) {
+      if (b.kind[to] !== "wolf") return false;
+      if (who !== G.shadow) hurt(G, 1);
+      return true;
+    },
+    specialHit(G, k, who) {
+      if (G.b.kind[k] !== "wolf") return false;
+      if (who !== G.shadow) hurt(G, 1);
+      return true;
+    },
+    aiValue(G, pl, i) {
+      const b = G.b;
+      const near = Engine.neighbours(b, i);
+      const bursts = b.count[i] + 1 >= Engine.capacity(b, i);
+      const wolf = near.filter((k) => b.kind[k] === "wolf").length;
+      const warned = G.data.attack && G.data.attack.cells.includes(i) ? -6 : 0;
+      return wolf * (bursts ? 5 : 1) + warned;
+    },
+    update(G, now) {
+      const D = G.data;
+      if (D.won) return;
+      // pups grow
+      if (now >= D.pupAt) {
+        D.pupAt = now + CONFIG.pupGrowMs;
+        D.pups = D.pups.filter((i) => G.b.owner[i] === G.shadow);
+        for (const i of D.pups) G.b.count[i]++;
+      }
+      // the next attack: a warning first, then it lands
+      if (!D.attack && now >= D.nextAttack) warn(G, now);
+      if (D.attack && now >= D.attack.at) strike(G, now);
+      if (D.howlUntil && now >= D.howlUntil) {
+        D.howlUntil = 0;
+        for (const pl of G.players) pl.dir = 1;
+      }
+      if (!D.angry && D.hp <= D.max / 2) {
+        D.angry = true;
+        Stampede.shout(null, "Grrr!", 1.7, "#ff3d3d");
+        Kit.sfx.howl();
+        Kit.shake(Kit.$("stage"), true);
+      }
+      hud(G);
+    },
+    shift(G, d) {
+      const D = G.data;
+      D.nextAttack += d;
+      D.pupAt += d;
+      if (D.attack) D.attack.at += d;
+      if (D.howlUntil) D.howlUntil += d;
+      if (D.won) D.won += d;
+    },
+    endCheck(G, now, left) {
+      const D = G.data;
+      if (D.won) return now - D.won > 1800 ? { team: 0, title: "The wolf ran off!", sub: "You saved the flock together.", color: "#ffcf4a" } : null;
+      const board = G.b.size - CONFIG.wolfCells.length;
+      if (Stampede.cellsOf(G.shadow) >= board * CONFIG.shadowLose) return { team: 1, title: "Shadow took the pasture", sub: `The wolf still had ${D.hp} health.`, color: "#b39ad1", sad: true };
+      if (left <= 0) return { team: 1, title: "Time's up", sub: `The wolf still had ${D.hp} health.`, color: "#ff8a8a", sad: true };
+      return null;
+    },
+    drawCell: (ctx, G, i) => G.b.kind[i] === "wolf",
+    drawOver(ctx, G, c, t, now) {
+      const D = G.data;
+      const b = G.b;
+      // warning flash
+      if (D.attack && D.attack.cells.length) {
+        ctx.fillStyle = `rgba(255,40,40,${0.25 + 0.25 * Math.sin(t * 25)})`;
+        for (const k of D.attack.cells) ctx.fillRect(Engine.colOf(b, k) * c, Engine.rowOf(b, k) * c, c, c);
+      }
+      // pups: a little shadow wolf face on each growing den
+      for (const i of D.pups)
+        if (b.owner[i] === G.shadow) {
+          ctx.strokeStyle = "#b39ad1";
+          ctx.lineWidth = 2;
+          ctx.strokeRect(Engine.colOf(b, i) * c + 3, Engine.rowOf(b, i) * c + 3, c - 6, c - 6);
+        }
+      // the wolf himself, across his 2x2 block; he runs off when beaten
+      const x0 = 3 * c;
+      const y0 = 4.22 * c;
+      const run = D.won ? Math.min(1, (now - D.won) / 1500) : 0;
+      const hit = now - D.hitAt < 150;
+      ctx.save();
+      if (D.won) ctx.globalAlpha = 1 - run * 0.8;
+      Kit.drawWolf(ctx, x0 + run * c * 5, y0 + (D.angry ? Math.sin(t * 30) * 1.5 : 0), c * 1.9, {
+        t,
+        mood: D.won ? "sad" : "happy",
+        color: hit ? "#ffffff" : D.angry ? "#b07a86" : undefined,
+      });
+      ctx.restore();
+      if (D.angry && !D.won) {
+        // angry brows
+        ctx.strokeStyle = "#2a2530";
+        ctx.lineWidth = c * 0.07;
+        ctx.beginPath();
+        ctx.moveTo(x0 - c * 0.42, y0 - c * 0.38);
+        ctx.lineTo(x0 - c * 0.12, y0 - c * 0.26);
+        ctx.moveTo(x0 + c * 0.42, y0 - c * 0.38);
+        ctx.lineTo(x0 + c * 0.12, y0 - c * 0.26);
+        ctx.stroke();
+      }
+      if (D.won) {
+        // celebration: sheep bouncing across the pasture
+        for (let k = 0; k < 14; k++) {
+          const px = ((k * 0.37 + run * 0.5) % 1) * b.cols * c;
+          const py = (0.1 + ((k * 0.61) % 0.8)) * b.rows * c - Math.abs(Math.sin(t * 8 + k)) * c * 0.4;
+          Kit.drawSheep(ctx, px, py, c * 0.16, Stampede.COLORS[k % 4], { flip: k % 2 === 1 });
+        }
+      }
+      if (D.howlUntil) {
+        ctx.fillStyle = `rgba(180,140,255,${0.12 + 0.08 * Math.sin(t * 12)})`;
+        ctx.fillRect(0, 0, b.cols * c, b.rows * c);
+      }
+    },
+  },
+});
+
+function hud(G) {
+  const D = G.data;
+  const icon = D.attack ? { swipe: "↔️", howl: "🌀", pups: "🐾", stomp: "💥" }[D.attack.type] : "🐺";
+  const key = `${D.hp}|${D.angry}|${icon}`;
+  if (key === D.last) return;
+  D.last = key;
+  Kit.$("hud").innerHTML = `<span class="icon">${icon}</span><div class="hp${D.angry ? " angry" : ""}"><i style="width:${(100 * Math.max(0, D.hp)) / D.max}%"></i><b>${Math.max(0, D.hp)}</b></div>`;
+}
+
+function hurt(G, n) {
+  const D = G.data;
+  if (D.won) return;
+  D.hp -= n;
+  D.hitAt = performance.now();
+  Kit.tone(160 + Math.random() * 40, 0.06, "square", 0.04);
+  if (D.hp <= 0) {
+    D.hp = 0;
+    D.won = performance.now();
+    D.attack = null;
+    for (const pl of G.players) pl.observer = true;
+    hud(G);
+    Stampede.shout(null, "Hallelujah!", 1.9, "#ffcf4a");
+    Kit.sfx.howl();
+    [523, 659, 784, 1047, 1319].forEach((f, k) => Kit.tone(f, 0.25, "triangle", 0.08, 0, 0.3 + k * 0.09));
+  }
+}
+
+const humans = (G) => G.players.filter((p) => p.team === 0).map((p) => p.id);
+
+// Choose the attack and mark where it will land.
+function warn(G, now) {
+  const D = G.data;
+  const b = G.b;
+  const type = CONFIG.attacks[Math.floor(Math.random() * CONFIG.attacks.length)];
+  const mine = (i) => humans(G).includes(b.owner[i]);
+  let cells = [];
+  if (type === "swipe") {
+    // the row holding the most of your sheep
+    let bestRow = 0;
+    let most = -1;
+    for (let r = 0; r < b.rows; r++) {
+      let n = 0;
+      for (let c = 0; c < b.cols; c++) if (mine(r * b.cols + c)) n += b.count[r * b.cols + c];
+      if (n > most) [most, bestRow] = [n, r];
+    }
+    for (let c = 0; c < b.cols; c++) cells.push(bestRow * b.cols + c);
+  } else if (type === "stomp") {
+    let bestAt = 0;
+    let most = -1;
+    for (let i = 0; i < b.size; i++) {
+      const area = around(b, i);
+      const n = area.reduce((s, k) => s + (mine(k) ? b.count[k] : 0), 0);
+      if (n > most) [most, bestAt] = [n, i];
+    }
+    cells = around(b, bestAt);
+  } else if (type === "pups") {
+    const free = [];
+    for (let i = 0; i < b.size; i++) if (b.owner[i] === -1 && !b.kind[i]) free.push(i);
+    cells = free.sort(() => Math.random() - 0.5).slice(0, 2);
+  }
+  cells = cells.filter((k) => b.kind[k] !== "wolf");
+  D.attack = { type, at: now + CONFIG.warnMs, cells };
+  Stampede.shout(null, SHOUT[type], 1.5, "#ff6b6b");
+  Kit.tone(110, 0.5, "sawtooth", 0.06, 70);
+}
+
+function around(b, i) {
+  const out = [i];
+  for (const [dr, dc] of Engine.ALL8) {
+    const r = Engine.rowOf(b, i) + dr;
+    const c = Engine.colOf(b, i) + dc;
+    if (Engine.inside(b, r, c)) out.push(r * b.cols + c);
+  }
+  return out;
+}
+
+function strike(G, now) {
+  const D = G.data;
+  const b = G.b;
+  const { type, cells } = D.attack;
+  D.attack = null;
+  D.nextAttack = now + Stampede.tune.attackSecs * 1000 * (D.angry ? 0.6 : 1);
+  if (type === "howl") {
+    D.howlUntil = now + CONFIG.howlMs;
+    for (const pl of G.players) pl.dir = -1;
+    Kit.sfx.howl();
+    return;
+  }
+  if (type === "pups") {
+    for (const i of cells) {
+      if (b.owner[i] !== -1) continue;
+      b.owner[i] = G.shadow;
+      b.count[i] = 2;
+      D.pups.push(i);
+    }
+    Kit.tone(300, 0.2, "triangle", 0.06, 500);
+    return;
+  }
+  // swipe and stomp empty their squares
+  for (const i of cells) {
+    b.owner[i] = -1;
+    b.count[i] = 0;
+    b.tag[i] = null;
+  }
+  G.effects.push({ type: "hit", cells, color: "#ff3d3d", t0: now });
+  Kit.shake(Kit.$("stage"), type === "stomp");
+  Kit.tone(90, 0.3, "sawtooth", 0.09, 40);
+}
+</script>
+</body>
+</html>

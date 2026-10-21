@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Shrinking Pasture</title>
+<meta name="description" content="cheekyfoundlamb Stampede S5: real-time Chain Reaction battle royale where the pasture's edge turns to stone every 20 seconds." />
+<style>
+/*@KITCSS*/
+/*@STAMPEDECSS*/
+.hud .pill { padding: 4px 12px; border-radius: 12px; background: var(--meadow-2); font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+.hud .pill.warn { background: #ff5a5f; color: #fff; animation: beat 0.4s ease-in-out infinite; }
+</style>
+</head>
+<body>
+<!--@STAMPEDEHTML-->
+<script>
+/*@ENGINE*/
+/*@KIT*/
+/*@STAMPEDE*/
+
+// ======================= S5: SHRINKING PASTURE =======================
+const CONFIG = {
+  warnSecs: 3, // the ring flashes this long before it turns to stone
+};
+
+// Ring k: squares k steps in from the nearest edge.
+const ringOf = (b, i) => Math.min(Engine.rowOf(b, i), Engine.colOf(b, i), b.rows - 1 - Engine.rowOf(b, i), b.cols - 1 - Engine.colOf(b, i));
+// The board can shrink while at least one ring would be left inside.
+const maxShrinks = (b) => Math.floor((Math.min(b.rows, b.cols) - 1) / 2);
+
+Stampede.run({
+  key: "s5",
+  title: "Shrinking Pasture",
+  how: ["Tap to drop a sheep. Every 20 seconds the edge turns to stone.", "Last flock standing wins, or most sheep when it can't shrink."],
+  tune: { shrinkSecs: 20 },
+  tuneInfo: [["shrinkSecs", "Seconds between shrinks", 5, 60, 1, " s"]],
+  setupDefaults: { n: 2, seats: ["human", "ai", "ai", "ai"], level: "normal" },
+  players: (s) => Array.from({ length: s.n }, (_, p) => ({ seat: p, kind: s.seats[p], level: s.level })),
+  options(ui, s) {
+    ui.stepper("Players", "n", 2, 4);
+    ui.seats(s.n);
+    if (s.seats.slice(0, s.n).includes("ai")) ui.level();
+  },
+  hooks: {
+    setup(G) {
+      G.data = { shrunk: 0, last: "" };
+    },
+    // the round lasts until the board can't shrink any more, plus one more stretch
+    roundSecs: (G) => Stampede.tune.shrinkSecs * (maxShrinks(G.b) + 1),
+    update(G, now) {
+      const D = G.data;
+      const secs = (now - G.start) / 1000;
+      const next = Stampede.tune.shrinkSecs * (D.shrunk + 1);
+      const canShrink = D.shrunk < maxShrinks(G.b);
+      D.warn = canShrink && secs >= next - CONFIG.warnSecs;
+      if (canShrink && secs >= next) shrink(G, now);
+      const left = Math.max(0, Math.ceil(next - secs));
+      const html = canShrink ? `<span class="pill${D.warn ? " warn" : ""}">🪨 ${left}</span>` : `<span class="pill">🏁</span>`;
+      if (html !== D.last) {
+        D.last = html;
+        Kit.$("hud").innerHTML = html;
+      }
+    },
+    // AI seats steer clear of the ring that falls next once the shrink is near
+    aiValue(G, pl, i) {
+      const D = G.data;
+      const secs = (performance.now() - G.start) / 1000;
+      const soon = Stampede.tune.shrinkSecs * (D.shrunk + 1) - secs < 8;
+      return soon && D.shrunk < maxShrinks(G.b) && ringOf(G.b, i) === D.shrunk ? -12 : 0;
+    },
+    endCheck(G, now, left, defaultEnd) {
+      const res = defaultEnd(Math.max(left, 1));
+      if (res) return res;
+      if (left > 0) return null;
+      // most sheep once the pasture can't shrink any further
+      const live = G.players.filter((p) => p.alive);
+      const ranked = live.map((p) => [p, Stampede.orbsOf(p.id)]).sort((a, b) => b[1] - a[1]);
+      const sub = `Most sheep: ${ranked.map(([p, n]) => `${p.name} ${n}`).join(" · ")}`;
+      if (ranked.length > 1 && ranked[0][1] === ranked[1][1]) return { team: -1, sub };
+      return { team: ranked[0][0].team, sub };
+    },
+    drawCell(ctx, G, i, x, y, c) {
+      if (!G.b.rock[i]) return false;
+      // stone: a few rounded blocks
+      ctx.fillStyle = "#6c7068";
+      ctx.fillRect(x, y, c, c);
+      for (const [dx, dy, w, h] of [[0.08, 0.1, 0.5, 0.36], [0.6, 0.1, 0.32, 0.36], [0.08, 0.52, 0.3, 0.38], [0.42, 0.52, 0.5, 0.38]]) {
+        ctx.fillStyle = (i + dx * 10) % 2 > 1 ? "#878b82" : "#7d8178";
+        ctx.beginPath();
+        ctx.roundRect(x + dx * c, y + dy * c, w * c, h * c, c * 0.08);
+        ctx.fill();
+      }
+      return true;
+    },
+    drawOver(ctx, G, c, t) {
+      const D = G.data;
+      if (!D.warn) return;
+      const b = G.b;
+      ctx.fillStyle = `rgba(255,70,70,${0.2 + 0.25 * Math.abs(Math.sin(t * 8))})`;
+      for (let i = 0; i < b.size; i++) if (!b.rock[i] && ringOf(b, i) === D.shrunk) ctx.fillRect(Engine.colOf(b, i) * c, Engine.rowOf(b, i) * c, c, c);
+    },
+  },
+});
+
+// The outer ring turns to stone: its sheep are lost and the squares inside become the new edge.
+function shrink(G, now) {
+  const D = G.data;
+  const b = G.b;
+  const cells = [];
+  for (let i = 0; i < b.size; i++)
+    if (!b.rock[i] && ringOf(b, i) === D.shrunk) {
+      b.rock[i] = 1;
+      b.owner[i] = -1;
+      b.count[i] = 0;
+      b.tag[i] = null;
+      cells.push(i);
+    }
+  D.shrunk++;
+  D.warn = false;
+  // keep each cursor at the same point along the shorter path
+  const oldLen = G.path.length;
+  const at = G.players.map((pl) => ((pl.pos % oldLen) + oldLen) % oldLen);
+  Stampede.buildPath();
+  G.players.forEach((pl, k) => (pl.pos = Math.floor((at[k] * G.path.length) / oldLen)));
+  G.effects.push({ type: "hit", cells, color: "#9aa094", t0: now });
+  Stampede.shout(null, "Crumble!", 1.5, "#d8dccf");
+  Kit.shake(Kit.$("stage"), true);
+  Kit.tone(70, 0.6, "sawtooth", 0.1, 35);
+  Stampede.resize();
+}
+</script>
+</body>
+</html>
