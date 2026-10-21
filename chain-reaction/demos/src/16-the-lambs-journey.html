@@ -1,0 +1,546 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>The Lamb's Journey</title>
+<meta name="description" content="cheekyfoundlamb demo 16: roll the die, walk your lamb around the track, and let each space shape your Chain Reaction turn." />
+<style>
+/*@KITCSS*/
+/*@CARDSCSS*/
+.top { min-height: 46px; padding-bottom: 2px; }
+#track { position: absolute; inset: 0; pointer-events: none; }
+.seats { display: grid; gap: 6px; }
+.seat { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 12px; background: var(--meadow-2); }
+.seat .dot { width: 18px; height: 18px; border-radius: 50%; background: currentColor; flex: none; }
+.seat .nm { flex: 1; font-weight: 800; text-align: left; }
+.stepper { display: flex; align-items: center; gap: 4px; background: var(--meadow-2); border-radius: 12px; padding: 4px; }
+.stepper button { width: 40px; height: 40px; border-radius: 9px; background: transparent; font-size: 1.3rem; font-weight: 900; }
+.stepper output { min-width: 22px; text-align: center; font-weight: 900; }
+.legend { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px 10px; margin-top: 8px; text-align: left; font-size: 0.85rem; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="status"><span class="dot" id="dot"></span><span class="txt" id="status">The Lamb's Journey</span></div>
+    <div class="btns">
+      <button class="ib" id="restart" aria-label="Restart">↻</button>
+      <button class="ib" id="mute" aria-label="Mute">🔊</button>
+      <button class="ib" id="menu" aria-label="Menu">☰</button>
+    </div>
+  </header>
+  <div class="chips" id="chips"></div>
+  <main class="stage" id="stage">
+    <canvas id="track" aria-hidden="true"></canvas>
+    <canvas id="board" aria-label="Board"></canvas>
+    <div class="chain" id="chain"></div>
+  </main>
+  <div class="hint" id="hint"></div>
+  <div class="hand" id="hand"></div>
+</div>
+
+<section class="overlay" id="intro">
+  <div class="card">
+    <canvas class="hero" id="hero-intro"></canvas>
+    <h1>The Lamb's Journey</h1>
+    <div class="how">
+      <p>Roll the die and walk your lamb around the track. Where he stops decides your turn on the Chain Reaction board in the middle. Passing Home gives 2 free sheep.</p>
+    </div>
+    <div class="legend" id="legend"></div>
+    <div class="opts">
+      <div class="optrow"><span class="lbl">Players</span>
+        <div class="stepper"><button id="fewer" aria-label="Fewer players">−</button><output id="count">2</output><button id="more" aria-label="More players">+</button></div>
+      </div>
+      <div class="seats" id="seats"></div>
+    </div>
+    <button class="big" id="play">Play</button>
+  </div>
+</section>
+
+<section class="overlay" id="end" hidden>
+  <div class="card">
+    <canvas class="hero" id="hero-end"></canvas>
+    <h2 id="end-title"></h2>
+    <p id="end-sub"></p>
+    <button class="big" id="again">Play again</button>
+    <button class="big alt" id="end-menu">Change players</button>
+  </div>
+</section>
+
+<script>
+/*@ENGINE*/
+/*@KIT*/
+/*@CARDS*/
+/*@TABLE*/
+
+// ---------- balance ----------
+const CONFIG = {
+  size: 6, // the board is size x size
+  rounds: 20, // most squares after this many rounds wins
+  homeBonus: 2, // free placements for passing Home
+  handMax: 3,
+  hopMs: 170, // time per track space as the lamb walks
+  waveMs: 130,
+  aiDelayMs: 550,
+  aiMistake: 0.12,
+  safeRounds: 4, // nobody can be knocked out during the first rounds (dice can leave a lamb without sheep for a while)
+  // the 20 track spaces, starting at Home (bottom right) and going round anticlockwise
+  track: ["home", "meadow", "gift", "pasture", "tithe", "den", "meadow", "wolf", "pasture", "gift", "still", "meadow", "gift", "tithe", "pasture", "wolf", "meadow", "gift", "still", "pasture"],
+  pool: { ...Cards.POOL },
+};
+Cards.safeRounds = CONFIG.safeRounds;
+
+const SPACES = {
+  home: { icon: "🏠", name: "Home", text: "Passing gives 2 free sheep", col: "#d9a441" },
+  meadow: { icon: "🌼", name: "Meadow", text: "Place 1 sheep", col: "#6fae5a" },
+  pasture: { icon: "🌿", name: "Pasture", text: "Place 2 sheep", col: "#4e9a48" },
+  gift: { icon: "🎁", name: "Gift", text: "Draw a card: use it or keep it", col: "#c84b5a" },
+  still: { icon: "💧", name: "Still Waters", text: "+1 sheep on two of your squares", col: "#3a86c8" },
+  den: { icon: "🦁", name: "Lions' Den", text: "Skip your next turn, but nothing of yours can be flipped", col: "#a8743d" },
+  wolf: { icon: "🐺", name: "Wolf", text: "Your biggest square is emptied", col: "#5b5468" },
+  tithe: { icon: "🪙", name: "Tithe", text: "Give 1 sheep to whoever has fewest squares, then place 1", col: "#b89a3a" },
+};
+
+const { $ } = Kit;
+const COLORS = Kit.COLORS.slice(0, 4);
+const NAMES = Kit.COLOR_NAMES.slice(0, 4);
+let setup = { n: 2, seats: ["human", "ai", "ai", "ai"] };
+try {
+  Object.assign(setup, JSON.parse(localStorage.getItem("cfl-16")) || {});
+} catch {}
+let S = null;
+let gameId = 0;
+let lastHuman = -1;
+let walk = null; // { p, from, steps, t0 } while a lamb is walking
+let dieShow = null; // { value, t0, rolling }
+
+const kind = (p) => S.kinds[p];
+const humans = () => S.kinds.filter((k) => k === "human").length;
+const viewer = () => (!S ? -1 : kind(S.current) === "human" ? S.current : humans() === 1 ? S.kinds.indexOf("human") : -1);
+
+Cards.hooks = {};
+
+function newGame() {
+  const b = Engine.createBoard(CONFIG.size, CONFIG.size, { still: -1, mustard: -1 });
+  const st = Cards.newState(b, setup.n);
+  st.kinds = setup.seats.slice(0, setup.n);
+  st.pos = new Array(setup.n).fill(0);
+  st.forcedNext = 2;
+  return st;
+}
+
+const legalPlace = (st) => [...Array(st.b.size).keys()].filter((i) => Cards.canPlace(st, st.current, i));
+const aiScore = (st, p) => Cards.score(st, p) + st.ps[p].hand.length * 2;
+
+// ---------- flow ----------
+async function loop(myGame) {
+  while (myGame === gameId) {
+    if (S.winner >= 0 || S.round > CONFIG.rounds) return finish();
+    const p = S.current;
+    if (kind(p) === "human" && humans() > 1 && lastHuman !== p) {
+      hud();
+      await Cards.passPhone(`${NAMES[p]}'s lamb`, COLORS[p]);
+      if (myGame !== gameId) return;
+    }
+    if (kind(p) === "human") lastHuman = p;
+    const pre = Engine.clone(S.b);
+    const bt = Cards.beginTurn(S);
+    hud();
+    if (bt.skipped) {
+      Kit.popText($("chain"), `${NAMES[p]} is in the Lions' Den 🦁`);
+      await Kit.sleep(1000 * Cards.speed + 100);
+      Cards.endTurn(S);
+      continue;
+    }
+    await Table.waves(bt.waves, pre, () => Table.jump(p));
+    await Table.events(S);
+    if (S.winner >= 0) continue;
+
+    // roll and walk
+    if (kind(p) === "human") {
+      const asked = Table.ask({ st: S, p, placeOk: false, cardsOk: false, endOk: false, canPlace: () => false });
+      Table.hint("Roll the die to walk your lamb.", [["🎲 Roll", () => Table.act({ type: "roll" }), "on"]]);
+      await asked;
+    } else await Kit.sleep(CONFIG.aiDelayMs);
+    if (myGame !== gameId) return;
+    const roll = 1 + Math.floor(Math.random() * 6);
+    await rollDie(roll);
+    const from = S.pos[p];
+    walk = { p, from, steps: roll, t0: performance.now() };
+    for (let k = 1; k <= roll; k++) {
+      await Kit.sleep(CONFIG.hopMs * Cards.speed + 20);
+      Kit.tone(500 + k * 60, 0.06, "triangle", 0.06);
+    }
+    walk = null;
+    S.pos[p] = (from + roll) % CONFIG.track.length;
+    const passedHome = from + roll >= CONFIG.track.length;
+    const space = CONFIG.track[S.pos[p]];
+    let places = 0;
+    if (passedHome) {
+      places += CONFIG.homeBonus;
+      Kit.popText($("chain"), `🏠 Passed Home: +${CONFIG.homeBonus} free sheep!`);
+      Kit.sfx.chime(6);
+      await Kit.sleep(900 * Cards.speed + 100);
+    }
+    Kit.popText($("chain"), `${SPACES[space].icon} ${SPACES[space].name}`);
+    await Kit.sleep(700 * Cards.speed + 100);
+    hud();
+
+    // the space decides the turn
+    if (space === "meadow") places += 1;
+    else if (space === "pasture") places += 2;
+    else if (space === "gift") await giftSpace(p);
+    else if (space === "still") await stillWaters(p);
+    else if (space === "den") {
+      await Table.card(p, "den", () => Cards.apply(S, p, "den", null), { label: `${NAMES[p]}'s lamb wanders into the Lions' Den` });
+    } else if (space === "wolf") {
+      await Table.card(p, "wolfdoor", () => Cards.apply(S, p, "wolfdoor", null), { box: true, label: "A wolf on the path!" });
+    } else if (space === "tithe") {
+      await tithe(p);
+      places += 1;
+    }
+    await Table.events(S);
+    if (S.winner >= 0 || myGame !== gameId) continue;
+    if (S.ps[p].gifts.leadership > 0 && places > 0) places += 1;
+    await placements(p, places, myGame);
+    if (myGame !== gameId) return;
+    Cards.endTurn(S);
+  }
+}
+
+// Place `n` sheep, with the option to play one card from the hand.
+async function placements(p, n, myGame) {
+  let cardsLeft = 1;
+  if (kind(p) === "human") {
+    while (myGame === gameId && S.winner < 0) {
+      const playable = S.ps[p].hand.some((k) => !Cards.DEF[k].auto);
+      if (n === 0 && (cardsLeft === 0 || !playable)) break;
+      hud();
+      const a = await Table.ask({ st: S, p, canPlace: (i) => Cards.canPlace(S, p, i), placeOk: n > 0, placeText: n > 1 ? `Place ${n} sheep` : "Place 1 sheep", cardsOk: cardsLeft > 0, endOk: n === 0 });
+      if (myGame !== gameId) return;
+      if (a.type === "end") break;
+      if (a.type === "place") {
+        await Table.place(p, a.cell, () => Cards.place(S, p, a.cell));
+        n--;
+      } else {
+        await playCard(p, a);
+        cardsLeft--;
+      }
+      await Table.events(S);
+    }
+    return;
+  }
+  const plan = Cards.aiPlan(S, p, { legalPlace, score: aiScore, mistake: CONFIG.aiMistake, place: n > 0 });
+  if (plan.card) {
+    await playCard(p, { type: "card", idx: S.ps[p].hand.indexOf(plan.card), key: plan.card, target: plan.target });
+    await Table.events(S);
+  }
+  for (let k = 0; k < n && S.winner < 0 && myGame === gameId; k++) {
+    const cell = k === 0 && !plan.card ? plan.cell : Cards.bestPlace(S, p, legalPlace(S), aiScore).cell;
+    if (cell < 0 || !Cards.canPlace(S, p, cell)) continue;
+    await Table.place(p, cell, () => Cards.place(S, p, cell));
+    await Table.events(S);
+  }
+}
+
+async function playCard(p, a) {
+  S.ps[p].hand.splice(a.idx, 1);
+  hud();
+  await Table.card(p, a.key, () => Cards.apply(S, p, a.key, a.target));
+  hud();
+}
+
+// Gift: draw a card, then use it now or keep it (wolf tricks and instant cards fire at once).
+async function giftSpace(p) {
+  const key = Cards.draw(CONFIG.pool);
+  const d = Cards.DEF[key];
+  if (d.instant) return Table.card(p, key, () => Cards.apply(S, p, key, null), { box: true, label: `${NAMES[p]}'s lamb unwraps ${d.name}!` });
+  await Cards.reveal(key, COLORS[p], { label: `${NAMES[p]}'s lamb unwraps ${d.name}!` });
+  if (key === "grace") return keep(p, key);
+  if (kind(p) === "human") {
+    // tap the new card to use it now (it's lit up), or keep it; a full hand lets the oldest card go
+    S.ps[p].hand.push(key);
+    const a = await Table.ask({ st: S, p, placeOk: false, cardsOk: true, endOk: true, endLabel: "Keep it", text: `Tap ${d.name} to use it now, or keep it for later.`, cardFilter: (k) => k === key });
+    if (a.type === "card") return playCard(p, a);
+    if (S.ps[p].hand.length > CONFIG.handMax) S.ps[p].hand.shift();
+    return;
+  }
+  // AI: use it now if it helps, otherwise keep it
+  S.ps[p].hand.push(key);
+  const plan = Cards.aiPlan(S, p, { legalPlace, score: aiScore, place: false, mistake: 0, playable: () => [key] });
+  if (plan.card) return playCard(p, { type: "card", idx: S.ps[p].hand.lastIndexOf(key), key, target: plan.target });
+  if (S.ps[p].hand.length > CONFIG.handMax) S.ps[p].hand.shift();
+}
+
+function keep(p, key) {
+  S.ps[p].hand.push(key);
+  if (S.ps[p].hand.length > CONFIG.handMax) S.ps[p].hand.shift();
+  Kit.popText($("chain"), `${Cards.DEF[key].icon} Kept for later`);
+  hud();
+}
+
+// Still Waters: +1 on two of your squares.
+async function stillWaters(p) {
+  const own = Cards.mine(S, p);
+  if (!own.length) {
+    Kit.popText($("chain"), "No squares yet: place 1 sheep instead");
+    return placements(p, 1, gameId);
+  }
+  const picks = [];
+  for (let k = 0; k < Math.min(2, own.length); k++) {
+    let cell;
+    if (kind(p) === "human") {
+      const a = await Table.ask({ st: S, p, canPlace: (i) => S.b.owner[i] === p, placeOk: true, cardsOk: false, endOk: false, text: `💧 Tap one of your squares for +1 (${2 - k} left).` });
+      cell = a.cell;
+    } else cell = Cards.bestPlace(S, p, Cards.mine(S, p), aiScore).cell;
+    if (cell === undefined || cell < 0) break;
+    picks.push(cell);
+    await Table.place(p, cell, () => Cards.place(S, p, cell));
+    await Table.events(S);
+    if (S.winner >= 0) break;
+  }
+  Kit.sfx.chime(2);
+}
+
+// Tithe: 1 sheep to the flock with the fewest squares, on one of their squares.
+async function tithe(p) {
+  const others = S.alive.flatMap((a, q) => (a && q !== p ? [q] : []));
+  if (!others.length) return;
+  const low = Math.min(...others.map((q) => Cards.cells(S.b, q)));
+  const q = Cards.shuffle(others.filter((x) => Cards.cells(S.b, x) === low))[0];
+  const theirs = Cards.mine(S, q);
+  const spot = theirs.length ? theirs[Math.floor(Math.random() * theirs.length)] : legalPlace({ ...S, current: q })[0];
+  Kit.popText($("chain"), `🪙 ${NAMES[p]} gives a sheep to ${NAMES[q]}`);
+  Kit.sfx.chime(4);
+  await Kit.sleep(700 * Cards.speed + 100);
+  if (spot !== undefined) await Table.place(q, spot, () => Cards.place(S, q, spot));
+}
+
+function rollDie(value) {
+  dieShow = { value, t0: performance.now(), rolling: true };
+  for (let k = 0; k < 6; k++) setTimeout(() => Kit.tone(300 + Math.random() * 400, 0.04, "square", 0.04), k * 90 * Cards.speed);
+  return Kit.sleep(700 * Cards.speed + 50).then(() => {
+    dieShow.rolling = false;
+    Kit.tone(660, 0.12, "triangle", 0.1);
+    return Kit.sleep(500 * Cards.speed + 50);
+  }).then(() => (dieShow = null));
+}
+
+function finish() {
+  const order = S.alive.flatMap((a, q) => (a ? [q] : [])).sort((x, y) => Cards.cells(S.b, y) - Cards.cells(S.b, x));
+  const w = S.winner >= 0 ? S.winner : order[0];
+  const won = kind(w) === "human" || humans() === 0;
+  $("end-title").textContent = humans() > 1 || won ? `${NAMES[w]}'s lamb wins!` : `${NAMES[w]}'s lamb won`;
+  $("end-title").style.color = COLORS[w];
+  $("end-sub").textContent = S.winner >= 0 ? `Last flock standing after ${S.round} rounds.` : `Most squares after ${CONFIG.rounds} rounds: ${S.kinds.map((_, q) => `${NAMES[q]} ${Cards.cells(S.b, q)}`).join(" · ")}.`;
+  const g = Kit.sharp($("hero-end"), 220, 120);
+  Kit.drawLamb(g, 110, 66, 104, { scarf: COLORS[w], mood: won || humans() > 1 ? "happy" : "sad" });
+  (won ? Kit.sfx.win : Kit.sfx.lose)();
+  Kit.show("end");
+}
+
+function hud() {
+  if (!S) return;
+  const p = S.winner >= 0 ? S.winner : S.current;
+  $("dot").style.color = COLORS[p];
+  $("status").textContent = `${NAMES[p]}${kind(p) === "ai" ? " is rolling…" : "'s turn"} · round ${Math.min(S.round, CONFIG.rounds)}/${CONFIG.rounds}`;
+  Table.chips(S, S.kinds, (q) => `🃏${S.ps[q].hand.length} `);
+  const v = viewer();
+  if (kind(S.current) !== "human" || S.winner >= 0) Table.hand(S, v, { enabled: false });
+}
+
+// ---------- the track around the board ----------
+const track = $("track");
+const tctx = track.getContext("2d");
+const stage = $("stage");
+// Keep 1.5 squares of room around the 6x6 board for the track.
+function layout() {
+  const W = stage.clientWidth;
+  const H = stage.clientHeight;
+  const c = Math.floor(Math.min(W, H) / (CONFIG.size + 3));
+  stage.style.padding = `${Math.max(0, (H - c * CONFIG.size) / 2)}px ${Math.max(0, (W - c * CONFIG.size) / 2)}px`;
+  Table.resize();
+}
+new ResizeObserver(layout).observe(stage);
+
+// Centre point of track space k, and the board rectangle.
+function spaceRect(k) {
+  const b = $("board").getBoundingClientRect();
+  const s = stage.getBoundingClientRect();
+  const c = b.width / CONFIG.size;
+  const x0 = b.left - s.left - 1.5 * c;
+  const y0 = b.top - s.top - 1.5 * c;
+  const span = CONFIG.size * c + 3 * c; // outer square size
+  const t = 1.5 * c; // track thickness
+  const side = (span - 2 * t) / 4; // 4 tiles between corners
+  // corners: 0 bottom-right, 5 bottom-left, 10 top-left, 15 top-right
+  const seg = Math.floor(k / 5);
+  const off = k % 5;
+  let x;
+  let y;
+  let w = t;
+  let h = t;
+  if (seg === 0) {
+    [x, y] = off === 0 ? [x0 + span - t, y0 + span - t] : [x0 + span - t - off * side, y0 + span - t];
+    if (off) w = side;
+  } else if (seg === 1) {
+    [x, y] = off === 0 ? [x0, y0 + span - t] : [x0, y0 + span - t - off * side];
+    if (off) h = side;
+  } else if (seg === 2) {
+    [x, y] = off === 0 ? [x0, y0] : [x0 + t + (off - 1) * side, y0];
+    if (off) w = side;
+  } else {
+    [x, y] = off === 0 ? [x0 + span - t, y0] : [x0 + span - t, y0 + t + (off - 1) * side];
+    if (off) h = side;
+  }
+  return { x, y, w, h, c };
+}
+
+function drawTrack(now) {
+  requestAnimationFrame(drawTrack);
+  const W = stage.clientWidth;
+  const H = stage.clientHeight;
+  const dpr = window.devicePixelRatio || 1;
+  if (track.width !== Math.round(W * dpr) || track.height !== Math.round(H * dpr)) {
+    track.width = Math.round(W * dpr);
+    track.height = Math.round(H * dpr);
+    track.style.width = W + "px";
+    track.style.height = H + "px";
+  }
+  tctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  tctx.clearRect(0, 0, W, H);
+  if (!S) return;
+  CONFIG.track.forEach((kind2, k) => {
+    const r = spaceRect(k);
+    const sp = SPACES[kind2];
+    tctx.fillStyle = sp.col;
+    tctx.beginPath();
+    tctx.roundRect(r.x + 1.5, r.y + 1.5, r.w - 3, r.h - 3, 6);
+    tctx.fill();
+    tctx.font = `${Math.round(r.c * 0.42)}px system-ui`;
+    tctx.textAlign = "center";
+    tctx.textBaseline = "middle";
+    tctx.fillText(sp.icon, r.x + r.w / 2, r.y + r.h / 2);
+  });
+  // lambs on the track (offset when they share a space)
+  for (let p = 0; p < S.n; p++) {
+    if (!S.alive[p]) continue;
+    let k = S.pos[p];
+    let hop = 0;
+    if (walk && walk.p === p) {
+      const f = (now - walk.t0) / (CONFIG.hopMs * Cards.speed + 20);
+      const step = Math.min(walk.steps, Math.floor(f));
+      k = (walk.from + step) % CONFIG.track.length;
+      hop = Math.abs(Math.sin(Math.PI * (f % 1))) * 10;
+    }
+    const r = spaceRect(k);
+    const same = S.pos.slice(0, p).filter((q, i) => S.alive[i] && q === S.pos[p]).length;
+    const ox = (same % 2) * r.c * 0.45 - r.c * 0.2;
+    const oy = Math.floor(same / 2) * r.c * 0.4 - r.c * 0.15;
+    Kit.drawLamb(tctx, r.x + r.w / 2 + ox, r.y + r.h / 2 + oy - hop, r.c * 0.62, { scarf: COLORS[p], t: now / 1000, mood: p === S.current ? "happy" : "happy" });
+  }
+  // the die
+  if (dieShow) {
+    const b = $("board").getBoundingClientRect();
+    const s = stage.getBoundingClientRect();
+    const cx = b.left - s.left + b.width / 2;
+    const cy = b.top - s.top + b.height / 2;
+    const v = dieShow.rolling ? 1 + Math.floor((now / 70) % 6) : dieShow.value;
+    const size = 64;
+    tctx.save();
+    tctx.translate(cx, cy);
+    if (dieShow.rolling) tctx.rotate(Math.sin(now / 60) * 0.4);
+    tctx.fillStyle = "#fffaf0";
+    tctx.strokeStyle = "#2a2010";
+    tctx.lineWidth = 3;
+    tctx.beginPath();
+    tctx.roundRect(-size / 2, -size / 2, size, size, 12);
+    tctx.fill();
+    tctx.stroke();
+    const pip = { 1: [[0, 0]], 2: [[-1, -1], [1, 1]], 3: [[-1, -1], [0, 0], [1, 1]], 4: [[-1, -1], [1, -1], [-1, 1], [1, 1]], 5: [[-1, -1], [1, -1], [0, 0], [-1, 1], [1, 1]], 6: [[-1, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [1, 1]] }[v];
+    for (const [dx, dy] of pip) Kit.circle(tctx, dx * 17, dy * 17, 6, "#2a2010");
+    tctx.restore();
+  }
+}
+
+// ---------- menu ----------
+function renderSeats() {
+  $("count").textContent = setup.n;
+  const box = $("seats");
+  box.replaceChildren();
+  for (let p = 0; p < setup.n; p++) {
+    const row = document.createElement("div");
+    row.className = "seat";
+    row.innerHTML = `<span class="dot" style="color:${COLORS[p]}"></span><span class="nm">${NAMES[p]}</span>`;
+    const seg = document.createElement("div");
+    seg.className = "seg";
+    for (const [k, label] of [["human", "Human"], ["ai", "AI"]]) {
+      const btn = document.createElement("button");
+      btn.textContent = label;
+      btn.className = setup.seats[p] === k ? "on" : "";
+      btn.addEventListener("click", () => {
+        setup.seats[p] = k;
+        renderSeats();
+      });
+      seg.append(btn);
+    }
+    row.append(seg);
+    box.append(row);
+  }
+}
+
+function start() {
+  gameId++;
+  Table.cancelAsk();
+  Kit.anim.cur = null;
+  Cards.fx.cur = null;
+  walk = null;
+  dieShow = null;
+  try {
+    localStorage.setItem("cfl-16", JSON.stringify(setup));
+  } catch {}
+  S = newGame();
+  lastHuman = -1;
+  for (const id of ["intro", "end"]) Kit.hide(id);
+  layout();
+  loop(gameId);
+}
+
+$("fewer").addEventListener("click", () => {
+  setup.n = Math.max(2, setup.n - 1);
+  renderSeats();
+});
+$("more").addEventListener("click", () => {
+  setup.n = Math.min(4, setup.n + 1);
+  renderSeats();
+});
+$("play").addEventListener("click", start);
+$("again").addEventListener("click", start);
+$("restart").addEventListener("click", () => S && start());
+const toMenu = () => {
+  gameId++;
+  Table.cancelAsk();
+  Kit.anim.cur = null;
+  Cards.fx.cur = null;
+  Kit.hide("end");
+  renderSeats();
+  Kit.show("intro");
+};
+$("menu").addEventListener("click", toMenu);
+$("end-menu").addEventListener("click", toMenu);
+Kit.muteButton($("mute"));
+
+Table.init({ colors: COLORS, names: NAMES, state: () => S, viewer, waveMs: CONFIG.waveMs });
+renderSeats();
+$("legend").innerHTML = Object.values(SPACES).map((s) => `<span>${s.icon} <b>${s.name}</b>: ${s.text}</span>`).join("");
+requestAnimationFrame(drawTrack);
+{
+  const g = Kit.sharp($("hero-intro"), 220, 120);
+  g.font = "24px system-ui";
+  ["🏠", "🌼", "🎁", "🐺", "🦁"].forEach((ic, k) => g.fillText(ic, 10 + k * 44, 112));
+  Kit.drawLamb(g, 110, 52, 84, { scarf: COLORS[0], mood: "happy" });
+}
+</script>
+</body>
+</html>
