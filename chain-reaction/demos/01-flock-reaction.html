@@ -1,0 +1,1243 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Flock Reaction</title>
+<meta name="description" content="cheekyfoundlamb demo 1: classic Chain Reaction with sheep, where each player guards a lamb." />
+<style>
+/* ===== shared shell styles ===== */
+:root {
+  --night: #13201a;
+  --meadow: #1d3327;
+  --meadow-2: #274232;
+  --cream: #fbf4e6;
+  --muted: #b5c4b4;
+  --sun: #ffcf4a;
+  --wool: #ffffff;
+  --danger: #ff6b6b;
+  --round: ui-rounded, "SF Pro Rounded", "Nunito", "Segoe UI", system-ui, sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--night);
+  color: var(--cream);
+  font-family: var(--round);
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+}
+[hidden] { display: none !important; }
+button { font: inherit; color: inherit; border: 0; cursor: pointer; touch-action: manipulation; }
+button:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
+.app {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: env(safe-area-inset-top, 0px) max(10px, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px) max(10px, env(safe-area-inset-left, 0px));
+}
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 2px 6px;
+  min-height: 52px;
+}
+.status { display: flex; align-items: center; gap: 8px; min-width: 0; font-weight: 800; font-size: 1.02rem; }
+.status .dot { width: 18px; height: 18px; border-radius: 50%; flex: none; box-shadow: 0 0 10px currentColor; background: currentColor; }
+.status .txt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.btns { display: flex; gap: 6px; flex: none; }
+.ib {
+  min-width: 44px; height: 44px; padding: 0 10px; border-radius: 14px;
+  background: var(--meadow); font-size: 1.05rem; font-weight: 800;
+}
+.ib:disabled { opacity: 0.35; cursor: default; }
+.ib.on { background: var(--sun); color: #2a2010; }
+.stage { flex: 1; min-height: 0; position: relative; display: flex; align-items: center; justify-content: center; padding: 4px 0 10px; }
+.stage canvas { display: block; touch-action: manipulation; border-radius: 10px; }
+.chain {
+  position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%);
+  font-size: 2.4rem; font-weight: 900; color: var(--sun); pointer-events: none;
+  text-shadow: 0 3px 0 #6b4a00, 0 0 24px rgba(255, 207, 74, 0.6); opacity: 0; white-space: nowrap;
+}
+.chain.pop { animation: pop 0.9s ease-out; }
+@keyframes pop {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+  15% { opacity: 1; transform: translate(-50%, -50%) scale(1.15); }
+  70% { opacity: 1; transform: translate(-50%, -60%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -75%) scale(0.95); }
+}
+.shake { animation: shake 0.25s linear; }
+.shake-big { animation: shake 0.45s linear; }
+@keyframes shake {
+  0%, 100% { transform: translate(0, 0); }
+  20% { transform: translate(-5px, 3px); }
+  40% { transform: translate(5px, -3px); }
+  60% { transform: translate(-4px, -2px); }
+  80% { transform: translate(3px, 2px); }
+}
+.overlay {
+  position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+  padding: max(16px, env(safe-area-inset-top, 0px)) 16px max(16px, env(safe-area-inset-bottom, 0px));
+  background: rgba(8, 14, 11, 0.86); backdrop-filter: blur(4px); overflow-y: auto;
+}
+.card {
+  width: 100%; max-width: 400px; margin: auto; padding: 22px 18px; border-radius: 24px;
+  background: var(--meadow); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45); text-align: center;
+}
+.card h1, .card h2 { margin: 4px 0 6px; line-height: 1.1; text-wrap: balance; }
+.card h1 { font-size: 2rem; color: var(--sun); letter-spacing: -0.01em; }
+.card h2 { font-size: 1.7rem; }
+.card p { margin: 6px 0; color: var(--muted); line-height: 1.4; }
+.card .how { text-align: left; font-size: 0.95rem; }
+.card canvas.hero { display: block; margin: 0 auto 4px; }
+.big {
+  display: block; width: 100%; margin-top: 14px; padding: 15px; border-radius: 16px;
+  background: var(--sun); color: #2a2010; font-weight: 900; font-size: 1.15rem;
+}
+.big.alt { background: var(--meadow-2); color: var(--cream); margin-top: 8px; }
+.opts { display: grid; gap: 8px; margin-top: 12px; text-align: left; }
+.optrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.optrow label, .optrow .lbl { font-weight: 800; }
+.seg { display: flex; flex-wrap: wrap; gap: 4px; background: var(--meadow-2); padding: 4px; border-radius: 12px; }
+.seg button { padding: 8px 10px; border-radius: 9px; background: transparent; color: var(--muted); font-weight: 800; font-size: 0.9rem; }
+.seg button.on { background: var(--sun); color: #2a2010; }
+.verse { font-style: italic; color: var(--cream) !important; }
+.verse small { display: block; margin-top: 4px; font-style: normal; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) {
+  .shake, .shake-big, .chain.pop { animation-duration: 0.01s; }
+}
+/* ===== end shared shell styles ===== */
+
+.seats { display: grid; gap: 6px; }
+.seat { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 12px; background: var(--meadow-2); }
+.seat .dot { width: 18px; height: 18px; border-radius: 50%; background: currentColor; flex: none; }
+.seat .nm { flex: 1; font-weight: 800; }
+.stepper { display: flex; align-items: center; gap: 4px; background: var(--meadow-2); border-radius: 12px; padding: 4px; }
+.stepper button { width: 40px; height: 40px; border-radius: 9px; background: transparent; font-size: 1.3rem; font-weight: 900; }
+.stepper output { min-width: 22px; text-align: center; font-weight: 900; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="status"><span class="dot" id="dot"></span><span class="txt" id="status">Flock Reaction</span></div>
+    <div class="btns">
+      <button class="ib" id="restart" aria-label="Restart">↻</button>
+      <button class="ib" id="mute" aria-label="Mute">🔊</button>
+      <button class="ib" id="menu" aria-label="Menu">☰</button>
+    </div>
+  </header>
+  <main class="stage" id="stage">
+    <canvas id="board" aria-label="Pasture board"></canvas>
+    <div class="chain" id="chain"></div>
+  </main>
+</div>
+
+<section class="overlay" id="intro">
+  <div class="card">
+    <canvas class="hero" id="hero-intro" width="220" height="130"></canvas>
+    <h1>Flock Reaction</h1>
+    <div class="how">
+      <p>Tap an empty square or one of yours to add a sheep. Full squares burst, and the sheep hop next door and join your flock.</p>
+      <p>Your first tap also places your lamb. His square is always yours. If an enemy burst lands on him, you're out.</p>
+    </div>
+    <div class="opts">
+      <div class="optrow">
+        <span class="lbl">Players</span>
+        <div class="stepper">
+          <button id="fewer" aria-label="Fewer players">−</button>
+          <output id="count">2</output>
+          <button id="more" aria-label="More players">+</button>
+        </div>
+      </div>
+      <div class="seats" id="seats"></div>
+    </div>
+    <button class="big" id="play">Play</button>
+  </div>
+</section>
+
+<section class="overlay" id="end" hidden>
+  <div class="card">
+    <canvas class="hero" id="hero-end" width="220" height="130"></canvas>
+    <h2 id="end-title"></h2>
+    <p id="end-sub"></p>
+    <button class="big" id="again">Play again</button>
+    <button class="big alt" id="to-menu">Change players</button>
+  </div>
+</section>
+
+<script>
+// ===================== CHAIN REACTION ENGINE =====================
+// Shared by every cheekyfoundlamb demo. Keep this block identical across files;
+// demo-specific rules plug in through the `rules` hooks of Engine.resolve.
+//
+// Written for the Chain Burst project after studying these MIT-licensed
+// open-source Chain Reaction games:
+//   LironCareto/ChainReaction          Copyright (c) 2026 LironCareto
+//   tahmidnafees619/ChainReaction-game Copyright (c) 2026 tahmidnafees619
+//
+// MIT License
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+const Engine = (() => {
+  const ORTHO = [[-1, 0], [0, 1], [1, 0], [0, -1]];
+  const DIAG = [[-1, -1], [-1, 1], [1, 1], [1, -1]];
+  const ALL8 = ORTHO.concat(DIAG);
+
+  // A board is a set of flat arrays indexed by row * cols + col.
+  // owner: player index (>= 0), or -1 for empty. count: orbs in the cell.
+  // rock: blocked cells. `extra` adds more per-cell arrays, e.g. { water: false }.
+  function createBoard(rows, cols, extra = {}) {
+    const size = rows * cols;
+    const b = {
+      rows,
+      cols,
+      size,
+      owner: new Array(size).fill(-1),
+      count: new Array(size).fill(0),
+      rock: new Array(size).fill(false),
+    };
+    for (const [key, value] of Object.entries(extra)) b[key] = new Array(size).fill(value);
+    return b;
+  }
+
+  function clone(b) {
+    const c = {};
+    for (const key in b) c[key] = Array.isArray(b[key]) ? b[key].slice() : b[key];
+    return c;
+  }
+
+  const rowOf = (b, i) => Math.floor(i / b.cols);
+  const colOf = (b, i) => i % b.cols;
+  const inside = (b, r, c) => r >= 0 && c >= 0 && r < b.rows && c < b.cols;
+
+  function neighbours(b, i, dirs = ORTHO) {
+    const r = rowOf(b, i);
+    const c = colOf(b, i);
+    const out = [];
+    for (const [dr, dc] of dirs) {
+      const nr = r + dr;
+      const nc = c + dc;
+      if (!inside(b, nr, nc)) continue;
+      const n = nr * b.cols + nc;
+      if (!b.rock[n]) out.push(n);
+    }
+    return out;
+  }
+
+  // Critical mass: the number of open orthogonal neighbours (corner 2, edge 3, middle 4).
+  const capacity = (b, i) => neighbours(b, i).length;
+
+  const DEFAULT_RULES = {
+    cap: (b, i) => capacity(b, i), // orbs needed to burst
+    canBurst: (b, i) => b.owner[i] >= 0,
+    targets: (b, i) => neighbours(b, i), // one orb lands per entry (repeat an entry for 2 orbs)
+    spend: (b, i) => DEFAULT_RULES.cap(b, i), // orbs the bursting cell loses
+    emptied: (b, i) => {
+      b.owner[i] = -1;
+    },
+    land: (b, from, to, who) => {
+      b.owner[to] = who;
+      b.count[to]++;
+    },
+    done: () => false, // return true to stop resolving (e.g. only one side left)
+    maxWaves: 200,
+  };
+
+  function place(b, i, who, n = 1) {
+    b.owner[i] = who;
+    b.count[i] += n;
+  }
+
+  // Resolves every burst in waves: all full cells in a wave burst together.
+  // Mutates `b`. Returns { waves, capped }, where each wave is
+  // { bursts: [{ from, to, who }], board } and board is a snapshot after the wave.
+  function resolve(b, rules = {}, record = true) {
+    const R = { ...DEFAULT_RULES, ...rules };
+    if (!rules.spend) R.spend = (bb, i) => R.cap(bb, i);
+    const waves = [];
+    let capped = false;
+    for (;;) {
+      if (R.done(b)) break;
+      if (waves.length >= R.maxWaves) {
+        capped = true;
+        break;
+      }
+      const ready = [];
+      for (let i = 0; i < b.size; i++) if (b.count[i] >= R.cap(b, i) && R.canBurst(b, i)) ready.push(i);
+      if (!ready.length) break;
+      const bursts = [];
+      for (const from of ready) {
+        const who = b.owner[from];
+        const to = R.targets(b, from);
+        b.count[from] = Math.max(0, b.count[from] - R.spend(b, from));
+        if (b.count[from] === 0) R.emptied(b, from);
+        bursts.push({ from, to, who });
+      }
+      for (const { from, to, who } of bursts) for (const t of to) R.land(b, from, t, who);
+      waves.push({ bursts, board: record ? clone(b) : null });
+    }
+    return { waves, capped };
+  }
+
+  function tally(b, players) {
+    const cells = new Array(players).fill(0);
+    const orbs = new Array(players).fill(0);
+    for (let i = 0; i < b.size; i++) {
+      const o = b.owner[i];
+      if (o >= 0 && o < players) {
+        cells[o]++;
+        orbs[o] += b.count[i];
+      }
+    }
+    return { cells, orbs };
+  }
+
+  return { ORTHO, DIAG, ALL8, createBoard, clone, rowOf, colOf, inside, neighbours, capacity, place, resolve, tally };
+})();
+// =================== END CHAIN REACTION ENGINE ===================
+
+// ========================= SHARED KIT =========================
+// Sound, character art, wave animation, AI and screen helpers used by every demo.
+const Kit = (() => {
+  // ---------- sound (Web Audio, no files) ----------
+  let actx = null;
+  let muted = false;
+  try {
+    muted = localStorage.getItem("cfl-muted") === "1";
+  } catch {}
+
+  function ac() {
+    if (muted) return null;
+    try {
+      actx ??= new (window.AudioContext || window.webkitAudioContext)();
+      if (actx.state === "suspended") actx.resume();
+      return actx;
+    } catch {
+      return null;
+    }
+  }
+
+  function tone(freq, dur = 0.12, type = "sine", vol = 0.12, slideTo = 0, delay = 0) {
+    const a = ac();
+    if (!a) return;
+    const t = a.currentTime + delay;
+    const o = a.createOscillator();
+    const g = a.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t);
+    if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + dur);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(a.destination);
+    o.start(t);
+    o.stop(t + dur + 0.02);
+  }
+
+  function bleat(pitch = 1, delay = 0) {
+    const a = ac();
+    if (!a) return;
+    const t = a.currentTime + delay;
+    const o = a.createOscillator();
+    const lfo = a.createOscillator();
+    const lg = a.createGain();
+    const f = a.createBiquadFilter();
+    const g = a.createGain();
+    o.type = "sawtooth";
+    o.frequency.setValueAtTime(560 * pitch, t);
+    o.frequency.linearRampToValueAtTime(480 * pitch, t + 0.38);
+    lfo.frequency.value = 22;
+    lg.gain.value = 40 * pitch;
+    lfo.connect(lg).connect(o.frequency);
+    f.type = "lowpass";
+    f.frequency.value = 1700;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.09, t + 0.03);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
+    o.connect(f).connect(g).connect(a.destination);
+    o.start(t);
+    lfo.start(t);
+    o.stop(t + 0.42);
+    lfo.stop(t + 0.42);
+  }
+
+  const sfx = {
+    place: () => tone(660, 0.07, "triangle", 0.1),
+    // Pitch climbs a semitone per wave so long chains feel like they're building.
+    burst: (k) => tone(Math.min(240 * Math.pow(2, k / 12), 2200), 0.13, "sine", 0.13, Math.min(240 * Math.pow(2, k / 12), 2200) * 0.6),
+    bad: () => tone(140, 0.15, "square", 0.06, 100),
+    win: () => [523, 659, 784, 1047].forEach((f, k) => tone(f, 0.22, "triangle", 0.12, 0, k * 0.11)),
+    lose: () => [392, 330, 262, 196].forEach((f, k) => tone(f, 0.26, "sine", 0.12, 0, k * 0.14)),
+    howl: () => tone(300, 0.6, "sawtooth", 0.05, 520),
+    chime: (k = 0) => tone(880 * Math.pow(2, k / 12), 0.3, "sine", 0.08),
+    bleat,
+  };
+
+  function setMuted(m) {
+    muted = m;
+    try {
+      localStorage.setItem("cfl-muted", m ? "1" : "0");
+    } catch {}
+  }
+
+  // ---------- art (all drawn with code) ----------
+  function circle(ctx, x, y, r, fill) {
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = fill;
+    ctx.fill();
+  }
+
+  function ellipse(ctx, x, y, rx, ry, rot, fill) {
+    ctx.beginPath();
+    ctx.ellipse(x, y, rx, ry, rot, 0, Math.PI * 2);
+    ctx.fillStyle = fill;
+    ctx.fill();
+  }
+
+  function shade(hex, amt) {
+    const n = parseInt(hex.slice(1), 16);
+    const t = amt < 0 ? 0 : 255;
+    const p = Math.abs(amt);
+    const ch = (s) => Math.round(((n >> s) & 255) * (1 - p) + t * p);
+    return `rgb(${ch(16)},${ch(8)},${ch(0)})`;
+  }
+
+  // cheekyfoundlamb: white wool, cream face, and two same-size eyes on one level
+  // that each look a different way. s is roughly his full height in pixels.
+  // o: { t (seconds, for idle bob), mood: "happy" | "shock" | "sad" | "sleep", scarf: colour, glow }
+  function drawLamb(ctx, x, y, s, o = {}) {
+    const t = o.t ?? 0;
+    const bob = Math.sin(t * 3) * s * 0.015;
+    ctx.save();
+    ctx.translate(x, y + bob);
+    if (o.flip) ctx.scale(-1, 1);
+    if (o.glow) {
+      const g = ctx.createRadialGradient(0, 0, s * 0.1, 0, 0, s * 0.85);
+      g.addColorStop(0, o.glow);
+      g.addColorStop(1, "rgba(255,220,120,0)");
+      circle(ctx, 0, 0, s * 0.85, g);
+    }
+    // legs
+    ctx.fillStyle = "#3b3340";
+    for (const lx of [-0.2, -0.07, 0.08, 0.21]) {
+      ctx.beginPath();
+      ctx.roundRect(lx * s - s * 0.035, s * 0.12, s * 0.07, s * 0.2, s * 0.03);
+      ctx.fill();
+    }
+    // wool body: a ring of puffs around a core
+    const body = [[-0.24, 0], [-0.14, -0.13], [0.02, -0.17], [0.18, -0.12], [0.27, 0.01], [0.18, 0.13], [0, 0.16], [-0.16, 0.13]];
+    for (const [bx, by] of body) circle(ctx, bx * s, by * s, s * 0.15, "#d9d5de");
+    for (const [bx, by] of body) circle(ctx, bx * s, by * s - s * 0.012, s * 0.14, "#ffffff");
+    circle(ctx, 0, 0, s * 0.24, "#ffffff");
+    // tail puff
+    circle(ctx, -0.36 * s, -0.05 * s, s * 0.07, "#ffffff");
+    // head
+    const hx = 0.22 * s;
+    const hy = -0.2 * s;
+    // ears
+    ellipse(ctx, hx - s * 0.17, hy - s * 0.02, s * 0.1, s * 0.045, -0.5, "#f1d9cc");
+    ellipse(ctx, hx + s * 0.17, hy - s * 0.02, s * 0.1, s * 0.045, 0.5, "#f1d9cc");
+    ellipse(ctx, hx - s * 0.17, hy - s * 0.02, s * 0.06, s * 0.022, -0.5, "#f4a7b4");
+    ellipse(ctx, hx + s * 0.17, hy - s * 0.02, s * 0.06, s * 0.022, 0.5, "#f4a7b4");
+    ellipse(ctx, hx, hy + s * 0.02, s * 0.14, s * 0.16, 0, "#f6e6da");
+    // wool tuft on top
+    for (const [tx, ty] of [[-0.07, -0.13], [0, -0.16], [0.07, -0.13]]) circle(ctx, hx + tx * s, hy + ty * s, s * 0.06, "#ffffff");
+    // scarf in the owner's colour
+    if (o.scarf) {
+      ctx.fillStyle = o.scarf;
+      ctx.beginPath();
+      ctx.roundRect(hx - s * 0.13, hy + s * 0.13, s * 0.26, s * 0.06, s * 0.03);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.roundRect(hx + s * 0.04, hy + s * 0.15, s * 0.06, s * 0.12, s * 0.02);
+      ctx.fill();
+    }
+    // the eyes: equal size, equal height, pupils pointing different ways
+    const er = s * 0.045;
+    const ey = hy - s * 0.005;
+    for (const [side, px, py] of [[-1, -0.55, -0.35], [1, 0.5, 0.4]]) {
+      const ex = hx + side * s * 0.058;
+      circle(ctx, ex, ey, er, "#ffffff");
+      ctx.lineWidth = s * 0.008;
+      ctx.strokeStyle = "#3b3340";
+      ctx.stroke();
+      if (o.mood === "sleep") continue;
+      circle(ctx, ex + px * er * 0.9, ey + py * er * 0.9, er * 0.5, "#241d2a");
+      circle(ctx, ex + px * er * 0.9 - er * 0.15, ey + py * er * 0.9 - er * 0.18, er * 0.15, "#ffffff");
+    }
+    if (o.mood === "sleep") {
+      ctx.strokeStyle = "#3b3340";
+      ctx.lineWidth = s * 0.012;
+      for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.arc(hx + side * s * 0.058, ey, er * 0.7, 0.2, Math.PI - 0.2);
+        ctx.stroke();
+      }
+    }
+    // nose and mouth
+    ellipse(ctx, hx, hy + s * 0.08, s * 0.025, s * 0.016, 0, "#c9788a");
+    ctx.strokeStyle = "#3b3340";
+    ctx.lineWidth = s * 0.012;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    if (o.mood === "shock") {
+      ctx.arc(hx, hy + s * 0.125, s * 0.022, 0, Math.PI * 2);
+    } else if (o.mood === "sad") {
+      ctx.arc(hx, hy + s * 0.15, s * 0.035, Math.PI + 0.4, -0.4);
+    } else {
+      // lopsided cheeky smirk
+      ctx.moveTo(hx - s * 0.04, hy + s * 0.11);
+      ctx.quadraticCurveTo(hx + s * 0.005, hy + s * 0.15, hx + s * 0.055, hy + s * 0.1);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Cheeky grey wolf head. s is the head width.
+  function drawWolf(ctx, x, y, s, o = {}) {
+    const t = o.t ?? 0;
+    ctx.save();
+    ctx.translate(x, y + Math.sin(t * 2.4) * s * 0.012);
+    const fur = o.color ?? "#8b8f9c";
+    const dark = shade(fur.startsWith("#") ? fur : "#8b8f9c", -0.35);
+    // ears
+    for (const side of [-1, 1]) {
+      ctx.fillStyle = fur;
+      ctx.beginPath();
+      ctx.moveTo(side * s * 0.12, -s * 0.22);
+      ctx.lineTo(side * s * 0.38, -s * 0.52);
+      ctx.lineTo(side * s * 0.4, -s * 0.12);
+      ctx.fill();
+      ctx.fillStyle = "#d9a3ab";
+      ctx.beginPath();
+      ctx.moveTo(side * s * 0.18, -s * 0.22);
+      ctx.lineTo(side * s * 0.35, -s * 0.42);
+      ctx.lineTo(side * s * 0.36, -s * 0.18);
+      ctx.fill();
+    }
+    // head with cheek tufts
+    ctx.fillStyle = fur;
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.42, -s * 0.05);
+    ctx.quadraticCurveTo(-s * 0.4, -s * 0.38, 0, -s * 0.36);
+    ctx.quadraticCurveTo(s * 0.4, -s * 0.38, s * 0.42, -s * 0.05);
+    ctx.lineTo(s * 0.5, s * 0.08);
+    ctx.lineTo(s * 0.34, s * 0.1);
+    ctx.quadraticCurveTo(s * 0.2, s * 0.32, 0, s * 0.33);
+    ctx.quadraticCurveTo(-s * 0.2, s * 0.32, -s * 0.34, s * 0.1);
+    ctx.lineTo(-s * 0.5, s * 0.08);
+    ctx.closePath();
+    ctx.fill();
+    // muzzle
+    ellipse(ctx, 0, s * 0.12, s * 0.2, s * 0.15, 0, "#e3e1e6");
+    ellipse(ctx, 0, s * 0.03, s * 0.07, s * 0.045, 0, "#2a2530");
+    // half-lidded, sly eyes
+    for (const side of [-1, 1]) {
+      const ex = side * s * 0.16;
+      const ey = -s * 0.13;
+      ellipse(ctx, ex, ey, s * 0.075, s * 0.06, 0, "#ffe680");
+      circle(ctx, ex + s * 0.02, ey + s * 0.01, s * 0.03, "#2a2530");
+      ctx.fillStyle = fur;
+      ctx.beginPath();
+      ctx.ellipse(ex, ey - s * 0.03, s * 0.085, s * 0.05, side * -0.25, Math.PI, 0);
+      ctx.fill();
+      ctx.strokeStyle = dark;
+      ctx.lineWidth = s * 0.02;
+      ctx.beginPath();
+      ctx.moveTo(ex - s * 0.08, ey - s * 0.03 - side * s * 0.02);
+      ctx.lineTo(ex + s * 0.08, ey - s * 0.03 + side * s * 0.02);
+      ctx.stroke();
+    }
+    // grin with one tooth
+    ctx.strokeStyle = "#2a2530";
+    ctx.lineWidth = s * 0.022;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.11, s * 0.15);
+    ctx.quadraticCurveTo(0, o.mood === "sad" ? s * 0.12 : s * 0.24, s * 0.13, s * 0.13);
+    ctx.stroke();
+    if (o.mood !== "sad") {
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.moveTo(s * 0.03, s * 0.2);
+      ctx.lineTo(s * 0.07, s * 0.19);
+      ctx.lineTo(s * 0.05, s * 0.25);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // The Shepherd: a warm silhouette with a staff and a soft glow. h is the height.
+  function drawShepherd(ctx, x, y, h, o = {}) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.globalAlpha = o.alpha ?? 1;
+    const g = ctx.createRadialGradient(0, -h * 0.5, h * 0.05, 0, -h * 0.5, h * 0.8);
+    g.addColorStop(0, "rgba(255,214,140,0.55)");
+    g.addColorStop(1, "rgba(255,214,140,0)");
+    circle(ctx, 0, -h * 0.5, h * 0.8, g);
+    ctx.fillStyle = o.color ?? "#7a4f33";
+    // robe
+    ctx.beginPath();
+    ctx.moveTo(-h * 0.12, -h * 0.72);
+    ctx.quadraticCurveTo(-h * 0.2, -h * 0.3, -h * 0.24, 0);
+    ctx.lineTo(h * 0.24, 0);
+    ctx.quadraticCurveTo(h * 0.2, -h * 0.3, h * 0.12, -h * 0.72);
+    ctx.closePath();
+    ctx.fill();
+    // hooded head
+    circle(ctx, 0, -h * 0.8, h * 0.11, o.color ?? "#7a4f33");
+    ctx.fillStyle = "rgba(255,230,190,0.25)";
+    ctx.beginPath();
+    ctx.ellipse(h * 0.02, -h * 0.79, h * 0.06, h * 0.08, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // staff with crook
+    ctx.strokeStyle = "#c9a26b";
+    ctx.lineWidth = h * 0.025;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(h * 0.3, 0);
+    ctx.lineTo(h * 0.3, -h * 0.95);
+    ctx.arc(h * 0.38, -h * 0.95, h * 0.08, Math.PI, 0);
+    ctx.lineTo(h * 0.46, -h * 0.9);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // A small sheep in a player's colour (used as an "orb"). r is about its radius.
+  function drawSheep(ctx, x, y, r, color, o = {}) {
+    ctx.save();
+    ctx.translate(x, y);
+    if (o.flip) ctx.scale(-1, 1);
+    ctx.fillStyle = "#2b2430";
+    ctx.fillRect(-r * 0.45, r * 0.45, r * 0.18, r * 0.45);
+    ctx.fillRect(r * 0.25, r * 0.45, r * 0.18, r * 0.45);
+    const light = shade(color, 0.45);
+    for (const [bx, by] of [[-0.45, 0], [0, -0.35], [0.4, -0.05], [0.05, 0.3], [-0.3, 0.3], [0.35, 0.3]]) circle(ctx, bx * r, by * r, r * 0.48, color);
+    for (const [bx, by] of [[-0.35, -0.1], [0.05, -0.38], [0.3, -0.12]]) circle(ctx, bx * r, by * r, r * 0.26, light);
+    ellipse(ctx, r * 0.78, -r * 0.15, r * 0.3, r * 0.36, 0.3, "#2b2430");
+    circle(ctx, r * 0.84, -r * 0.24, r * 0.07, "#ffffff");
+    ctx.restore();
+  }
+
+  // ---------- wave animation ----------
+  // Plays the waves returned by Engine.resolve, one per `ms`, calling onWave(k)
+  // as each starts. Read Kit.anim.cur in the draw loop to animate.
+  const anim = {
+    cur: null,
+    play(waves, ms, onWave, pre) {
+      return new Promise((done) => {
+        if (!waves.length) return done();
+        this.cur = { waves, i: 0, start: null, ms, onWave, done, pre };
+      });
+    },
+    step(now) {
+      const c = this.cur;
+      if (!c) return;
+      if (c.start === null) {
+        c.start = now;
+        c.onWave?.(0, c.waves[0]);
+        return;
+      }
+      if (now - c.start < c.ms) return;
+      c.i++;
+      c.start = now;
+      if (c.i >= c.waves.length) {
+        this.cur = null;
+        c.done();
+      } else c.onWave?.(c.i, c.waves[c.i]);
+    },
+    // 0..1 progress of the current wave
+    t(now) {
+      const c = this.cur;
+      if (!c || c.start === null) return 0;
+      return Math.min(1, (now - c.start) / c.ms);
+    },
+    // Board to draw under the flying orbs for the current wave.
+    base() {
+      const c = this.cur;
+      if (!c) return null;
+      return c.i === 0 ? c.pre : c.waves[c.i - 1].board;
+    },
+  };
+
+  // ---------- AI helpers ----------
+  // Generic board score for `me`: orbs, safe corners/edges, near-full cells,
+  // and danger from enemy cells about to burst next to mine.
+  // isMine(owner), isFoe(owner), cap(i) are supplied by the demo.
+  function evaluate(b, isMine, isFoe, cap) {
+    let score = 0;
+    for (let i = 0; i < b.size; i++) {
+      const own = b.owner[i];
+      if (own < 0 || b.count[i] === 0) continue;
+      const mine = isMine(own);
+      if (!mine && !isFoe(own)) continue;
+      const c = cap(i);
+      let v = b.count[i] * 2 + 3;
+      let threatened = false;
+      let prey = 0;
+      for (const n of Engine.neighbours(b, i)) {
+        const o2 = b.owner[n];
+        if (o2 < 0 || b.count[n] === 0) continue;
+        if (isMine(o2) === mine) continue;
+        if (b.count[n] >= cap(n) - 1) threatened = true;
+        prey += b.count[n];
+      }
+      if (threatened) v -= 5 - c + b.count[i];
+      else {
+        if (c === 2) v += 3;
+        else if (c === 3) v += 2;
+        if (b.count[i] >= c - 1) v += 2 + prey;
+      }
+      score += mine ? v : -v;
+    }
+    return score;
+  }
+
+  // Picks the highest scoring move. With chance `mistake`, picks one of the top 3 instead.
+  function pickBest(scored, mistake = 0) {
+    if (!scored.length) return null;
+    scored.sort((a, b) => b.score - a.score);
+    if (mistake > 0 && Math.random() < mistake && scored.length > 1) return scored[Math.floor(Math.random() * Math.min(3, scored.length))].move;
+    const top = scored.filter((s) => s.score === scored[0].score);
+    return top[Math.floor(Math.random() * top.length)].move;
+  }
+
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // ---------- screen helpers ----------
+  const $ = (id) => document.getElementById(id);
+
+  // Sizes `canvas` to fit `wrap` for a cols x rows board. Returns { cell, dpr, w, h }.
+  function fitBoard(canvas, wrap, cols, rows, extraRows = 0) {
+    const cs = getComputedStyle(wrap);
+    const w = wrap.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const h = wrap.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    const cell = Math.max(12, Math.floor(Math.min(w / cols, h / (rows + extraRows))));
+    const dpr = window.devicePixelRatio || 1;
+    canvas.style.width = cell * cols + "px";
+    canvas.style.height = cell * (rows + extraRows) + "px";
+    canvas.width = Math.round(cell * cols * dpr);
+    canvas.height = Math.round(cell * (rows + extraRows) * dpr);
+    return { cell, dpr, w: cell * cols, h: cell * (rows + extraRows) };
+  }
+
+  // Sets up a fixed-size picture canvas at full screen sharpness; returns its context.
+  function sharp(cv, w, h) {
+    const dpr = window.devicePixelRatio || 1;
+    cv.style.width = w + "px";
+    cv.style.height = h + "px";
+    cv.width = Math.round(w * dpr);
+    cv.height = Math.round(h * dpr);
+    const g = cv.getContext("2d");
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return g;
+  }
+
+  function shake(el, big = false) {
+    el.classList.remove("shake", "shake-big");
+    void el.offsetWidth;
+    el.classList.add(big ? "shake-big" : "shake");
+  }
+
+  function popText(el, text) {
+    el.textContent = text;
+    el.classList.remove("pop");
+    void el.offsetWidth;
+    el.classList.add("pop");
+  }
+
+  function show(id) {
+    $(id).hidden = false;
+  }
+  function hide(id) {
+    $(id).hidden = true;
+  }
+
+  function cellAt(canvas, e, cell) {
+    const r = canvas.getBoundingClientRect();
+    return { col: Math.floor((e.clientX - r.left) / cell), row: Math.floor((e.clientY - r.top) / cell) };
+  }
+
+  // Wires the shared mute button.
+  function muteButton(btn) {
+    const render = () => {
+      btn.textContent = muted ? "🔇" : "🔊";
+      btn.setAttribute("aria-label", muted ? "Unmute" : "Mute");
+    };
+    btn.addEventListener("click", () => {
+      setMuted(!muted);
+      render();
+    });
+    render();
+  }
+
+  const COLORS = ["#ff5a5f", "#3fa7ff", "#ffc93c", "#8f6bff", "#2fd38a", "#ff8c42", "#ff6fc8", "#3ee0e0"];
+  const COLOR_NAMES = ["Red", "Blue", "Yellow", "Purple", "Green", "Orange", "Pink", "Cyan"];
+
+  return {
+    sfx, setMuted, isMuted: () => muted, tone,
+    circle, ellipse, shade, drawLamb, drawWolf, drawShepherd, drawSheep,
+    anim, evaluate, pickBest, sleep,
+    $, fitBoard, sharp, shake, popText, show, hide, cellAt, muteButton,
+    COLORS, COLOR_NAMES,
+  };
+})();
+// ======================= END SHARED KIT =======================
+
+
+// ---------- balance ----------
+const CONFIG = {
+  rows: 9,
+  cols: 6,
+  waveMs: 130, // time per burst wave
+  maxWaves: 200, // safety cap per move
+  aiDelayMs: 650, // pause before each AI move
+  aiMistake: 0.15, // chance the AI picks its 2nd/3rd best move
+  aiLookahead: 6, // how many top moves the AI checks against a reply
+  lambDanger: 40, // AI: how much it fears an enemy cell about to burst onto its lamb
+  chainShakeAt: 5, // waves before a small screen shake
+  chainBigShakeAt: 10,
+};
+
+const { $ } = Kit;
+const canvas = $("board");
+const ctx = canvas.getContext("2d");
+const COLORS = Kit.COLORS;
+const NAMES = Kit.COLOR_NAMES;
+
+let setup = { n: 2, seats: ["human", "ai", "ai", "ai", "ai", "ai", "ai", "ai"] };
+try {
+  Object.assign(setup, JSON.parse(localStorage.getItem("cfl-01-setup")) || {});
+} catch {}
+
+let S = null; // game state: { b, alive[], moved[], current, n, kinds[] }
+let busy = false;
+let geo = { cell: 40, dpr: 1 };
+let gameId = 0;
+
+// ---------- rules ----------
+const cap = (b, i) => Engine.capacity(b, i);
+const aliveCount = (st) => st.alive.filter(Boolean).length;
+const lambCell = (b, p) => b.lambOf.indexOf(p);
+
+function newGame() {
+  const b = Engine.createBoard(CONFIG.rows, CONFIG.cols, { lambOf: -1 });
+  return {
+    b,
+    n: setup.n,
+    kinds: setup.seats.slice(0, setup.n),
+    alive: new Array(setup.n).fill(true),
+    moved: new Array(setup.n).fill(false),
+    current: 0,
+    turn: 0,
+    winner: -1,
+  };
+}
+
+function cloneState(st) {
+  return { ...st, b: Engine.clone(st.b), alive: st.alive.slice(), moved: st.moved.slice(), kinds: st.kinds };
+}
+
+function isLegal(st, p, i) {
+  const b = st.b;
+  if (i < 0 || i >= b.size) return false;
+  const l = b.lambOf[i];
+  if (l >= 0 && l !== p) return false;
+  return b.owner[i] === -1 || b.owner[i] === p;
+}
+
+function legalMoves(st, p) {
+  const out = [];
+  for (let i = 0; i < st.b.size; i++) if (isLegal(st, p, i)) out.push(i);
+  return out;
+}
+
+function eliminate(st, victim) {
+  const b = st.b;
+  st.alive[victim] = false;
+  for (let i = 0; i < b.size; i++) {
+    if (b.lambOf[i] === victim) b.lambOf[i] = -1;
+    if (b.owner[i] === victim) {
+      b.owner[i] = -1;
+      b.count[i] = 0;
+    }
+  }
+}
+
+// Plays p's move at i on a copy of st. Returns { st, pre, waves, out: [eliminated players] }.
+function simulate(st0, i, record) {
+  const st = cloneState(st0);
+  const b = st.b;
+  const p = st.current;
+  if (!st.moved[p]) {
+    st.moved[p] = true;
+    b.lambOf[i] = p;
+  }
+  Engine.place(b, i, p);
+  const pre = record ? Engine.clone(b) : null;
+  const out = [];
+  const { waves, capped } = Engine.resolve(
+    b,
+    {
+      canBurst: (bb, c) => bb.owner[c] >= 0 && st.alive[bb.owner[c]],
+      emptied: (bb, c) => {
+        if (bb.lambOf[c] < 0) bb.owner[c] = -1;
+      },
+      land: (bb, from, to, who) => {
+        if (!st.alive[who]) return; // a caught flock's sheep scatter
+        const v = bb.lambOf[to];
+        if (v >= 0 && v !== who && st.alive[v]) {
+          eliminate(st, v);
+          out.push(v);
+        }
+        bb.owner[to] = who;
+        bb.count[to]++;
+      },
+      done: () => aliveCount(st) <= 1,
+      maxWaves: CONFIG.maxWaves,
+    },
+    record
+  );
+  // A runaway chain that hits the cap counts as a sweep for the mover.
+  if (capped) for (let q = 0; q < st.n; q++) if (q !== p && st.alive[q]) {
+    eliminate(st, q);
+    out.push(q);
+  }
+  st.turn++;
+  if (aliveCount(st) === 1) st.winner = st.alive.indexOf(true);
+  else {
+    let q = p;
+    do q = (q + 1) % st.n;
+    while (!st.alive[q]);
+    st.current = q;
+  }
+  return { st, pre, waves, out };
+}
+
+// ---------- AI ----------
+function scoreFor(st, me) {
+  if (!st.alive[me]) return -1e6;
+  if (st.winner === me) return 1e6;
+  const b = st.b;
+  let s = Kit.evaluate(b, (o) => o === me, (o) => o !== me && o >= 0, (i) => cap(b, i));
+  for (let q = 0; q < st.n; q++) if (!st.alive[q]) s += q === me ? 0 : 300;
+  for (let q = 0; q < st.n; q++) {
+    const L = lambCell(b, q);
+    if (L < 0) continue;
+    for (const nb of Engine.neighbours(b, L)) {
+      const o = b.owner[nb];
+      if (o < 0 || o === q || b.count[nb] < cap(b, nb) - 1) continue;
+      if (q === me) s -= CONFIG.lambDanger;
+      else if (o === me) s += CONFIG.lambDanger * 0.6;
+    }
+  }
+  return s;
+}
+
+function aiMove(st) {
+  const me = st.current;
+  const first = legalMoves(st, me).map((move) => {
+    const r = simulate(st, move, false);
+    return { move, r, score: scoreFor(r.st, me) };
+  });
+  first.sort((a, b) => b.score - a.score);
+  // Check the best few against the next player's strongest reply.
+  for (const cand of first.slice(0, CONFIG.aiLookahead)) {
+    const after = cand.r.st;
+    if (after.winner >= 0) continue;
+    const q = after.current;
+    let worst = Infinity;
+    let bestForQ = -Infinity;
+    for (const m of legalMoves(after, q)) {
+      const r2 = simulate(after, m, false);
+      const qs = scoreFor(r2.st, q);
+      if (qs > bestForQ) {
+        bestForQ = qs;
+        worst = scoreFor(r2.st, me);
+      }
+    }
+    if (worst !== Infinity) cand.score = worst;
+  }
+  return Kit.pickBest(first.map(({ move, score }) => ({ move, score })), CONFIG.aiMistake);
+}
+
+// ---------- flow ----------
+async function playAt(i) {
+  busy = true;
+  const myGame = gameId;
+  const before = S;
+  const p = S.current;
+  const r = simulate(S, i, true);
+  Kit.sfx.place();
+  if (!before.moved[p]) Kit.sfx.bleat(1.1);
+  S = { ...before, b: r.pre }; // show the placed sheep while the chain plays
+  await Kit.anim.play(r.waves, CONFIG.waveMs, (k) => {
+    Kit.sfx.burst(k);
+    if (k >= 1) Kit.popText($("chain"), `Chain x${k + 1}!`);
+    if (k === CONFIG.chainShakeAt) Kit.shake($("stage"));
+    if (k === CONFIG.chainBigShakeAt) Kit.shake($("stage"), true);
+  }, r.pre);
+  if (myGame !== gameId) return;
+  S = r.st;
+  for (const v of r.out) {
+    Kit.sfx.howl();
+    Kit.popText($("chain"), `${NAMES[v]}'s lamb is caught!`);
+  }
+  busy = false;
+  next();
+}
+
+async function next() {
+  hud();
+  if (S.winner >= 0) {
+    await Kit.sleep(700);
+    return finish();
+  }
+  if (S.kinds[S.current] === "ai") {
+    busy = true;
+    const myGame = gameId;
+    await Kit.sleep(CONFIG.aiDelayMs);
+    if (myGame !== gameId) return;
+    playAt(aiMove(S));
+  }
+}
+
+function finish() {
+  const w = S.winner;
+  const humans = S.kinds.filter((k) => k === "human").length;
+  const won = S.kinds[w] === "human" || humans === 0;
+  $("end-title").textContent = humans > 1 || won ? `${NAMES[w]}'s flock wins!` : "Your lamb got caught";
+  $("end-title").style.color = COLORS[w];
+  $("end-sub").textContent = humans > 1 || won ? `Every other lamb was caught in ${S.turn} moves.` : `${NAMES[w]} took the pasture. Have another go.`;
+  drawHero($("hero-end"), humans > 1 || won ? "happy" : "sad", COLORS[w]);
+  (humans > 1 || won ? Kit.sfx.win : Kit.sfx.lose)();
+  Kit.show("end");
+}
+
+function start() {
+  gameId++;
+  Kit.anim.cur = null;
+  S = newGame();
+  busy = false;
+  try {
+    localStorage.setItem("cfl-01-setup", JSON.stringify(setup));
+  } catch {}
+  Kit.hide("intro");
+  Kit.hide("end");
+  resize();
+  next();
+}
+
+function hud() {
+  if (!S) return;
+  const p = S.winner >= 0 ? S.winner : S.current;
+  $("dot").style.color = COLORS[p];
+  let t;
+  if (S.winner >= 0) t = `${NAMES[p]} wins!`;
+  else if (S.kinds[p] === "ai") t = `${NAMES[p]} is thinking…`;
+  else if (!S.moved[p]) t = `${NAMES[p]}: place your lamb`;
+  else t = `${NAMES[p]}'s turn`;
+  $("status").textContent = t;
+}
+
+canvas.addEventListener("pointerdown", (e) => {
+  if (!S || busy || S.winner >= 0 || S.kinds[S.current] !== "human") return;
+  const { row, col } = Kit.cellAt(canvas, e, geo.cell);
+  if (!Engine.inside(S.b, row, col)) return;
+  const i = row * S.b.cols + col;
+  if (isLegal(S, S.current, i)) playAt(i);
+  else Kit.sfx.bad();
+});
+
+// ---------- drawing ----------
+function resize() {
+  if (!S) return;
+  geo = Kit.fitBoard(canvas, $("stage"), S.b.cols, S.b.rows);
+}
+
+function tuft(x, y, s) {
+  ctx.beginPath();
+  ctx.moveTo(x - s, y);
+  ctx.lineTo(x - s * 0.4, y - s * 1.4);
+  ctx.lineTo(x, y);
+  ctx.lineTo(x + s * 0.5, y - s * 1.6);
+  ctx.lineTo(x + s, y);
+  ctx.fill();
+}
+
+const SPOTS = {
+  1: [[0, 0]],
+  2: [[-0.2, 0], [0.2, 0.02]],
+  3: [[-0.2, 0.12], [0.2, 0.12], [0, -0.16]],
+  4: [[-0.2, -0.15], [0.2, -0.15], [-0.2, 0.17], [0.2, 0.17]],
+};
+
+function drawCell(b, i, n, t) {
+  const c = geo.cell;
+  const x = Engine.colOf(b, i) * c;
+  const y = Engine.rowOf(b, i) * c;
+  const own = b.owner[i];
+  const lamb = b.lambOf[i];
+  const nervous = n > 0 && n >= cap(b, i) - 1;
+  if (lamb >= 0) {
+    Kit.drawLamb(ctx, x + c * 0.5, y + c * 0.6, c * 0.62, { t: t + i, scarf: COLORS[lamb], mood: nervous ? "shock" : "happy" });
+  }
+  if (n <= 0 || own < 0) return;
+  const r = c * (lamb >= 0 ? 0.11 : 0.15);
+  const k = Math.min(n, 4);
+  for (let s = 0; s < k; s++) {
+    let [dx, dy] = SPOTS[k][s];
+    if (lamb >= 0) dy = -0.32 + dy * 0.3;
+    const jx = nervous ? Math.sin(t * 40 + i * 3 + s) * c * 0.02 : 0;
+    const hop = nervous ? 0 : Math.abs(Math.sin(t * 2 + i + s * 1.3)) * c * 0.012;
+    Kit.drawSheep(ctx, x + c * 0.5 + dx * c + jx, y + c * 0.5 + dy * c - hop, r, COLORS[own], { flip: s % 2 === 1 });
+  }
+}
+
+function draw(now) {
+  Kit.anim.step(now);
+  const t = now / 1000;
+  ctx.setTransform(geo.dpr, 0, 0, geo.dpr, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (!S) return requestAnimationFrame(draw);
+  const a = Kit.anim.cur;
+  const b = a ? Kit.anim.base() : S.b;
+  const wave = a && a.start !== null ? a.waves[a.i] : null;
+  const counts = b.count.slice();
+  if (wave) for (const { from } of wave.bursts) counts[from] = Math.max(0, counts[from] - cap(b, from));
+  const c = geo.cell;
+  // pasture squares
+  for (let i = 0; i < b.size; i++) {
+    const x = Engine.colOf(b, i) * c;
+    const y = Engine.rowOf(b, i) * c;
+    ctx.fillStyle = (Engine.rowOf(b, i) + Engine.colOf(b, i)) % 2 ? "#3d7a45" : "#46874e";
+    ctx.fillRect(x, y, c, c);
+    ctx.fillStyle = "#58a060";
+    tuft(x + c * (0.2 + ((i * 37) % 5) * 0.12), y + c * 0.9, c * 0.05);
+    if (b.owner[i] >= 0 && (counts[i] > 0 || b.lambOf[i] >= 0)) {
+      ctx.fillStyle = COLORS[b.owner[i]] + "33";
+      ctx.fillRect(x, y, c, c);
+    }
+  }
+  for (let i = 0; i < b.size; i++) drawCell(b, i, counts[i], t);
+  // hopping sheep
+  if (wave) {
+    const p = Kit.anim.t(now);
+    const e = 1 - (1 - p) * (1 - p);
+    for (const { from, to, who } of wave.bursts) {
+      const fx = (Engine.colOf(b, from) + 0.5) * c;
+      const fy = (Engine.rowOf(b, from) + 0.5) * c;
+      for (const d of to) {
+        const tx = (Engine.colOf(b, d) + 0.5) * c;
+        const ty = (Engine.rowOf(b, d) + 0.5) * c;
+        Kit.drawSheep(ctx, fx + (tx - fx) * e, fy + (ty - fy) * e - Math.sin(Math.PI * p) * c * 0.35, c * 0.15, COLORS[who], { flip: tx < fx });
+      }
+    }
+  }
+  // fence in the colour of whoever is playing
+  const turn = a && wave ? wave.bursts[0].who : S.winner >= 0 ? S.winner : S.current;
+  ctx.strokeStyle = COLORS[turn];
+  ctx.globalAlpha = 0.55;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let col = 0; col <= b.cols; col++) {
+    const x = Math.min(Math.max(col * c, 0.75), geo.w - 0.75);
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, geo.h);
+  }
+  for (let row = 0; row <= b.rows; row++) {
+    const y = Math.min(Math.max(row * c, 0.75), geo.h - 0.75);
+    ctx.moveTo(0, y);
+    ctx.lineTo(geo.w, y);
+  }
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+  requestAnimationFrame(draw);
+}
+
+function drawHero(cv, mood, color) {
+  const g = Kit.sharp(cv, 220, 130);
+  Kit.drawSheep(g, 50, 92, 18, COLORS[1]);
+  Kit.drawSheep(g, 172, 96, 18, COLORS[2], { flip: true });
+  Kit.drawLamb(g, 110, 72, 110, { mood, scarf: color ?? COLORS[0] });
+}
+
+// ---------- menu ----------
+function renderSeats() {
+  $("count").textContent = setup.n;
+  const box = $("seats");
+  box.replaceChildren();
+  for (let p = 0; p < setup.n; p++) {
+    const row = document.createElement("div");
+    row.className = "seat";
+    row.innerHTML = `<span class="dot" style="color:${COLORS[p]}"></span><span class="nm">${NAMES[p]}</span>`;
+    const seg = document.createElement("div");
+    seg.className = "seg";
+    for (const [k, label] of [["human", "Human"], ["ai", "AI"]]) {
+      const btn = document.createElement("button");
+      btn.textContent = label;
+      btn.className = setup.seats[p] === k ? "on" : "";
+      btn.addEventListener("click", () => {
+        setup.seats[p] = k;
+        renderSeats();
+      });
+      seg.append(btn);
+    }
+    row.append(seg);
+    box.append(row);
+  }
+}
+
+$("fewer").addEventListener("click", () => {
+  setup.n = Math.max(2, setup.n - 1);
+  renderSeats();
+});
+$("more").addEventListener("click", () => {
+  setup.n = Math.min(8, setup.n + 1);
+  renderSeats();
+});
+$("play").addEventListener("click", start);
+$("again").addEventListener("click", start);
+$("restart").addEventListener("click", start);
+$("menu").addEventListener("click", () => {
+  gameId++;
+  Kit.anim.cur = null;
+  busy = false;
+  Kit.hide("end");
+  renderSeats();
+  Kit.show("intro");
+});
+$("to-menu").addEventListener("click", () => $("menu").click());
+Kit.muteButton($("mute"));
+new ResizeObserver(resize).observe($("stage"));
+
+renderSeats();
+drawHero($("hero-intro"), "happy");
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>

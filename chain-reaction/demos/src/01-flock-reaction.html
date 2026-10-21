@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Flock Reaction</title>
+<meta name="description" content="cheekyfoundlamb demo 1: classic Chain Reaction with sheep, where each player guards a lamb." />
+<style>
+/*@KITCSS*/
+.seats { display: grid; gap: 6px; }
+.seat { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 12px; background: var(--meadow-2); }
+.seat .dot { width: 18px; height: 18px; border-radius: 50%; background: currentColor; flex: none; }
+.seat .nm { flex: 1; font-weight: 800; }
+.stepper { display: flex; align-items: center; gap: 4px; background: var(--meadow-2); border-radius: 12px; padding: 4px; }
+.stepper button { width: 40px; height: 40px; border-radius: 9px; background: transparent; font-size: 1.3rem; font-weight: 900; }
+.stepper output { min-width: 22px; text-align: center; font-weight: 900; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="status"><span class="dot" id="dot"></span><span class="txt" id="status">Flock Reaction</span></div>
+    <div class="btns">
+      <button class="ib" id="restart" aria-label="Restart">↻</button>
+      <button class="ib" id="mute" aria-label="Mute">🔊</button>
+      <button class="ib" id="menu" aria-label="Menu">☰</button>
+    </div>
+  </header>
+  <main class="stage" id="stage">
+    <canvas id="board" aria-label="Pasture board"></canvas>
+    <div class="chain" id="chain"></div>
+  </main>
+</div>
+
+<section class="overlay" id="intro">
+  <div class="card">
+    <canvas class="hero" id="hero-intro" width="220" height="130"></canvas>
+    <h1>Flock Reaction</h1>
+    <div class="how">
+      <p>Tap an empty square or one of yours to add a sheep. Full squares burst, and the sheep hop next door and join your flock.</p>
+      <p>Your first tap also places your lamb. His square is always yours. If an enemy burst lands on him, you're out.</p>
+    </div>
+    <div class="opts">
+      <div class="optrow">
+        <span class="lbl">Players</span>
+        <div class="stepper">
+          <button id="fewer" aria-label="Fewer players">−</button>
+          <output id="count">2</output>
+          <button id="more" aria-label="More players">+</button>
+        </div>
+      </div>
+      <div class="seats" id="seats"></div>
+    </div>
+    <button class="big" id="play">Play</button>
+  </div>
+</section>
+
+<section class="overlay" id="end" hidden>
+  <div class="card">
+    <canvas class="hero" id="hero-end" width="220" height="130"></canvas>
+    <h2 id="end-title"></h2>
+    <p id="end-sub"></p>
+    <button class="big" id="again">Play again</button>
+    <button class="big alt" id="to-menu">Change players</button>
+  </div>
+</section>
+
+<script>
+/*@ENGINE*/
+/*@KIT*/
+
+// ---------- balance ----------
+const CONFIG = {
+  rows: 9,
+  cols: 6,
+  waveMs: 130, // time per burst wave
+  maxWaves: 200, // safety cap per move
+  aiDelayMs: 650, // pause before each AI move
+  aiMistake: 0.15, // chance the AI picks its 2nd/3rd best move
+  aiLookahead: 6, // how many top moves the AI checks against a reply
+  lambDanger: 40, // AI: how much it fears an enemy cell about to burst onto its lamb
+  chainShakeAt: 5, // waves before a small screen shake
+  chainBigShakeAt: 10,
+};
+
+const { $ } = Kit;
+const canvas = $("board");
+const ctx = canvas.getContext("2d");
+const COLORS = Kit.COLORS;
+const NAMES = Kit.COLOR_NAMES;
+
+let setup = { n: 2, seats: ["human", "ai", "ai", "ai", "ai", "ai", "ai", "ai"] };
+try {
+  Object.assign(setup, JSON.parse(localStorage.getItem("cfl-01-setup")) || {});
+} catch {}
+
+let S = null; // game state: { b, alive[], moved[], current, n, kinds[] }
+let busy = false;
+let geo = { cell: 40, dpr: 1 };
+let gameId = 0;
+
+// ---------- rules ----------
+const cap = (b, i) => Engine.capacity(b, i);
+const aliveCount = (st) => st.alive.filter(Boolean).length;
+const lambCell = (b, p) => b.lambOf.indexOf(p);
+
+function newGame() {
+  const b = Engine.createBoard(CONFIG.rows, CONFIG.cols, { lambOf: -1 });
+  return {
+    b,
+    n: setup.n,
+    kinds: setup.seats.slice(0, setup.n),
+    alive: new Array(setup.n).fill(true),
+    moved: new Array(setup.n).fill(false),
+    current: 0,
+    turn: 0,
+    winner: -1,
+  };
+}
+
+function cloneState(st) {
+  return { ...st, b: Engine.clone(st.b), alive: st.alive.slice(), moved: st.moved.slice(), kinds: st.kinds };
+}
+
+function isLegal(st, p, i) {
+  const b = st.b;
+  if (i < 0 || i >= b.size) return false;
+  const l = b.lambOf[i];
+  if (l >= 0 && l !== p) return false;
+  return b.owner[i] === -1 || b.owner[i] === p;
+}
+
+function legalMoves(st, p) {
+  const out = [];
+  for (let i = 0; i < st.b.size; i++) if (isLegal(st, p, i)) out.push(i);
+  return out;
+}
+
+function eliminate(st, victim) {
+  const b = st.b;
+  st.alive[victim] = false;
+  for (let i = 0; i < b.size; i++) {
+    if (b.lambOf[i] === victim) b.lambOf[i] = -1;
+    if (b.owner[i] === victim) {
+      b.owner[i] = -1;
+      b.count[i] = 0;
+    }
+  }
+}
+
+// Plays p's move at i on a copy of st. Returns { st, pre, waves, out: [eliminated players] }.
+function simulate(st0, i, record) {
+  const st = cloneState(st0);
+  const b = st.b;
+  const p = st.current;
+  if (!st.moved[p]) {
+    st.moved[p] = true;
+    b.lambOf[i] = p;
+  }
+  Engine.place(b, i, p);
+  const pre = record ? Engine.clone(b) : null;
+  const out = [];
+  const { waves, capped } = Engine.resolve(
+    b,
+    {
+      canBurst: (bb, c) => bb.owner[c] >= 0 && st.alive[bb.owner[c]],
+      emptied: (bb, c) => {
+        if (bb.lambOf[c] < 0) bb.owner[c] = -1;
+      },
+      land: (bb, from, to, who) => {
+        if (!st.alive[who]) return; // a caught flock's sheep scatter
+        const v = bb.lambOf[to];
+        if (v >= 0 && v !== who && st.alive[v]) {
+          eliminate(st, v);
+          out.push(v);
+        }
+        bb.owner[to] = who;
+        bb.count[to]++;
+      },
+      done: () => aliveCount(st) <= 1,
+      maxWaves: CONFIG.maxWaves,
+    },
+    record
+  );
+  // A runaway chain that hits the cap counts as a sweep for the mover.
+  if (capped) for (let q = 0; q < st.n; q++) if (q !== p && st.alive[q]) {
+    eliminate(st, q);
+    out.push(q);
+  }
+  st.turn++;
+  if (aliveCount(st) === 1) st.winner = st.alive.indexOf(true);
+  else {
+    let q = p;
+    do q = (q + 1) % st.n;
+    while (!st.alive[q]);
+    st.current = q;
+  }
+  return { st, pre, waves, out };
+}
+
+// ---------- AI ----------
+function scoreFor(st, me) {
+  if (!st.alive[me]) return -1e6;
+  if (st.winner === me) return 1e6;
+  const b = st.b;
+  let s = Kit.evaluate(b, (o) => o === me, (o) => o !== me && o >= 0, (i) => cap(b, i));
+  for (let q = 0; q < st.n; q++) if (!st.alive[q]) s += q === me ? 0 : 300;
+  for (let q = 0; q < st.n; q++) {
+    const L = lambCell(b, q);
+    if (L < 0) continue;
+    for (const nb of Engine.neighbours(b, L)) {
+      const o = b.owner[nb];
+      if (o < 0 || o === q || b.count[nb] < cap(b, nb) - 1) continue;
+      if (q === me) s -= CONFIG.lambDanger;
+      else if (o === me) s += CONFIG.lambDanger * 0.6;
+    }
+  }
+  return s;
+}
+
+function aiMove(st) {
+  const me = st.current;
+  const first = legalMoves(st, me).map((move) => {
+    const r = simulate(st, move, false);
+    return { move, r, score: scoreFor(r.st, me) };
+  });
+  first.sort((a, b) => b.score - a.score);
+  // Check the best few against the next player's strongest reply.
+  for (const cand of first.slice(0, CONFIG.aiLookahead)) {
+    const after = cand.r.st;
+    if (after.winner >= 0) continue;
+    const q = after.current;
+    let worst = Infinity;
+    let bestForQ = -Infinity;
+    for (const m of legalMoves(after, q)) {
+      const r2 = simulate(after, m, false);
+      const qs = scoreFor(r2.st, q);
+      if (qs > bestForQ) {
+        bestForQ = qs;
+        worst = scoreFor(r2.st, me);
+      }
+    }
+    if (worst !== Infinity) cand.score = worst;
+  }
+  return Kit.pickBest(first.map(({ move, score }) => ({ move, score })), CONFIG.aiMistake);
+}
+
+// ---------- flow ----------
+async function playAt(i) {
+  busy = true;
+  const myGame = gameId;
+  const before = S;
+  const p = S.current;
+  const r = simulate(S, i, true);
+  Kit.sfx.place();
+  if (!before.moved[p]) Kit.sfx.bleat(1.1);
+  S = { ...before, b: r.pre }; // show the placed sheep while the chain plays
+  await Kit.anim.play(r.waves, CONFIG.waveMs, (k) => {
+    Kit.sfx.burst(k);
+    if (k >= 1) Kit.popText($("chain"), `Chain x${k + 1}!`);
+    if (k === CONFIG.chainShakeAt) Kit.shake($("stage"));
+    if (k === CONFIG.chainBigShakeAt) Kit.shake($("stage"), true);
+  }, r.pre);
+  if (myGame !== gameId) return;
+  S = r.st;
+  for (const v of r.out) {
+    Kit.sfx.howl();
+    Kit.popText($("chain"), `${NAMES[v]}'s lamb is caught!`);
+  }
+  busy = false;
+  next();
+}
+
+async function next() {
+  hud();
+  if (S.winner >= 0) {
+    await Kit.sleep(700);
+    return finish();
+  }
+  if (S.kinds[S.current] === "ai") {
+    busy = true;
+    const myGame = gameId;
+    await Kit.sleep(CONFIG.aiDelayMs);
+    if (myGame !== gameId) return;
+    playAt(aiMove(S));
+  }
+}
+
+function finish() {
+  const w = S.winner;
+  const humans = S.kinds.filter((k) => k === "human").length;
+  const won = S.kinds[w] === "human" || humans === 0;
+  $("end-title").textContent = humans > 1 || won ? `${NAMES[w]}'s flock wins!` : "Your lamb got caught";
+  $("end-title").style.color = COLORS[w];
+  $("end-sub").textContent = humans > 1 || won ? `Every other lamb was caught in ${S.turn} moves.` : `${NAMES[w]} took the pasture. Have another go.`;
+  drawHero($("hero-end"), humans > 1 || won ? "happy" : "sad", COLORS[w]);
+  (humans > 1 || won ? Kit.sfx.win : Kit.sfx.lose)();
+  Kit.show("end");
+}
+
+function start() {
+  gameId++;
+  Kit.anim.cur = null;
+  S = newGame();
+  busy = false;
+  try {
+    localStorage.setItem("cfl-01-setup", JSON.stringify(setup));
+  } catch {}
+  Kit.hide("intro");
+  Kit.hide("end");
+  resize();
+  next();
+}
+
+function hud() {
+  if (!S) return;
+  const p = S.winner >= 0 ? S.winner : S.current;
+  $("dot").style.color = COLORS[p];
+  let t;
+  if (S.winner >= 0) t = `${NAMES[p]} wins!`;
+  else if (S.kinds[p] === "ai") t = `${NAMES[p]} is thinking…`;
+  else if (!S.moved[p]) t = `${NAMES[p]}: place your lamb`;
+  else t = `${NAMES[p]}'s turn`;
+  $("status").textContent = t;
+}
+
+canvas.addEventListener("pointerdown", (e) => {
+  if (!S || busy || S.winner >= 0 || S.kinds[S.current] !== "human") return;
+  const { row, col } = Kit.cellAt(canvas, e, geo.cell);
+  if (!Engine.inside(S.b, row, col)) return;
+  const i = row * S.b.cols + col;
+  if (isLegal(S, S.current, i)) playAt(i);
+  else Kit.sfx.bad();
+});
+
+// ---------- drawing ----------
+function resize() {
+  if (!S) return;
+  geo = Kit.fitBoard(canvas, $("stage"), S.b.cols, S.b.rows);
+}
+
+function tuft(x, y, s) {
+  ctx.beginPath();
+  ctx.moveTo(x - s, y);
+  ctx.lineTo(x - s * 0.4, y - s * 1.4);
+  ctx.lineTo(x, y);
+  ctx.lineTo(x + s * 0.5, y - s * 1.6);
+  ctx.lineTo(x + s, y);
+  ctx.fill();
+}
+
+const SPOTS = {
+  1: [[0, 0]],
+  2: [[-0.2, 0], [0.2, 0.02]],
+  3: [[-0.2, 0.12], [0.2, 0.12], [0, -0.16]],
+  4: [[-0.2, -0.15], [0.2, -0.15], [-0.2, 0.17], [0.2, 0.17]],
+};
+
+function drawCell(b, i, n, t) {
+  const c = geo.cell;
+  const x = Engine.colOf(b, i) * c;
+  const y = Engine.rowOf(b, i) * c;
+  const own = b.owner[i];
+  const lamb = b.lambOf[i];
+  const nervous = n > 0 && n >= cap(b, i) - 1;
+  if (lamb >= 0) {
+    Kit.drawLamb(ctx, x + c * 0.5, y + c * 0.6, c * 0.62, { t: t + i, scarf: COLORS[lamb], mood: nervous ? "shock" : "happy" });
+  }
+  if (n <= 0 || own < 0) return;
+  const r = c * (lamb >= 0 ? 0.11 : 0.15);
+  const k = Math.min(n, 4);
+  for (let s = 0; s < k; s++) {
+    let [dx, dy] = SPOTS[k][s];
+    if (lamb >= 0) dy = -0.32 + dy * 0.3;
+    const jx = nervous ? Math.sin(t * 40 + i * 3 + s) * c * 0.02 : 0;
+    const hop = nervous ? 0 : Math.abs(Math.sin(t * 2 + i + s * 1.3)) * c * 0.012;
+    Kit.drawSheep(ctx, x + c * 0.5 + dx * c + jx, y + c * 0.5 + dy * c - hop, r, COLORS[own], { flip: s % 2 === 1 });
+  }
+}
+
+function draw(now) {
+  Kit.anim.step(now);
+  const t = now / 1000;
+  ctx.setTransform(geo.dpr, 0, 0, geo.dpr, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (!S) return requestAnimationFrame(draw);
+  const a = Kit.anim.cur;
+  const b = a ? Kit.anim.base() : S.b;
+  const wave = a && a.start !== null ? a.waves[a.i] : null;
+  const counts = b.count.slice();
+  if (wave) for (const { from } of wave.bursts) counts[from] = Math.max(0, counts[from] - cap(b, from));
+  const c = geo.cell;
+  // pasture squares
+  for (let i = 0; i < b.size; i++) {
+    const x = Engine.colOf(b, i) * c;
+    const y = Engine.rowOf(b, i) * c;
+    ctx.fillStyle = (Engine.rowOf(b, i) + Engine.colOf(b, i)) % 2 ? "#3d7a45" : "#46874e";
+    ctx.fillRect(x, y, c, c);
+    ctx.fillStyle = "#58a060";
+    tuft(x + c * (0.2 + ((i * 37) % 5) * 0.12), y + c * 0.9, c * 0.05);
+    if (b.owner[i] >= 0 && (counts[i] > 0 || b.lambOf[i] >= 0)) {
+      ctx.fillStyle = COLORS[b.owner[i]] + "33";
+      ctx.fillRect(x, y, c, c);
+    }
+  }
+  for (let i = 0; i < b.size; i++) drawCell(b, i, counts[i], t);
+  // hopping sheep
+  if (wave) {
+    const p = Kit.anim.t(now);
+    const e = 1 - (1 - p) * (1 - p);
+    for (const { from, to, who } of wave.bursts) {
+      const fx = (Engine.colOf(b, from) + 0.5) * c;
+      const fy = (Engine.rowOf(b, from) + 0.5) * c;
+      for (const d of to) {
+        const tx = (Engine.colOf(b, d) + 0.5) * c;
+        const ty = (Engine.rowOf(b, d) + 0.5) * c;
+        Kit.drawSheep(ctx, fx + (tx - fx) * e, fy + (ty - fy) * e - Math.sin(Math.PI * p) * c * 0.35, c * 0.15, COLORS[who], { flip: tx < fx });
+      }
+    }
+  }
+  // fence in the colour of whoever is playing
+  const turn = a && wave ? wave.bursts[0].who : S.winner >= 0 ? S.winner : S.current;
+  ctx.strokeStyle = COLORS[turn];
+  ctx.globalAlpha = 0.55;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let col = 0; col <= b.cols; col++) {
+    const x = Math.min(Math.max(col * c, 0.75), geo.w - 0.75);
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, geo.h);
+  }
+  for (let row = 0; row <= b.rows; row++) {
+    const y = Math.min(Math.max(row * c, 0.75), geo.h - 0.75);
+    ctx.moveTo(0, y);
+    ctx.lineTo(geo.w, y);
+  }
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+  requestAnimationFrame(draw);
+}
+
+function drawHero(cv, mood, color) {
+  const g = Kit.sharp(cv, 220, 130);
+  Kit.drawSheep(g, 50, 92, 18, COLORS[1]);
+  Kit.drawSheep(g, 172, 96, 18, COLORS[2], { flip: true });
+  Kit.drawLamb(g, 110, 72, 110, { mood, scarf: color ?? COLORS[0] });
+}
+
+// ---------- menu ----------
+function renderSeats() {
+  $("count").textContent = setup.n;
+  const box = $("seats");
+  box.replaceChildren();
+  for (let p = 0; p < setup.n; p++) {
+    const row = document.createElement("div");
+    row.className = "seat";
+    row.innerHTML = `<span class="dot" style="color:${COLORS[p]}"></span><span class="nm">${NAMES[p]}</span>`;
+    const seg = document.createElement("div");
+    seg.className = "seg";
+    for (const [k, label] of [["human", "Human"], ["ai", "AI"]]) {
+      const btn = document.createElement("button");
+      btn.textContent = label;
+      btn.className = setup.seats[p] === k ? "on" : "";
+      btn.addEventListener("click", () => {
+        setup.seats[p] = k;
+        renderSeats();
+      });
+      seg.append(btn);
+    }
+    row.append(seg);
+    box.append(row);
+  }
+}
+
+$("fewer").addEventListener("click", () => {
+  setup.n = Math.max(2, setup.n - 1);
+  renderSeats();
+});
+$("more").addEventListener("click", () => {
+  setup.n = Math.min(8, setup.n + 1);
+  renderSeats();
+});
+$("play").addEventListener("click", start);
+$("again").addEventListener("click", start);
+$("restart").addEventListener("click", start);
+$("menu").addEventListener("click", () => {
+  gameId++;
+  Kit.anim.cur = null;
+  busy = false;
+  Kit.hide("end");
+  renderSeats();
+  Kit.show("intro");
+});
+$("to-menu").addEventListener("click", () => $("menu").click());
+Kit.muteButton($("mute"));
+new ResizeObserver(resize).observe($("stage"));
+
+renderSeats();
+drawHero($("hero-intro"), "happy");
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>
