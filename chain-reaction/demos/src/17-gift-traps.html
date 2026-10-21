@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Gift Traps</title>
+<meta name="description" content="cheekyfoundlamb demo 17: hide traps under gift tags and spring them on your opponent's chains." />
+<style>
+/*@KITCSS*/
+/*@CARDSCSS*/
+.top { min-height: 46px; padding-bottom: 2px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="status"><span class="dot" id="dot"></span><span class="txt" id="status">Gift Traps</span></div>
+    <div class="btns">
+      <button class="ib" id="restart" aria-label="Restart">↻</button>
+      <button class="ib" id="mute" aria-label="Mute">🔊</button>
+      <button class="ib" id="menu" aria-label="Menu">☰</button>
+    </div>
+  </header>
+  <div class="chips" id="chips"></div>
+  <main class="stage" id="stage">
+    <canvas id="board" aria-label="Board"></canvas>
+    <div class="chain" id="chain"></div>
+  </main>
+  <div class="hint" id="hint"></div>
+  <div class="hand" id="hand"></div>
+</div>
+
+<section class="overlay" id="intro">
+  <div class="card">
+    <canvas class="hero" id="hero-intro"></canvas>
+    <h1>Gift Traps</h1>
+    <div class="how">
+      <p>Classic Chain Reaction, 1v1. After placing a sheep, you may hide a trap face down on one of your squares (up to 3). Your opponent only sees a gift tag.</p>
+      <p>A trap springs when an enemy burst lands on it. You hold 3 traps and draw another every 3 turns.</p>
+    </div>
+    <div class="opts"><div class="optrow"><span class="lbl">Play</span><div class="seg" id="mode"><button data-mode="ai">vs AI</button><button data-mode="pvp">2 players</button></div></div></div>
+    <button class="big" id="play">Play</button>
+  </div>
+</section>
+
+<section class="overlay" id="end" hidden>
+  <div class="card">
+    <canvas class="hero" id="hero-end"></canvas>
+    <h2 id="end-title"></h2>
+    <p id="end-sub"></p>
+    <button class="big" id="again">Play again</button>
+    <button class="big alt" id="end-menu">Menu</button>
+  </div>
+</section>
+
+<script>
+/*@ENGINE*/
+/*@KIT*/
+/*@CARDS*/
+/*@TABLE*/
+
+// ---------- balance ----------
+const CONFIG = {
+  rows: 9,
+  cols: 6,
+  startTraps: 3,
+  drawEvery: 3, // draw a trap every this many of your turns
+  handMax: 5,
+  maxActive: 3, // traps you can have set at once
+  wolfBonus: 2, // sheep added when a Wolf in Sheep's Clothing square flips back
+  pool: { tden: 4, tmirror: 3, twolf: 3, tthorns: 3, tdecoy: 4 },
+  waveMs: 130,
+  aiDelayMs: 650,
+  aiMistake: 0.12,
+  safeRounds: 2,
+  maxRounds: 30, // safety net: after this many rounds, whoever holds more squares wins
+};
+Cards.safeRounds = CONFIG.safeRounds;
+
+// the five traps, as cards
+Object.assign(Cards.DEF, {
+  tden: { name: "Lions' Den", icon: "🦁", ref: "Daniel 6:22", text: "The attacking sheep vanishes, and that branch of the chain stops.", group: "parable", target: "mine" },
+  tmirror: { name: "Mirror", icon: "🪞", ref: "Proverbs 26:27", text: "The attack bounces back: the square it came from flips to you.", group: "miracle", target: "mine" },
+  twolf: { name: "Wolf in Sheep's Clothing", icon: "🐑", ref: "Matthew 7:15", text: "They take the square, but it flips back to you with +2 at the start of their next turn.", group: "wolf", target: "mine" },
+  tthorns: { name: "Thorns", icon: "🌵", ref: "Matthew 13:7", text: "The attacker skips their next turn.", group: "gift", target: "mine" },
+  tdecoy: { name: "Decoy", icon: "🎀", ref: "Matthew 10:16", text: "Nothing happens. They just didn't know.", group: "grace", target: "mine" },
+});
+
+const { $ } = Kit;
+const COLORS = [Kit.COLORS[0], Kit.COLORS[1]];
+const NAMES = ["Red", "Blue"];
+let mode = "ai";
+try {
+  mode = localStorage.getItem("cfl-17") || "ai";
+} catch {}
+let S = null;
+let gameId = 0;
+let lastHuman = -1;
+let dance = { p: -1, until: 0 };
+
+const kind = (p) => S.kinds[p];
+const humans = () => S.kinds.filter((k) => k === "human").length;
+const viewer = () => (!S ? -1 : kind(S.current) === "human" ? S.current : humans() === 1 ? S.kinds.indexOf("human") : -1);
+const activeTraps = (st, p) => st.b.trapOwner.filter((o) => o === p).length;
+
+Cards.hooks = {
+  land: (st, b, from, to, who) => {
+    const owner = b.trapOwner[to];
+    if (st.noTraps || owner < 0 || owner === who || b.owner[to] !== owner) return false;
+    const key = b.trapKey[to];
+    b.trapOwner[to] = -1;
+    b.trapKey[to] = null;
+    st.events.push({ type: "trap", key, owner, cell: to, from, who });
+    if (key === "tden") return true; // the sheep vanishes
+    if (key === "tmirror") {
+      b.owner[from] = owner;
+      b.count[from] = Math.max(1, b.count[from]);
+      return true;
+    }
+    if (key === "twolf") st.flipBack.push({ cell: to, owner, attacker: who });
+    if (key === "tthorns") st.ps[who].skip++;
+    return false; // Wolf, Thorns and Decoy let the attack land
+  },
+  emptied: (st, b, i) => {
+    b.trapOwner[i] = -1;
+    b.trapKey[i] = null;
+  },
+};
+
+function newGame() {
+  const b = Engine.createBoard(CONFIG.rows, CONFIG.cols, { still: -1, mustard: -1, trapOwner: -1, trapKey: null });
+  const st = Cards.newState(b, 2);
+  st.kinds = mode === "pvp" ? ["human", "human"] : ["human", "ai"];
+  st.flipBack = [];
+  st.turnsTaken = [0, 0];
+  st.noTraps = false;
+  st.forcedNext = 2;
+  for (const ps of st.ps) for (let k = 0; k < CONFIG.startTraps; k++) ps.hand.push(Cards.draw(CONFIG.pool));
+  return st;
+}
+
+const legalPlace = (st) => [...Array(st.b.size).keys()].filter((i) => Cards.canPlace(st, st.current, i));
+const aiScore = (st, p) => Cards.score(st, p);
+
+// ---------- flow ----------
+async function loop(myGame) {
+  while (myGame === gameId) {
+    if (S.winner < 0 && S.round > CONFIG.maxRounds) S.winner = Cards.cells(S.b, 0) >= Cards.cells(S.b, 1) ? 0 : 1;
+    if (S.winner >= 0) return finish();
+    const p = S.current;
+    if (kind(p) === "human" && humans() > 1 && lastHuman !== p) {
+      hud();
+      await Cards.passPhone(`${NAMES[p]}'s lamb`, COLORS[p]);
+      if (myGame !== gameId) return;
+    }
+    if (kind(p) === "human") lastHuman = p;
+    const bt = Cards.beginTurn(S);
+    hud();
+    if (bt.skipped) {
+      Kit.popText($("chain"), `🌵 ${NAMES[p]} is stuck in the thorns`);
+      await Kit.sleep(1000 * Cards.speed + 100);
+      Cards.endTurn(S);
+      continue;
+    }
+    // squares taken by a Wolf in Sheep's Clothing flip back now
+    const back = S.flipBack.filter((f) => f.attacker === p);
+    S.flipBack = S.flipBack.filter((f) => f.attacker !== p);
+    for (const f of back) {
+      if (S.b.owner[f.cell] !== p) continue;
+      const pre = Engine.clone(S.b);
+      Kit.popText($("chain"), "🐑 It was a wolf in sheep's clothing!");
+      Kit.sfx.howl();
+      dance = { p: f.owner, until: performance.now() + 1500 };
+      S.b.owner[f.cell] = f.owner;
+      S.b.count[f.cell] += CONFIG.wolfBonus;
+      pre.owner[f.cell] = f.owner;
+      pre.count[f.cell] = S.b.count[f.cell];
+      const ws = Cards.resolve(S);
+      await Kit.sleep(700 * Cards.speed + 100);
+      await Table.waves(ws, pre, () => Table.jump(f.owner));
+      await afterAction();
+    }
+    if (S.winner >= 0 || myGame !== gameId) continue;
+    S.turnsTaken[p]++;
+    if (S.turnsTaken[p] % CONFIG.drawEvery === 0 && S.ps[p].hand.length < CONFIG.handMax) S.ps[p].hand.push(Cards.draw(CONFIG.pool));
+    hud();
+
+    if (kind(p) === "human") {
+      const a = await Table.ask({ st: S, p, canPlace: (i) => Cards.canPlace(S, p, i), placeOk: true, cardsOk: false, endOk: false, text: "Place a sheep. Then you can hide a trap." });
+      if (myGame !== gameId) return;
+      await Table.place(p, a.cell, () => Cards.place(S, p, a.cell));
+      await afterAction();
+      if (S.winner < 0 && S.ps[p].hand.length && activeTraps(S, p) < CONFIG.maxActive && Cards.mine(S, p).some((i) => S.b.trapOwner[i] < 0)) {
+        hud();
+        for (;;) {
+          const t = await Table.ask({ st: S, p, placeOk: false, cardsOk: true, endOk: true, canPlace: () => false, text: `Hide a trap? Tap a trap, then one of your untagged squares (${activeTraps(S, p)}/${CONFIG.maxActive} set).` });
+          if (myGame !== gameId) return;
+          if (t.type !== "card" || setTrap(p, t.idx, t.target)) break;
+        }
+      }
+    } else {
+      await Kit.sleep(CONFIG.aiDelayMs);
+      if (myGame !== gameId) return;
+      S.noTraps = true; // the AI can't see your traps, so it plans as if there are none
+      const legal = legalPlace(S);
+      const cell = Math.random() < CONFIG.aiMistake ? legal[Math.floor(Math.random() * legal.length)] : Cards.bestPlace(S, p, legal, aiScore).cell;
+      S.noTraps = false;
+      await Table.place(p, cell, () => Cards.place(S, p, cell));
+      await afterAction();
+      if (S.winner < 0) aiTrap(p);
+    }
+    if (myGame !== gameId) return;
+    Cards.endTurn(S);
+  }
+}
+
+function setTrap(p, idx, cell) {
+  if (S.b.owner[cell] !== p || S.b.trapOwner[cell] >= 0) {
+    Kit.sfx.bad();
+    return false;
+  }
+  const [key] = S.ps[p].hand.splice(idx, 1);
+  S.b.trapOwner[cell] = p;
+  S.b.trapKey[cell] = key;
+  Kit.tone(520, 0.12, "triangle", 0.08, 300);
+  Kit.popText($("chain"), "🎁 A gift tag appears…");
+  hud();
+  return true;
+}
+
+// AI: hide a trap on its most threatened square, picking a trap that suits it.
+function aiTrap(p) {
+  const hand = S.ps[p].hand;
+  if (!hand.length || activeTraps(S, p) >= CONFIG.maxActive) return;
+  const b = S.b;
+  const spots = Cards.mine(S, p).filter((i) => b.trapOwner[i] < 0);
+  if (!spots.length) return;
+  const threat = (i) => Engine.neighbours(b, i).reduce((n, j) => n + (Cards.enemy(S, p, j) ? (b.count[j] >= Engine.capacity(b, j) - 1 ? 3 : 1) : 0), 0) + b.count[i] * 0.5;
+  spots.sort((x, y) => threat(y) - threat(x));
+  if (threat(spots[0]) < 1 && Math.random() < 0.5) return;
+  const pref = ["tmirror", "tden", "twolf", "tthorns", "tdecoy"];
+  const key = pref.find((k) => hand.includes(k));
+  setTrap(p, hand.indexOf(key), spots[0]);
+}
+
+// Show sprung traps, then the usual events.
+async function afterAction() {
+  const traps = S.events.filter((e) => e.type === "trap");
+  S.events = S.events.filter((e) => e.type !== "trap");
+  for (const e of traps) {
+    dance = { p: e.owner, until: performance.now() + 2000 * Cards.speed + 400 };
+    Table.jump(e.owner);
+    await Cards.reveal(e.key, COLORS[e.owner], { played: true, label: `${NAMES[e.owner]}'s trap springs: ${Cards.DEF[e.key].name}!` });
+    if (e.key === "tthorns") Kit.popText($("chain"), `${NAMES[e.who]} will miss a turn!`);
+    if (e.key === "tmirror") Kit.popText($("chain"), "The attack bounces back!");
+    if (e.key === "tdecoy") Kit.popText($("chain"), "Just a decoy! 🎀");
+    await Kit.sleep(500 * Cards.speed + 100);
+  }
+  await Table.events(S);
+  hud();
+}
+
+function finish() {
+  const w = S.winner;
+  const won = mode === "pvp" || w === 0;
+  $("end-title").textContent = mode === "pvp" ? `${NAMES[w]} wins!` : w === 0 ? "You win!" : "Blue's flock won";
+  $("end-title").style.color = COLORS[w];
+  $("end-sub").textContent = S.round > CONFIG.maxRounds ? `Time's up after ${CONFIG.maxRounds} rounds: ${NAMES[w]} holds more squares.` : `Last flock standing after ${S.round} rounds.`;
+  const g = Kit.sharp($("hero-end"), 220, 120);
+  Kit.drawLamb(g, 110, 66, 104, { scarf: COLORS[w], mood: won ? "happy" : "sad" });
+  (won ? Kit.sfx.win : Kit.sfx.lose)();
+  Kit.show("end");
+}
+
+function hud() {
+  if (!S) return;
+  const p = S.winner >= 0 ? S.winner : S.current;
+  $("dot").style.color = COLORS[p];
+  $("status").textContent = S.winner >= 0 ? `${NAMES[p]} wins!` : `${NAMES[p]}${kind(p) === "ai" ? " is thinking…" : "'s turn"} · round ${S.round}/${CONFIG.maxRounds}`;
+  Table.chips(S, S.kinds, (q) => `🎁${activeTraps(S, q)}/${CONFIG.maxActive} 🃏${S.ps[q].hand.length} `);
+  const v = viewer();
+  if (kind(S.current) !== "human" || S.winner >= 0) Table.hand(S, v, { enabled: false });
+}
+
+// Gift tags on trapped squares; their owner sees what's inside.
+function cellArt(ctx, b, i, x, y, c, t, v) {
+  const owner = b.trapOwner[i];
+  if (owner < 0) return;
+  const sway = Math.sin(t * 2 + i) * 0.15;
+  ctx.save();
+  ctx.translate(x + c * 0.78, y + c * 0.2);
+  ctx.rotate(sway);
+  ctx.fillStyle = "#fff4e0";
+  ctx.beginPath();
+  ctx.moveTo(-c * 0.12, -c * 0.06);
+  ctx.lineTo(c * 0.08, -c * 0.06);
+  ctx.lineTo(c * 0.14, 0);
+  ctx.lineTo(c * 0.08, c * 0.06);
+  ctx.lineTo(-c * 0.12, c * 0.06);
+  ctx.closePath();
+  ctx.fill();
+  Kit.circle(ctx, c * 0.07, 0, c * 0.02, "#c84b5a");
+  ctx.restore();
+  if (owner === v) {
+    ctx.font = `${Math.round(c * 0.22)}px system-ui`;
+    ctx.textBaseline = "middle";
+    ctx.fillText(Cards.DEF[b.trapKey[i]].icon, x + c * 0.03, y + c * 0.2);
+  }
+  // the owner's lamb does a cheeky dance on its traps after one springs
+  if (dance.p === owner && performance.now() < dance.until) Kit.drawLamb(ctx, x + c * 0.5, y + c * 0.5 + Math.sin(t * 14) * c * 0.06, c * 0.5, { scarf: COLORS[owner], t, flip: Math.sin(t * 7) > 0 });
+}
+
+function renderMode() {
+  for (const btn of $("mode").querySelectorAll("button")) btn.classList.toggle("on", btn.dataset.mode === mode);
+}
+$("mode").addEventListener("click", (e) => {
+  const m = e.target.closest("button")?.dataset.mode;
+  if (!m) return;
+  mode = m;
+  renderMode();
+});
+
+function start() {
+  gameId++;
+  Table.cancelAsk();
+  Kit.anim.cur = null;
+  Cards.fx.cur = null;
+  try {
+    localStorage.setItem("cfl-17", mode);
+  } catch {}
+  S = newGame();
+  lastHuman = -1;
+  for (const id of ["intro", "end"]) Kit.hide(id);
+  Table.resize();
+  loop(gameId);
+}
+
+$("play").addEventListener("click", start);
+$("again").addEventListener("click", start);
+$("restart").addEventListener("click", () => S && start());
+const toMenu = () => {
+  gameId++;
+  Table.cancelAsk();
+  Kit.anim.cur = null;
+  Cards.fx.cur = null;
+  Kit.hide("end");
+  Kit.show("intro");
+};
+$("menu").addEventListener("click", toMenu);
+$("end-menu").addEventListener("click", toMenu);
+Kit.muteButton($("mute"));
+
+Table.init({ colors: COLORS, names: NAMES, state: () => S, viewer, cellArt, waveMs: CONFIG.waveMs });
+renderMode();
+{
+  const g = Kit.sharp($("hero-intro"), 220, 120);
+  g.fillStyle = "#fff4e0";
+  g.fillRect(150, 50, 40, 22);
+  Kit.circle(g, 182, 61, 4, "#c84b5a");
+  Kit.drawLamb(g, 85, 66, 100, { scarf: COLORS[0], mood: "happy" });
+}
+</script>
+</body>
+</html>
