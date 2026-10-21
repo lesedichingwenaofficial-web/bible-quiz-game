@@ -242,7 +242,8 @@ function aiMove(st) {
     }
     if (worst !== Infinity) cand.score = worst;
   }
-  return Kit.pickBest(first.map(({ move, score }) => ({ move, score })), CONFIG.aiMistake);
+  // Only the moves checked against a reply are compared, so scores are like for like.
+  return Kit.pickBest(first.slice(0, CONFIG.aiLookahead).map(({ move, score }) => ({ move, score })), CONFIG.aiMistake);
 }
 
 // ---------- flow ----------

@@ -82,6 +82,7 @@ const CONFIG = {
   aiMistake: 0.15,
   aiLookahead: 6,
   lambDanger: 60, // AI weight for shadow about to burst onto the lamb
+  wolfHunt: 6, // wolf AI: how strongly it pushes shadow toward the lamb
   chainShakeAt: 5,
   chainBigShakeAt: 10,
 };
@@ -213,6 +214,16 @@ function scoreFor(st, side) {
   const share = lightShare(st);
   s += (side === LIGHT ? 1 : -1) * share * 40;
   if (st.lamb >= 0) {
+    // The wolf only wins by reaching the lamb, so shadow close to him is worth more.
+    const lr = Engine.rowOf(b, st.lamb);
+    const lc = Engine.colOf(b, st.lamb);
+    let hunt = 0;
+    for (let i = 0; i < b.size; i++) {
+      if (b.owner[i] !== SHADOW) continue;
+      const d = Math.abs(Engine.rowOf(b, i) - lr) + Math.abs(Engine.colOf(b, i) - lc);
+      hunt += (b.count[i] / cap(b, i)) * (CONFIG.wolfHunt / (1 + d));
+    }
+    s += side === SHADOW ? hunt * 4 : -hunt;
     // Each square next to the lamb is a threat by how few wolf moves it needs to burst.
     for (const n of Engine.neighbours(b, st.lamb)) {
       if (b.owner[n] === LIGHT && b.count[n] > 0) continue;
@@ -246,7 +257,8 @@ function aiMove(st) {
     }
     cand.score = mine;
   }
-  return Kit.pickBest(first.map(({ move, score }) => ({ move, score })), CONFIG.aiMistake);
+  // Only the moves checked against a reply are compared, so scores are like for like.
+  return Kit.pickBest(first.slice(0, CONFIG.aiLookahead).map(({ move, score }) => ({ move, score })), CONFIG.aiMistake);
 }
 
 // ---------- flow ----------

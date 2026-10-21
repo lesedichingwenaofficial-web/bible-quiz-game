@@ -1,0 +1,630 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Fruits of the Spirit</title>
+<meta name="description" content="cheekyfoundlamb demo 5: a five-board roguelike run against the wolf, with stacking blessings." />
+<style>
+/*@KITCSS*/
+.bless { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; padding: 0 0 8px; min-height: 44px; }
+.bless button { width: 44px; height: 44px; border-radius: 12px; background: var(--meadow); font-size: 1.35rem; }
+.bless .none { color: var(--muted); font-size: 0.9rem; align-self: center; }
+.toast {
+  position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); width: min(340px, 92%);
+  padding: 12px 14px; border-radius: 16px; background: rgba(19, 32, 26, 0.95); box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+  text-align: left; font-size: 0.95rem; line-height: 1.35;
+}
+.toast b { color: var(--sun); }
+.picks { display: grid; gap: 8px; margin-top: 12px; }
+.pick { display: flex; gap: 12px; align-items: center; text-align: left; padding: 12px; border-radius: 16px; background: var(--meadow-2); }
+.pick .ic { font-size: 1.8rem; flex: none; }
+.pick b { display: block; color: var(--sun); }
+.pick span { color: var(--cream); font-size: 0.92rem; line-height: 1.3; }
+.pick.on { outline: 3px solid var(--sun); }
+.boards { display: flex; justify-content: center; gap: 6px; margin: 8px 0 2px; }
+.boards i { width: 28px; height: 8px; border-radius: 4px; background: var(--meadow-2); }
+.boards i.done { background: var(--sun); }
+.boards i.now { background: var(--cream); }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="status"><span class="dot" id="dot"></span><span class="txt" id="status">Fruits of the Spirit</span></div>
+    <div class="btns">
+      <button class="ib" id="restart" aria-label="Restart board">↻</button>
+      <button class="ib" id="mute" aria-label="Mute">🔊</button>
+      <button class="ib" id="menu" aria-label="Menu">☰</button>
+    </div>
+  </header>
+  <main class="stage" id="stage">
+    <canvas id="board" aria-label="Board"></canvas>
+    <div class="chain" id="chain"></div>
+    <div class="toast" id="toast" hidden></div>
+  </main>
+  <div class="bless" id="bless"></div>
+</div>
+
+<section class="overlay" id="intro">
+  <div class="card">
+    <canvas class="hero" id="hero-intro"></canvas>
+    <h1>Fruits of the Spirit</h1>
+    <div class="how">
+      <p>Beat the wolf on 5 boards in a row. Classic Chain Reaction: fill squares until they burst and win his sheep over.</p>
+      <p>After each win, pick 1 of 3 blessings. They stack for the whole run. Board 5 is the boss: every third turn the wolf places twice.</p>
+    </div>
+    <button class="big" id="play">Start a run</button>
+    <button class="big alt" id="sandbox-btn">Sandbox</button>
+  </div>
+</section>
+
+<section class="overlay" id="pick" hidden>
+  <div class="card">
+    <h2 id="pick-title">Board won!</h2>
+    <div class="boards" id="pick-boards"></div>
+    <p>Choose a blessing for the rest of the run.</p>
+    <div class="picks" id="picks"></div>
+  </div>
+</section>
+
+<section class="overlay" id="sandbox" hidden>
+  <div class="card">
+    <h2>Sandbox</h2>
+    <p>Switch on any blessings, then play one board against a medium wolf.</p>
+    <div class="picks" id="sb-list"></div>
+    <div class="opts"><div class="optrow"><span class="lbl">Wolf</span><div class="seg" id="sb-wolf"></div></div></div>
+    <button class="big" id="sb-play">Play</button>
+    <button class="big alt" id="sb-back">Back</button>
+  </div>
+</section>
+
+<section class="overlay" id="end" hidden>
+  <div class="card">
+    <canvas class="hero" id="hero-end"></canvas>
+    <h2 id="end-title"></h2>
+    <p id="end-sub"></p>
+    <button class="big" id="again">New run</button>
+    <button class="big alt" id="end-menu">Menu</button>
+  </div>
+</section>
+
+<script>
+/*@ENGINE*/
+/*@KIT*/
+
+// ---------- balance ----------
+const CONFIG = {
+  rows: 8,
+  cols: 6,
+  boards: 5,
+  // wolf strength per board: mistake = chance of a weaker move, look = moves checked against your reply
+  wolf: [
+    { mistake: 0.45, look: 0 },
+    { mistake: 0.35, look: 0 },
+    { mistake: 0.25, look: 4 },
+    { mistake: 0.15, look: 6 },
+    { mistake: 0.08, look: 8 },
+  ],
+  bossEvery: 3, // on the boss board the wolf places twice every this many turns
+  goodnessChain: 5, // bursts in one move that earn Goodness's bonus turn
+  waveMs: 130,
+  maxWaves: 200,
+  aiDelayMs: 600,
+  chainShakeAt: 5,
+  chainBigShakeAt: 10,
+};
+
+const BLESSINGS = {
+  love: { icon: "❤️", name: "Love", text: "Squares you take from the wolf can't be taken back on his next turn." },
+  joy: { icon: "☀️", name: "Joy", text: "Your bursts also hit the diagonal neighbours." },
+  peace: { icon: "🕊️", name: "Peace", text: "Your first square each board gets a dove. The wolf can never take it." },
+  patience: { icon: "⏳", name: "Patience", text: "Your squares hold 1 extra sheep before bursting, then send 2 into each neighbour." },
+  kindness: { icon: "🤝", name: "Kindness", text: "When you place, one of your neighbouring squares also gets +1." },
+  goodness: { icon: "🌟", name: "Goodness", text: `A chain of ${CONFIG.goodnessChain}+ bursts gives you a bonus turn (once per turn).` },
+  faithfulness: { icon: "⚓", name: "Faithfulness", text: "Start every board already holding all 4 corners with 1 sheep." },
+  gentleness: { icon: "🪶", name: "Gentleness", text: "When the wolf hits a square of yours with 2+ sheep, it loses 1 instead of flipping." },
+  selfcontrol: { icon: "🛡️", name: "Self-control", text: "Wolf chains stop at your squares: they still flip, but can't burst that turn." },
+};
+
+const { $ } = Kit;
+const ME = 0;
+const WOLF = 1;
+const canvas = $("board");
+const ctx = canvas.getContext("2d");
+let geo = { cell: 40, dpr: 1 };
+let B = new Set(); // blessings in effect
+let run = null; // { board: 1..5, sandbox, wolfLevel }
+let S = null;
+let busy = false;
+let gameId = 0;
+
+// ---------- rules ----------
+const has = (k) => B.has(k);
+const capOf = (b, i) => Engine.capacity(b, i) + (b.owner[i] === ME && has("patience") ? 1 : 0);
+const cellsOf = (b, p) => b.owner.reduce((n, o) => n + (o === p ? 1 : 0), 0);
+
+function newBoard() {
+  const b = Engine.createBoard(CONFIG.rows, CONFIG.cols, { dove: false, love: -1 });
+  if (has("faithfulness")) for (const i of [0, b.cols - 1, b.size - b.cols, b.size - 1]) Engine.place(b, i, ME);
+  return { b, current: ME, turn: 0, moved: [false, false], winner: -1, bonusUsed: false, bonus: false, wolfTurns: 0, wolfSecond: false, dovePlaced: false };
+}
+
+const cloneState = (st) => ({ ...st, b: Engine.clone(st.b), moved: st.moved.slice() });
+const isBoss = () => run && !run.sandbox && run.board === CONFIG.boards;
+
+function isLegal(st, p, i) {
+  const b = st.b;
+  if (p === WOLF && b.dove[i]) return false;
+  return b.owner[i] === -1 || b.owner[i] === p;
+}
+
+function legalMoves(st) {
+  const out = [];
+  for (let i = 0; i < st.b.size; i++) if (isLegal(st, st.current, i)) out.push(i);
+  return out;
+}
+
+// Plays the current player's move at i on a copy of st.
+function simulate(st0, i, record) {
+  const st = cloneState(st0);
+  const b = st.b;
+  const p = st.current;
+  const turn = st.turn;
+  Engine.place(b, i, p);
+  if (p === ME && has("peace") && !st.dovePlaced) {
+    b.dove[i] = true;
+    st.dovePlaced = true;
+  }
+  let kind = -1;
+  if (p === ME && has("kindness")) {
+    const mine = Engine.neighbours(b, i).filter((n) => b.owner[n] === ME && b.count[n] > 0);
+    if (mine.length) {
+      kind = mine[Math.floor(Math.random() * mine.length)];
+      b.count[kind]++;
+    }
+  }
+  const pre = record ? Engine.clone(b) : null;
+  st.moved[p] = true;
+  const frozen = new Set();
+  const over = () => st.moved[ME] && st.moved[WOLF] && (cellsOf(b, ME) === 0 || cellsOf(b, WOLF) === 0);
+  const { waves, capped } = Engine.resolve(
+    b,
+    {
+      cap: capOf,
+      canBurst: (bb, c) => bb.owner[c] >= 0 && !frozen.has(c),
+      targets: (bb, c) => {
+        if (bb.owner[c] !== ME) return Engine.neighbours(bb, c);
+        const t = Engine.neighbours(bb, c, has("joy") ? Engine.ALL8 : Engine.ORTHO);
+        return has("patience") ? t.concat(t) : t;
+      },
+      emptied: (bb, c) => {
+        if (!bb.dove[c]) bb.owner[c] = -1;
+      },
+      land: (bb, from, to, who) => {
+        if (who === WOLF && bb.owner[to] === ME) {
+          if (bb.dove[to] || bb.love[to] === turn) return; // protected: the wolf's sheep is turned away
+          if (has("gentleness") && bb.count[to] >= 2) {
+            bb.count[to]--;
+            return;
+          }
+          if (has("selfcontrol")) frozen.add(to);
+        }
+        if (who === ME && bb.owner[to] === WOLF && has("love")) bb.love[to] = turn + 1;
+        bb.owner[to] = who;
+        bb.count[to]++;
+      },
+      done: over,
+      maxWaves: CONFIG.maxWaves,
+    },
+    record
+  );
+  // Squares frozen by Self-control keep at most one short of bursting.
+  for (const c of frozen) if (b.owner[c] === WOLF) b.count[c] = Math.min(b.count[c], capOf(b, c) - 1);
+  const bursts = waves.reduce((n, w) => n + w.bursts.length, 0);
+  st.turn++;
+  st.bonus = false;
+  if (st.moved[ME] && st.moved[WOLF]) {
+    if (cellsOf(b, WOLF) === 0 || (capped && p === ME)) st.winner = ME;
+    else if (cellsOf(b, ME) === 0 || (capped && p === WOLF)) st.winner = WOLF;
+  }
+  if (st.winner < 0) {
+    if (p === ME) {
+      if (has("goodness") && bursts >= CONFIG.goodnessChain && !st.bonusUsed) {
+        st.bonusUsed = true;
+        st.bonus = true;
+      } else st.current = WOLF;
+    } else if (st.wolfSecond) {
+      st.wolfSecond = false;
+      st.current = ME;
+    } else {
+      st.wolfTurns++;
+      if (isBoss() && st.wolfTurns % CONFIG.bossEvery === 0) st.wolfSecond = true;
+      else st.current = ME;
+    }
+    if (st.current === ME && p === WOLF) st.bonusUsed = false;
+  }
+  return { st, pre, waves, bursts, kind };
+}
+
+// ---------- AI (the wolf; the tests also use it for the lamb) ----------
+function scoreFor(st, side) {
+  if (st.winner >= 0) return st.winner === side ? 1e6 : -1e6;
+  const b = st.b;
+  return Kit.evaluate(b, (o) => o === side, (o) => o === 1 - side, (i) => capOf(b, i)) + (cellsOf(b, side) - cellsOf(b, 1 - side)) * 1.5;
+}
+
+function aiMove(st, level) {
+  const me = st.current;
+  const first = legalMoves(st).map((move) => {
+    const r = simulate(st, move, false);
+    return { move, r, score: scoreFor(r.st, me) };
+  });
+  first.sort((a, b) => b.score - a.score);
+  for (const cand of first.slice(0, level.look)) {
+    const after = cand.r.st;
+    if (after.winner >= 0 || after.current === me) continue;
+    let best = -Infinity;
+    let mine = cand.score;
+    for (const m of legalMoves(after)) {
+      const r2 = simulate(after, m, false);
+      const theirs = scoreFor(r2.st, after.current);
+      if (theirs > best) {
+        best = theirs;
+        mine = scoreFor(r2.st, me);
+      }
+    }
+    cand.score = mine;
+  }
+  // Only the moves checked against a reply are compared, so scores are like for like.
+  const pool = level.look ? first.slice(0, level.look) : first;
+  return Kit.pickBest(pool.map(({ move, score }) => ({ move, score })), level.mistake);
+}
+
+const wolfLevel = () => (run.sandbox ? CONFIG.wolf[run.wolfLevel] : CONFIG.wolf[run.board - 1]);
+
+// ---------- flow ----------
+async function playAt(i) {
+  busy = true;
+  const myGame = gameId;
+  const p = S.current;
+  const r = simulate(S, i, true);
+  Kit.sfx.place();
+  S = { ...S, b: r.pre };
+  await Kit.anim.play(r.waves, CONFIG.waveMs, (k) => {
+    Kit.sfx.burst(p === WOLF ? k - 7 : k);
+    if (k >= 1) Kit.popText($("chain"), `Chain x${k + 1}!`);
+    if (k === CONFIG.chainShakeAt) Kit.shake($("stage"));
+    if (k === CONFIG.chainBigShakeAt) Kit.shake($("stage"), true);
+  }, r.pre);
+  if (myGame !== gameId) return;
+  S = r.st;
+  if (S.bonus) {
+    Kit.popText($("chain"), "🌟 Bonus turn!");
+    Kit.sfx.chime(7);
+  } else if (S.wolfSecond) {
+    Kit.popText($("chain"), "The wolf goes again!");
+    Kit.sfx.howl();
+  }
+  busy = false;
+  next();
+}
+
+async function next() {
+  hud();
+  if (S.winner >= 0) {
+    await Kit.sleep(700);
+    return boardOver();
+  }
+  if (S.current === WOLF || autoplay) {
+    busy = true;
+    const myGame = gameId;
+    await Kit.sleep(CONFIG.aiDelayMs);
+    if (myGame !== gameId) return;
+    playAt(aiMove(S, S.current === WOLF ? wolfLevel() : CONFIG.wolf[2]));
+  }
+}
+let autoplay = false; // tests only: lets the AI play the lamb's side too
+
+function boardOver() {
+  if (S.winner === WOLF) {
+    Kit.sfx.lose();
+    $("end-title").textContent = "The wolf took the field";
+    $("end-sub").textContent = run.sandbox ? "Try another combo." : `You made it to board ${run.board} of ${CONFIG.boards}.`;
+    $("again").textContent = run.sandbox ? "Back to sandbox" : "New run";
+    hero($("hero-end"), "sad");
+    Kit.show("end");
+    return;
+  }
+  Kit.sfx.win();
+  if (run.sandbox) {
+    $("end-title").textContent = "You won the board!";
+    $("end-sub").textContent = `Blessings: ${[...B].map((k) => BLESSINGS[k].name).join(", ") || "none"}.`;
+    $("again").textContent = "Back to sandbox";
+    hero($("hero-end"), "happy");
+    Kit.show("end");
+    return;
+  }
+  if (run.board === CONFIG.boards) {
+    $("end-title").textContent = "The wolf is beaten!";
+    $("end-sub").textContent = `All ${CONFIG.boards} boards won with ${B.size} blessings: ${[...B].map((k) => BLESSINGS[k].icon).join(" ")}`;
+    $("again").textContent = "New run";
+    hero($("hero-end"), "happy");
+    Kit.show("end");
+    return;
+  }
+  showPick();
+}
+
+function showPick() {
+  const pool = Object.keys(BLESSINGS).filter((k) => !B.has(k)).sort(() => Math.random() - 0.5).slice(0, 3);
+  $("pick-title").textContent = `Board ${run.board} won!`;
+  $("pick-boards").innerHTML = Array.from({ length: CONFIG.boards }, (_, k) => `<i class="${k < run.board ? "done" : ""}"></i>`).join("");
+  const box = $("picks");
+  box.replaceChildren();
+  for (const k of pool) {
+    const btn = document.createElement("button");
+    btn.className = "pick";
+    btn.innerHTML = `<span class="ic">${BLESSINGS[k].icon}</span><div><b>${BLESSINGS[k].name}</b><span>${BLESSINGS[k].text}</span></div>`;
+    btn.addEventListener("click", () => {
+      B.add(k);
+      Kit.hide("pick");
+      run.board++;
+      startBoard();
+    });
+    box.append(btn);
+  }
+  Kit.show("pick");
+}
+
+function startBoard() {
+  gameId++;
+  Kit.anim.cur = null;
+  busy = false;
+  S = newBoard();
+  for (const id of ["intro", "end", "pick", "sandbox"]) Kit.hide(id);
+  Kit.hide("toast");
+  resize();
+  renderBlessings();
+  next();
+}
+
+function startRun() {
+  B = new Set();
+  run = { board: 1, sandbox: false };
+  startBoard();
+}
+
+function hud() {
+  if (!S) return;
+  const p = S.winner >= 0 ? S.winner : S.current;
+  $("dot").style.color = p === ME ? "#fff4d6" : "#8a87a3";
+  const where = run.sandbox ? "Sandbox" : `Board ${run.board}/${CONFIG.boards}${isBoss() ? " · Boss" : ""}`;
+  let t;
+  if (S.winner >= 0) t = S.winner === ME ? "Board won!" : "The wolf wins";
+  else if (S.current === WOLF) t = `${where} · Wolf thinking…`;
+  else t = `${where} · ${S.bonus ? "Bonus turn!" : "Your turn"}`;
+  $("status").textContent = t;
+}
+
+function renderBlessings() {
+  const box = $("bless");
+  box.replaceChildren();
+  if (!B.size) {
+    box.innerHTML = '<span class="none">No blessings yet. Win a board to earn one.</span>';
+    return;
+  }
+  for (const k of B) {
+    const btn = document.createElement("button");
+    btn.textContent = BLESSINGS[k].icon;
+    btn.setAttribute("aria-label", BLESSINGS[k].name);
+    btn.addEventListener("click", () => toast(k));
+    box.append(btn);
+  }
+}
+
+let toastTimer = 0;
+function toast(k) {
+  const el = $("toast");
+  el.innerHTML = `<b>${BLESSINGS[k].icon} ${BLESSINGS[k].name}</b><br>${BLESSINGS[k].text}`;
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => (el.hidden = true), 3500);
+}
+
+canvas.addEventListener("pointerdown", (e) => {
+  Kit.hide("toast");
+  if (!S || busy || S.winner >= 0 || S.current !== ME || autoplay) return;
+  const { row, col } = Kit.cellAt(canvas, e, geo.cell);
+  if (!Engine.inside(S.b, row, col)) return;
+  const i = row * S.b.cols + col;
+  if (isLegal(S, ME, i)) playAt(i);
+  else Kit.sfx.bad();
+});
+
+// ---------- drawing ----------
+function resize() {
+  if (!S) return;
+  geo = Kit.fitBoard(canvas, $("stage"), CONFIG.cols, CONFIG.rows);
+}
+
+const SPOTS = {
+  1: [[0, 0]],
+  2: [[-0.2, 0], [0.2, 0.02]],
+  3: [[-0.2, 0.12], [0.2, 0.12], [0, -0.16]],
+  4: [[-0.2, -0.15], [0.2, -0.15], [-0.2, 0.17], [0.2, 0.17]],
+};
+
+function piece(x, y, c, side, flip, t) {
+  if (side === ME) Kit.drawSheep(ctx, x, y, c * 0.14, "#fff4d6", { flip });
+  else Kit.drawWolf(ctx, x, y + c * 0.03, c * 0.28, { t, color: "#8a87a3" });
+}
+
+function dove(x, y, s) {
+  Kit.ellipse(ctx, x, y, s, s * 0.55, -0.2, "#ffffff");
+  Kit.circle(ctx, x + s * 0.8, y - s * 0.35, s * 0.35, "#ffffff");
+  ctx.fillStyle = "#e6e6f0";
+  ctx.beginPath();
+  ctx.moveTo(x - s * 0.2, y - s * 0.2);
+  ctx.quadraticCurveTo(x - s * 0.1, y - s * 1.3, x + s * 0.5, y - s * 0.4);
+  ctx.fill();
+  ctx.fillStyle = "#f2a33a";
+  ctx.beginPath();
+  ctx.moveTo(x + s * 1.1, y - s * 0.4);
+  ctx.lineTo(x + s * 1.4, y - s * 0.3);
+  ctx.lineTo(x + s * 1.1, y - s * 0.2);
+  ctx.fill();
+}
+
+function draw(now) {
+  Kit.anim.step(now);
+  const t = now / 1000;
+  ctx.setTransform(geo.dpr, 0, 0, geo.dpr, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (!S) return requestAnimationFrame(draw);
+  const a = Kit.anim.cur;
+  const b = a ? Kit.anim.base() : S.b;
+  const wave = a && a.start !== null ? a.waves[a.i] : null;
+  const counts = b.count.slice();
+  if (wave) for (const { from } of wave.bursts) counts[from] = Math.max(0, counts[from] - capOf(b, from));
+  const c = geo.cell;
+  for (let i = 0; i < b.size; i++) {
+    const x = Engine.colOf(b, i) * c;
+    const y = Engine.rowOf(b, i) * c;
+    const chk = (Engine.rowOf(b, i) + Engine.colOf(b, i)) % 2;
+    const o = b.owner[i];
+    ctx.fillStyle = o === ME ? (chk ? "#79a957" : "#82b25f") : o === WOLF ? (chk ? "#2b2838" : "#322e42") : chk ? "#3d6a45" : "#44734c";
+    ctx.fillRect(x, y, c, c);
+    if (b.dove[i]) dove(x + c * 0.66, y + c * 0.24, c * 0.13);
+    if (b.love[i] === S.turn && o === ME && S.current === WOLF) {
+      ctx.font = `${Math.round(c * 0.22)}px system-ui`;
+      ctx.fillText("❤️", x + c * 0.04, y + c * 0.26);
+    }
+  }
+  for (let i = 0; i < b.size; i++) {
+    const n = counts[i];
+    if (n <= 0 || b.owner[i] < 0) continue;
+    const nervous = n >= capOf(b, i) - 1;
+    const k = Math.min(n, 4);
+    for (let s = 0; s < k; s++) {
+      const [dx, dy] = SPOTS[k][s];
+      const jx = nervous ? Math.sin(t * 40 + i * 3 + s) * c * 0.02 : 0;
+      piece((Engine.colOf(b, i) + 0.5 + dx) * c + jx, (Engine.rowOf(b, i) + 0.5 + dy) * c, c, b.owner[i], s % 2 === 1, t + i + s);
+    }
+    if (n > 4) {
+      ctx.fillStyle = "#ffcf4a";
+      ctx.font = `900 ${Math.round(c * 0.24)}px system-ui`;
+      ctx.fillText(n, (Engine.colOf(b, i) + 0.72) * c, (Engine.rowOf(b, i) + 0.95) * c);
+    }
+  }
+  if (wave) {
+    const p = Kit.anim.t(now);
+    const e = 1 - (1 - p) * (1 - p);
+    for (const { from, to, who } of wave.bursts) {
+      const fx = (Engine.colOf(b, from) + 0.5) * c;
+      const fy = (Engine.rowOf(b, from) + 0.5) * c;
+      for (const d of to) {
+        const tx = (Engine.colOf(b, d) + 0.5) * c;
+        const ty = (Engine.rowOf(b, d) + 0.5) * c;
+        piece(fx + (tx - fx) * e, fy + (ty - fy) * e - Math.sin(Math.PI * p) * c * 0.3, c, who, tx < fx, t);
+      }
+    }
+  }
+  ctx.strokeStyle = S.current === ME ? "rgba(255,233,168,0.5)" : "rgba(140,130,180,0.6)";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let col = 0; col <= b.cols; col++) {
+    const x = Math.min(Math.max(col * c, 0.75), geo.w - 0.75);
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, geo.h);
+  }
+  for (let row = 0; row <= b.rows; row++) {
+    const y = Math.min(Math.max(row * c, 0.75), geo.h - 0.75);
+    ctx.moveTo(0, y);
+    ctx.lineTo(geo.w, y);
+  }
+  ctx.stroke();
+  requestAnimationFrame(draw);
+}
+
+function hero(cv, mood) {
+  const g = Kit.sharp(cv, 240, 130);
+  const fruits = ["#e24a4a", "#f2a33a", "#8f6bff", "#7cc35a", "#ffcf4a"];
+  fruits.forEach((col, k) => Kit.circle(g, 30 + k * 45, 22 + (k % 2) * 10, 9, col));
+  if (mood === "sad") Kit.drawWolf(g, 185, 80, 80, { mood: "happy" });
+  Kit.drawLamb(g, mood === "sad" ? 90 : 120, 78, 104, { mood });
+}
+
+// ---------- sandbox ----------
+let sbPick = new Set();
+let sbWolf = 2;
+function renderSandbox() {
+  const list = $("sb-list");
+  list.replaceChildren();
+  for (const [k, v] of Object.entries(BLESSINGS)) {
+    const btn = document.createElement("button");
+    btn.className = "pick" + (sbPick.has(k) ? " on" : "");
+    btn.innerHTML = `<span class="ic">${v.icon}</span><div><b>${v.name}</b><span>${v.text}</span></div>`;
+    btn.addEventListener("click", () => {
+      sbPick.has(k) ? sbPick.delete(k) : sbPick.add(k);
+      renderSandbox();
+    });
+    list.append(btn);
+  }
+  const seg = $("sb-wolf");
+  seg.replaceChildren();
+  ["Easy", "Medium", "Hard"].forEach((label, k) => {
+    const lv = [0, 2, 4][k];
+    const btn = document.createElement("button");
+    btn.textContent = label;
+    btn.className = sbWolf === lv ? "on" : "";
+    btn.addEventListener("click", () => {
+      sbWolf = lv;
+      renderSandbox();
+    });
+    seg.append(btn);
+  });
+}
+
+function openSandbox() {
+  gameId++;
+  Kit.anim.cur = null;
+  for (const id of ["intro", "end", "pick"]) Kit.hide(id);
+  renderSandbox();
+  Kit.show("sandbox");
+}
+
+$("sandbox-btn").addEventListener("click", openSandbox);
+$("sb-back").addEventListener("click", () => {
+  Kit.hide("sandbox");
+  Kit.show("intro");
+});
+$("sb-play").addEventListener("click", () => {
+  B = new Set(sbPick);
+  run = { board: 1, sandbox: true, wolfLevel: sbWolf };
+  startBoard();
+});
+
+$("play").addEventListener("click", startRun);
+$("again").addEventListener("click", () => (run?.sandbox ? openSandbox() : startRun()));
+$("restart").addEventListener("click", () => {
+  if (run) startBoard();
+});
+const toMenu = () => {
+  gameId++;
+  Kit.anim.cur = null;
+  busy = false;
+  for (const id of ["end", "pick", "sandbox"]) Kit.hide(id);
+  Kit.show("intro");
+};
+$("menu").addEventListener("click", toMenu);
+$("end-menu").addEventListener("click", toMenu);
+Kit.muteButton($("mute"));
+new ResizeObserver(resize).observe($("stage"));
+
+hero($("hero-intro"), "happy");
+renderBlessings();
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>
