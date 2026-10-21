@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Loaves &amp; Fishes</title>
+<meta name="description" content="cheekyfoundlamb demo 4: a limited-move chain puzzle with baskets of bread." />
+<style>
+/*@KITCSS*/
+.loaves { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 12px; background: var(--meadow); font-weight: 900; }
+.loaves.gain { animation: gain 0.5s ease-out; }
+@keyframes gain { 40% { transform: scale(1.25); background: var(--sun); color: #2a2010; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="status"><span class="txt" id="status">Level 1</span><span class="loaves" id="loaves">🍞 10</span></div>
+    <div class="btns">
+      <button class="ib" id="restart" aria-label="Restart run">↻</button>
+      <button class="ib" id="mute" aria-label="Mute">🔊</button>
+      <button class="ib" id="menu" aria-label="Menu">☰</button>
+    </div>
+  </header>
+  <main class="stage" id="stage">
+    <canvas id="board" aria-label="Baskets"></canvas>
+    <div class="chain" id="chain"></div>
+  </main>
+</div>
+
+<section class="overlay" id="intro">
+  <div class="card">
+    <canvas class="hero" id="hero-intro"></canvas>
+    <h1>Loaves &amp; Fishes</h1>
+    <div class="how">
+      <p>Tap a basket to add a loaf. That costs one of your loaves. At 5 the basket bursts, throwing bread up, down, left and right into the next basket in line.</p>
+      <p>Clear every basket to move on. Every 3 bursts in a chain earns a loaf back. Run out of loaves with baskets left and the run ends.</p>
+    </div>
+    <button class="big" id="play">Play</button>
+  </div>
+</section>
+
+<section class="overlay" id="end" hidden>
+  <div class="card">
+    <canvas class="hero" id="hero-end"></canvas>
+    <h2 id="end-title"></h2>
+    <p id="end-sub"></p>
+    <button class="big" id="again">Play again</button>
+  </div>
+</section>
+
+<script>
+/*@ENGINE*/
+/*@KIT*/
+
+// ---------- balance ----------
+const CONFIG = {
+  size: 6, // board is size x size
+  levels: 10,
+  startLoaves: 10,
+  burstAt: 5, // loaves in a basket that make it burst
+  bonusEvery: 3, // +1 loaf for every this many bursts in one chain
+  bigChain: 12, // a chain this long pays the big bonus
+  bigChainBonus: 3,
+  levelBonus: 1, // loaves for clearing a level
+  baskets: (level) => Math.min(30, 12 + level * 2), // baskets on the board for level 1, 2, ...
+  // odds of a basket starting with 1, 2, 3 or 4 loaves
+  fullness: (level) => (level <= 3 ? [0.05, 0.15, 0.35, 0.45] : level <= 6 ? [0.1, 0.25, 0.35, 0.3] : [0.2, 0.3, 0.3, 0.2]),
+  waveMs: 160,
+  maxWaves: 200,
+};
+
+const { $ } = Kit;
+const canvas = $("board");
+const ctx = canvas.getContext("2d");
+const DIRS = Engine.ORTHO; // up, right, down, left
+let geo = { cell: 50, dpr: 1 };
+let S = null; // { b, loaves, level, total }
+let busy = false;
+let lambMood = { mood: "happy", until: 0 };
+let gameId = 0;
+
+// ---------- rules ----------
+function makeLevel(level) {
+  const n = CONFIG.size;
+  const b = Engine.createBoard(n, n);
+  const cells = [...Array(b.size).keys()].sort(() => Math.random() - 0.5).slice(0, CONFIG.baskets(level));
+  const odds = CONFIG.fullness(level);
+  for (const i of cells) {
+    let r = Math.random();
+    let k = 0;
+    while (k < 3 && r > odds[k]) r -= odds[k++];
+    Engine.place(b, i, 0, k + 1);
+  }
+  return b;
+}
+
+// Where each of the 4 pieces of bread goes: a basket index, or -(1 + direction) when it flies off.
+// Baskets bursting in the same wave are skipped, since they're gone.
+function targets(b, i) {
+  const out = [];
+  DIRS.forEach(([dr, dc], d) => {
+    let r = Engine.rowOf(b, i) + dr;
+    let c = Engine.colOf(b, i) + dc;
+    while (Engine.inside(b, r, c)) {
+      const j = r * b.cols + c;
+      if (b.count[j] > 0 && b.count[j] < CONFIG.burstAt) return out.push(j);
+      r += dr;
+      c += dc;
+    }
+    out.push(-(1 + d));
+  });
+  return out;
+}
+
+const RULES = {
+  cap: () => CONFIG.burstAt,
+  canBurst: (b, i) => b.count[i] > 0,
+  targets,
+  spend: (b, i) => b.count[i], // the whole basket goes
+  land: (b, from, to) => {
+    if (to >= 0) b.count[to]++;
+  },
+  maxWaves: CONFIG.maxWaves,
+};
+
+function basketsLeft(b) {
+  let n = 0;
+  for (let i = 0; i < b.size; i++) if (b.count[i] > 0) n++;
+  return n;
+}
+
+function chainReward(bursts) {
+  return Math.floor(bursts / CONFIG.bonusEvery) + (bursts >= CONFIG.bigChain ? CONFIG.bigChainBonus : 0);
+}
+
+// Tap basket i on a copy of b. Returns { b, pre, waves, bursts }.
+function simulate(b0, i, record) {
+  const b = Engine.clone(b0);
+  b.count[i]++;
+  const pre = record ? Engine.clone(b) : null;
+  const { waves } = Engine.resolve(b, RULES, record);
+  const bursts = waves.reduce((n, w) => n + w.bursts.length, 0);
+  return { b, pre, waves, bursts };
+}
+
+// ---------- flow ----------
+function newRun() {
+  gameId++;
+  Kit.anim.cur = null;
+  S = { b: makeLevel(1), loaves: CONFIG.startLoaves, level: 1, best: 0 };
+  busy = false;
+  Kit.hide("intro");
+  Kit.hide("end");
+  resize();
+  hud();
+}
+
+function gain(n) {
+  if (n <= 0) return;
+  S.loaves += n;
+  const el = $("loaves");
+  el.classList.remove("gain");
+  void el.offsetWidth;
+  el.classList.add("gain");
+}
+
+async function tap(i) {
+  busy = true;
+  const myGame = gameId;
+  S.loaves--;
+  Kit.sfx.place();
+  const r = simulate(S.b, i, true);
+  S.b = r.pre;
+  hud();
+  let bursts = 0;
+  let paid = 0;
+  await Kit.anim.play(r.waves, CONFIG.waveMs, (k, wave) => {
+    bursts += wave.bursts.length;
+    Kit.sfx.burst(k * 2);
+    if (bursts >= 2) Kit.popText($("chain"), `Chain x${bursts}!`);
+    const earned = Math.floor(bursts / CONFIG.bonusEvery);
+    if (earned > paid) {
+      gain(earned - paid);
+      paid = earned;
+      hud();
+    }
+    if (bursts >= 6) setMood("happy", 1.2);
+    if (k === 4) Kit.shake($("stage"));
+  }, r.pre);
+  if (myGame !== gameId) return;
+  S.b = r.b;
+  S.best = Math.max(S.best, r.bursts);
+  if (r.bursts >= CONFIG.bigChain) {
+    gain(CONFIG.bigChainBonus);
+    Kit.shake($("stage"), true);
+    Kit.sfx.win();
+    setMood("happy", 2.5);
+    Kit.popText($("chain"), `${r.bursts} baskets left over!`);
+    await Kit.sleep(900);
+  }
+  hud();
+  if (basketsLeft(S.b) === 0) {
+    gain(CONFIG.levelBonus);
+    hud();
+    Kit.sfx.win();
+    if (S.level >= CONFIG.levels) return finish(true);
+    Kit.popText($("chain"), `Level ${S.level} cleared!`);
+    await Kit.sleep(1100);
+    if (myGame !== gameId) return;
+    S.level++;
+    S.b = makeLevel(S.level);
+    hud();
+  } else if (S.loaves <= 0) {
+    setMood("sad", 99);
+    await Kit.sleep(700);
+    return finish(false);
+  }
+  busy = false;
+}
+
+function finish(won) {
+  $("end-title").textContent = won ? "Twelve baskets full!" : "Out of loaves";
+  $("end-sub").textContent = won
+    ? `You cleared all ${CONFIG.levels} levels with ${S.loaves} loaves to spare. Longest chain: ${S.best}.`
+    : `You reached level ${S.level} with ${basketsLeft(S.b)} baskets left. Longest chain: ${S.best}.`;
+  hero($("hero-end"), won ? "happy" : "sad");
+  (won ? Kit.sfx.win : Kit.sfx.lose)();
+  Kit.show("end");
+}
+
+function hud() {
+  if (!S) return;
+  $("status").textContent = `Level ${S.level}/${CONFIG.levels}`;
+  $("loaves").textContent = `🍞 ${S.loaves}`;
+}
+
+function setMood(mood, secs) {
+  lambMood = { mood, until: performance.now() / 1000 + secs };
+}
+
+canvas.addEventListener("pointerdown", (e) => {
+  if (!S || busy || S.loaves <= 0) return;
+  const { row, col } = Kit.cellAt(canvas, e, geo.cell);
+  if (!Engine.inside(S.b, row, col)) return;
+  const i = row * S.b.cols + col;
+  if (S.b.count[i] > 0) tap(i);
+  else Kit.sfx.bad();
+});
+
+// ---------- drawing ----------
+const LAMB_ROWS = 1.6;
+function resize() {
+  if (!S) return;
+  geo = Kit.fitBoard(canvas, $("stage"), CONFIG.size, CONFIG.size, LAMB_ROWS);
+}
+
+function loaf(x, y, w, rot = 0) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rot);
+  Kit.ellipse(ctx, 0, 0, w, w * 0.55, 0, "#c98a3d");
+  Kit.ellipse(ctx, 0, -w * 0.12, w * 0.85, w * 0.38, 0, "#e9b064");
+  ctx.strokeStyle = "#a96c2a";
+  ctx.lineWidth = w * 0.1;
+  ctx.beginPath();
+  for (const k of [-0.4, 0, 0.4]) {
+    ctx.moveTo(k * w - w * 0.1, -w * 0.3);
+    ctx.lineTo(k * w + w * 0.1, w * 0.05);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+function basket(x, y, c, n, t, i) {
+  const full = n >= CONFIG.burstAt - 1;
+  const jig = full ? Math.sin(t * 30 + i) * c * 0.02 : 0;
+  x += jig;
+  // loaves peeking out, stacked
+  const spots = [[-0.17, -0.06], [0.17, -0.06], [0, -0.16], [0, 0.0]];
+  for (let k = 0; k < Math.min(n, 4); k++) loaf(x + spots[k][0] * c, y + spots[k][1] * c, c * 0.14, (k - 1.5) * 0.25);
+  // woven basket
+  ctx.fillStyle = "#8a5a2b";
+  ctx.beginPath();
+  ctx.moveTo(x - c * 0.36, y);
+  ctx.lineTo(x + c * 0.36, y);
+  ctx.lineTo(x + c * 0.27, y + c * 0.3);
+  ctx.lineTo(x - c * 0.27, y + c * 0.3);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = "#6d4420";
+  ctx.lineWidth = c * 0.025;
+  ctx.beginPath();
+  for (const k of [0.1, 0.2]) {
+    ctx.moveTo(x - c * (0.36 - k * 0.3), y + k * c);
+    ctx.lineTo(x + c * (0.36 - k * 0.3), y + k * c);
+  }
+  for (const k of [-0.18, 0, 0.18]) {
+    ctx.moveTo(x + k * c, y);
+    ctx.lineTo(x + k * c * 0.75, y + c * 0.3);
+  }
+  ctx.stroke();
+  Kit.ellipse(ctx, x, y, c * 0.37, c * 0.06, 0, "#a8743d");
+  // count pips
+  for (let k = 0; k < CONFIG.burstAt - 1; k++) Kit.circle(ctx, x + (k - 1.5) * c * 0.11, y + c * 0.39, c * 0.035, k < n ? "#ffcf4a" : "rgba(255,255,255,0.18)");
+}
+
+function draw(now) {
+  Kit.anim.step(now);
+  const t = now / 1000;
+  ctx.setTransform(geo.dpr, 0, 0, geo.dpr, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (!S) return requestAnimationFrame(draw);
+  const a = Kit.anim.cur;
+  const b = a ? Kit.anim.base() : S.b;
+  const wave = a && a.start !== null ? a.waves[a.i] : null;
+  const c = geo.cell;
+  const bursting = new Set(wave ? wave.bursts.map((x) => x.from) : []);
+  // hillside cloth
+  for (let i = 0; i < b.size; i++) {
+    const x = Engine.colOf(b, i) * c;
+    const y = Engine.rowOf(b, i) * c;
+    ctx.fillStyle = (Engine.rowOf(b, i) + Engine.colOf(b, i)) % 2 ? "#4b7a43" : "#538549";
+    ctx.fillRect(x, y, c, c);
+  }
+  for (let i = 0; i < b.size; i++) {
+    if (b.count[i] <= 0 || bursting.has(i)) continue;
+    basket((Engine.colOf(b, i) + 0.5) * c, (Engine.rowOf(b, i) + 0.5) * c - c * 0.05, c, b.count[i], t, i);
+  }
+  if (wave) {
+    const p = Kit.anim.t(now);
+    for (const { from, to } of wave.bursts) {
+      const fr = Engine.rowOf(b, from);
+      const fc = Engine.colOf(b, from);
+      // a puff where the basket was
+      ctx.globalAlpha = 1 - p;
+      Kit.circle(ctx, (fc + 0.5) * c, (fr + 0.5) * c, c * (0.2 + p * 0.4), "#fff1c9");
+      ctx.globalAlpha = 1;
+      to.forEach((dest, d) => {
+        let tr;
+        let tc;
+        if (dest >= 0) {
+          tr = Engine.rowOf(b, dest);
+          tc = Engine.colOf(b, dest);
+        } else {
+          const [dr, dc] = DIRS[-dest - 1];
+          tr = fr + dr * (b.rows + 1);
+          tc = fc + dc * (b.cols + 1);
+        }
+        loaf((fc + (tc - fc) * p + 0.5) * c, (fr + (tr - fr) * p + 0.5) * c, c * 0.12, t * 12 + d);
+      });
+    }
+  }
+  // the lamb watching from below
+  const now2 = t;
+  const mood = now2 < lambMood.until ? lambMood.mood : S.loaves <= 2 ? "shock" : "happy";
+  const jump = mood === "happy" && now2 < lambMood.until ? Math.abs(Math.sin(t * 9)) * c * 0.25 : 0;
+  ctx.fillStyle = "#2f5230";
+  ctx.fillRect(0, b.rows * c, geo.w, LAMB_ROWS * c);
+  Kit.drawLamb(ctx, geo.w / 2, b.rows * c + LAMB_ROWS * c * 0.55 - jump, c * 1.15, { t, mood });
+  // two fish and the starting loaves, for company
+  fish(geo.w * 0.18, b.rows * c + LAMB_ROWS * c * 0.62, c * 0.35);
+  fish(geo.w * 0.82, b.rows * c + LAMB_ROWS * c * 0.62, c * 0.35, true);
+  requestAnimationFrame(draw);
+}
+
+function fish(x, y, s, flip, g = ctx) {
+  g.save();
+  g.translate(x, y);
+  if (flip) g.scale(-1, 1);
+  Kit.ellipse(g, 0, 0, s, s * 0.45, 0, "#7fb3d5");
+  g.fillStyle = "#5d93b8";
+  g.beginPath();
+  g.moveTo(-s * 0.8, 0);
+  g.lineTo(-s * 1.4, -s * 0.45);
+  g.lineTo(-s * 1.4, s * 0.45);
+  g.fill();
+  Kit.circle(g, s * 0.55, -s * 0.08, s * 0.09, "#1f2a33");
+  g.restore();
+}
+
+function hero(cv, mood) {
+  const g = Kit.sharp(cv, 240, 130);
+  fish(48, 98, 22, false, g);
+  fish(192, 98, 22, true, g);
+  Kit.drawLamb(g, 120, 70, 110, { mood });
+}
+
+$("play").addEventListener("click", newRun);
+$("again").addEventListener("click", newRun);
+$("restart").addEventListener("click", newRun);
+$("menu").addEventListener("click", () => {
+  gameId++;
+  Kit.anim.cur = null;
+  busy = false;
+  Kit.hide("end");
+  Kit.show("intro");
+});
+Kit.muteButton($("mute"));
+new ResizeObserver(resize).observe($("stage"));
+
+hero($("hero-intro"), "happy");
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>
