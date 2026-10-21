@@ -1,0 +1,656 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>The Valley</title>
+<meta name="description" content="cheekyfoundlamb demo 6: a five-world Chain Reaction campaign through Psalm 23." />
+<style>
+/*@KITCSS*/
+.actions { display: flex; gap: 8px; justify-content: center; padding: 0 0 8px; }
+.actions .ib { flex: 1; max-width: 180px; height: 48px; }
+.worlds { display: grid; gap: 8px; margin-top: 12px; }
+.world { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 16px; background: var(--meadow-2); text-align: left; }
+.world .num { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--meadow); font-weight: 900; flex: none; }
+.world.done .num { background: var(--sun); color: #2a2010; }
+.world b { display: block; }
+.world span { color: var(--muted); font-size: 0.9rem; }
+.rule { margin-top: 10px; padding: 10px 12px; border-radius: 14px; background: var(--meadow-2); text-align: left; color: var(--cream) !important; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="status"><span class="dot" id="dot"></span><span class="txt" id="status">The Valley</span></div>
+    <div class="btns">
+      <button class="ib" id="restart" aria-label="Restart level">↻</button>
+      <button class="ib" id="mute" aria-label="Mute">🔊</button>
+      <button class="ib" id="menu" aria-label="Worlds">☰</button>
+    </div>
+  </header>
+  <main class="stage" id="stage">
+    <canvas id="board" aria-label="Board"></canvas>
+    <div class="chain" id="chain"></div>
+  </main>
+  <div class="actions">
+    <button class="ib" id="staff">Staff ↶ 3</button>
+    <button class="ib" id="rod">Rod ✕ 1</button>
+  </div>
+</div>
+
+<section class="overlay" id="intro">
+  <div class="card">
+    <canvas class="hero" id="hero-intro"></canvas>
+    <h1>The Valley</h1>
+    <div class="how">
+      <p>Five worlds from Psalm 23, each with its own twist. Beat the wolf with classic Chain Reaction: fill squares until they burst and win his sheep over.</p>
+      <p>The <b>staff</b> undoes your move and the wolf's reply (3 uses). The <b>rod</b> clears the wolf from one square (1 use).</p>
+    </div>
+    <div class="worlds" id="worlds"></div>
+  </div>
+</section>
+
+<section class="overlay" id="title" hidden>
+  <div class="card">
+    <canvas class="hero" id="hero-title"></canvas>
+    <p id="t-world" style="font-weight:800;color:var(--sun);margin:0"></p>
+    <p class="verse" id="t-verse"></p>
+    <p class="rule" id="t-rule"></p>
+    <button class="big" id="begin">Begin</button>
+  </div>
+</section>
+
+<section class="overlay" id="end" hidden>
+  <div class="card">
+    <canvas class="hero" id="hero-end"></canvas>
+    <h2 id="end-title"></h2>
+    <p id="end-sub"></p>
+    <button class="big" id="end-next"></button>
+    <button class="big alt" id="end-undo" hidden></button>
+    <button class="big alt" id="end-worlds">Worlds</button>
+  </div>
+</section>
+
+<script>
+/*@ENGINE*/
+/*@KIT*/
+
+// ---------- balance ----------
+const CONFIG = {
+  rows: 9,
+  cols: 6,
+  staffUses: 3,
+  rodUses: 1,
+  wolf: { mistake: 0.2, look: 6 }, // wolf AI: chance of a weaker move, moves checked against your reply
+  cupChain: 10, // bursts in one turn that make your cup overflow (The Table)
+  maxTurns: 160, // safety net: if reached, whoever holds more squares wins
+  waveMs: 130,
+  maxWaves: 200,
+  aiDelayMs: 600,
+  chainShakeAt: 5,
+  chainBigShakeAt: 10,
+};
+
+// Map key: . grass   g green pasture   w water   # rock   t table
+const WORLDS = [
+  {
+    name: "Green Pastures",
+    verse: "He maketh me to lie down in green pastures.",
+    ref: "Psalm 23:2",
+    rule: "Bright green squares burst one sheep earlier (never below 2).",
+    map: ["gg..gg", "gg..gg", "..gg..", "..gg..", "gg..gg", "gg..gg", "..gg..", "..gg..", "gg..gg"],
+    wolves: 1,
+  },
+  {
+    name: "Still Waters",
+    verse: "He leadeth me beside the still waters.",
+    ref: "Psalm 23:2",
+    rule: "Water squares can't be flipped. Whoever claims one first keeps it, and enemy sheep landing there are lost. You still need sheep on dry land to stay in.",
+    map: ["......", "w....w", "......", "..ww..", "..ww..", "..ww..", "......", "w....w", "......"],
+    wolves: 1,
+  },
+  {
+    name: "Paths",
+    verse: "He leadeth me in the paths of righteousness for his name's sake.",
+    ref: "Psalm 23:3",
+    rule: "Rocks block squares and make narrow paths. A square bursts when it has one sheep per open neighbour.",
+    map: ["......", ".##.##", "......", "##.#..", "......", "..#.##", "......", "##.##.", "......"],
+    wolves: 1,
+  },
+  {
+    name: "Valley of the Shadow",
+    verse: "Yea, though I walk through the valley of the shadow of death, I will fear no evil: for thou art with me.",
+    ref: "Psalm 23:4",
+    rule: "Fog: you can only see squares next to your own.",
+    map: null,
+    fog: true,
+    wolves: 1,
+  },
+  {
+    name: "The Table",
+    verse: "Thou preparest a table before me in the presence of mine enemies… my cup runneth over.",
+    ref: "Psalm 23:5",
+    rule: `Two wolves. Hold all 3 table squares at the end of your turn to place twice next turn. Once a turn, a chain of ${CONFIG.cupChain}+ bursts overflows your cup: +1 on every square you own.`,
+    map: ["......", "......", "......", "......", ".ttt..", "......", "......", "......", "......"],
+    wolves: 2,
+    table: true,
+  },
+];
+
+const { $ } = Kit;
+const ME = 0;
+const PCOL = ["#fff4d6", "#8a87a3", "#a8826a"];
+const canvas = $("board");
+const ctx = canvas.getContext("2d");
+let geo = { cell: 40, dpr: 1 };
+let W = WORLDS[0];
+let worldIndex = 0;
+let S = null;
+let history = [];
+let tools = { staff: 0, rod: 0 };
+let rodMode = false;
+let busy = false;
+let gameId = 0;
+let autoplay = false; // tests only: the AI also plays your side
+let done = [];
+try {
+  done = JSON.parse(localStorage.getItem("cfl-06-done")) || [];
+} catch {}
+
+// ---------- rules ----------
+function newLevel() {
+  const extra = { green: false, water: false, table: false };
+  const b = Engine.createBoard(CONFIG.rows, CONFIG.cols, extra);
+  if (W.map)
+    W.map.forEach((row, r) =>
+      [...row].forEach((ch, c) => {
+        const i = r * b.cols + c;
+        b.green[i] = ch === "g";
+        b.water[i] = ch === "w";
+        b.rock[i] = ch === "#";
+        b.table[i] = ch === "t";
+      })
+    );
+  const n = 1 + W.wolves;
+  return { b, n, alive: new Array(n).fill(true), moved: new Array(n).fill(false), current: ME, turn: 0, winner: -1, movesLeft: 1, tableBonus: false, cupUsed: false, cupFired: false };
+}
+
+const cloneState = (st) => ({ ...st, b: Engine.clone(st.b), alive: st.alive.slice(), moved: st.moved.slice() });
+const capOf = (b, i) => {
+  const base = Engine.capacity(b, i);
+  // Green bursts one earlier but never below 2, so a lone sheep can't snipe a corner.
+  // A walled-in square still needs 1 sheep.
+  return b.green[i] ? Math.max(2, base - 1) : Math.max(1, base);
+};
+const cellsOf = (b, p) => b.owner.reduce((n, o) => n + (o === p ? 1 : 0), 0);
+// You're out when you have no sheep left on dry land. Water squares alone don't keep you in.
+const orbsOf = (b, p) => b.owner.reduce((n, o, i) => n + (o === p && !b.water[i] ? b.count[i] : 0), 0);
+
+function isLegal(st, p, i) {
+  const b = st.b;
+  return !b.rock[i] && (b.owner[i] === -1 || b.owner[i] === p);
+}
+
+function legalMoves(st) {
+  const out = [];
+  for (let i = 0; i < st.b.size; i++) if (isLegal(st, st.current, i)) out.push(i);
+  return out;
+}
+
+function settle(st) {
+  if (!st.moved.every(Boolean)) return;
+  for (let p = 0; p < st.n; p++) {
+    if (!st.alive[p] || orbsOf(st.b, p) > 0) continue;
+    st.alive[p] = false;
+    for (let i = 0; i < st.b.size; i++) if (st.b.owner[i] === p) st.b.owner[i] = -1;
+  }
+}
+
+function rules(st) {
+  return {
+    cap: capOf,
+    canBurst: (b, c) => b.owner[c] >= 0 && st.alive[b.owner[c]],
+    emptied: (b, c) => {
+      if (!b.water[c]) b.owner[c] = -1;
+    },
+    land: (b, from, to, who) => {
+      if (!st.alive[who]) return;
+      if (b.water[to] && b.owner[to] >= 0 && b.owner[to] !== who) return; // still water: lost
+      b.owner[to] = who;
+      b.count[to]++;
+    },
+    done: (b) => {
+      if (!st.moved.every(Boolean)) return false;
+      let left = 0;
+      for (let p = 0; p < st.n; p++) if (orbsOf(b, p) > 0) left++;
+      return left <= 1;
+    },
+    maxWaves: CONFIG.maxWaves,
+  };
+}
+
+// Plays the current player's move at i on a copy of st.
+function simulate(st0, i, record) {
+  const st = cloneState(st0);
+  const b = st.b;
+  const p = st.current;
+  st.cupFired = false;
+  Engine.place(b, i, p);
+  st.moved[p] = true;
+  const pre = record ? Engine.clone(b) : null;
+  let { waves, capped } = Engine.resolve(b, rules(st), record);
+  const bursts = waves.reduce((n, w) => n + w.bursts.length, 0);
+  if (W.table && p === ME && bursts >= CONFIG.cupChain && !st.cupUsed && !capped) {
+    st.cupUsed = true;
+    st.cupFired = true;
+    for (let c = 0; c < b.size; c++) if (b.owner[c] === ME) b.count[c]++;
+    const more = Engine.resolve(b, rules(st), record);
+    waves = waves.concat(more.waves);
+    capped = more.capped;
+  }
+  if (capped) for (let q = 0; q < st.n; q++) if (q !== p) st.alive[q] = false;
+  settle(st);
+  st.turn++;
+  if (st.turn >= CONFIG.maxTurns) {
+    const mine = cellsOf(b, ME);
+    const best = Math.max(...st.alive.map((a, q) => (q === ME || !a ? 0 : cellsOf(b, q))));
+    for (let q = 0; q < st.n; q++) if (q !== (mine >= best ? ME : -1)) st.alive[q] = q === ME ? mine >= best : false;
+  }
+  if (!st.alive[ME]) st.winner = 1;
+  else if (st.alive.every((a, q) => q === ME || !a)) st.winner = ME;
+  else if (p === ME && --st.movesLeft > 0) {
+    // the table's extra placement: stay on your turn
+  } else {
+    if (p === ME) st.tableBonus = W.table && [...b.table.keys()].filter((c) => b.table[c]).every((c) => b.owner[c] === ME);
+    let q = p;
+    do q = (q + 1) % st.n;
+    while (!st.alive[q]);
+    st.current = q;
+    if (q === ME) {
+      st.movesLeft = st.tableBonus ? 2 : 1;
+      st.tableBonus = false;
+      st.cupUsed = false;
+    }
+  }
+  return { st, pre, waves };
+}
+
+// ---------- AI ----------
+function scoreFor(st, side) {
+  if (st.winner >= 0) return (st.winner === ME) === (side === ME) ? 1e6 : -1e6;
+  if (!st.alive[side]) return -1e6;
+  const b = st.b;
+  const foe = side === ME ? (o) => o > ME : (o) => o === ME;
+  let s = Kit.evaluate(b, (o) => o === side, foe, (i) => capOf(b, i)) + cellsOf(b, side) * 1.5;
+  if (side === ME) for (let q = 1; q < st.n; q++) s -= cellsOf(b, q);
+  else s -= cellsOf(b, ME) * 1.5;
+  for (let c = 0; c < b.size; c++) if (b.table[c] && b.owner[c] === side) s += 6;
+  return s;
+}
+
+function aiMove(st) {
+  const me = st.current;
+  const look = CONFIG.wolf.look;
+  const first = legalMoves(st).map((move) => {
+    const r = simulate(st, move, false);
+    return { move, r, score: scoreFor(r.st, me) };
+  });
+  first.sort((a, b) => b.score - a.score);
+  for (const cand of first.slice(0, look)) {
+    const after = cand.r.st;
+    if (after.winner >= 0 || after.current === me) continue;
+    let best = -Infinity;
+    let mine = cand.score;
+    for (const m of legalMoves(after)) {
+      const r2 = simulate(after, m, false);
+      const theirs = scoreFor(r2.st, after.current);
+      if (theirs > best) {
+        best = theirs;
+        mine = scoreFor(r2.st, me);
+      }
+    }
+    cand.score = mine;
+  }
+  const pool = look ? first.slice(0, look) : first;
+  return Kit.pickBest(pool.map(({ move, score }) => ({ move, score })), CONFIG.wolf.mistake);
+}
+
+// ---------- flow ----------
+async function playAt(i) {
+  busy = true;
+  const myGame = gameId;
+  const p = S.current;
+  if (p === ME) history.push(cloneState(S));
+  const r = simulate(S, i, true);
+  Kit.sfx.place();
+  S = { ...S, b: r.pre };
+  await Kit.anim.play(r.waves, CONFIG.waveMs, (k) => {
+    Kit.sfx.burst(p === ME ? k : k - 7);
+    if (k >= 1) Kit.popText($("chain"), `Chain x${k + 1}!`);
+    if (k === CONFIG.chainShakeAt) Kit.shake($("stage"));
+    if (k === CONFIG.chainBigShakeAt) Kit.shake($("stage"), true);
+  }, r.pre);
+  if (myGame !== gameId) return;
+  S = r.st;
+  if (S.cupFired) {
+    Kit.popText($("chain"), "My cup runneth over!");
+    Kit.sfx.win();
+  } else if (S.current === ME && S.movesLeft === 2) {
+    Kit.popText($("chain"), "The table is yours: place twice!");
+    Kit.sfx.chime(5);
+  }
+  busy = false;
+  next();
+}
+
+async function next() {
+  hud();
+  if (S.winner >= 0) {
+    await Kit.sleep(700);
+    return finish();
+  }
+  if (S.current !== ME || autoplay) {
+    busy = true;
+    hud();
+    const myGame = gameId;
+    await Kit.sleep(CONFIG.aiDelayMs);
+    if (myGame !== gameId) return;
+    playAt(aiMove(S));
+  }
+}
+
+function finish() {
+  const won = S.winner === ME;
+  if (won && !done.includes(worldIndex)) {
+    done.push(worldIndex);
+    try {
+      localStorage.setItem("cfl-06-done", JSON.stringify(done));
+    } catch {}
+  }
+  const last = worldIndex === WORLDS.length - 1;
+  $("end-title").textContent = won ? (last ? "Goodness and mercy shall follow me" : `${W.name}: cleared!`) : "The wolf won this one";
+  $("end-sub").textContent = won ? (last ? "All five worlds walked. Psalm 23:6" : `On to world ${worldIndex + 2}.`) : "";
+  $("end-next").textContent = won && !last ? "Next world" : won ? "Play again" : "Try again";
+  $("end-next").onclick = () => openWorld(won && !last ? worldIndex + 1 : won ? 0 : worldIndex);
+  const canUndo = !won && tools.staff > 0 && history.length > 0;
+  $("end-sub").textContent = won ? $("end-sub").textContent : canUndo ? "Your staff can take back your last move." : "Have another go.";
+  $("end-undo").hidden = !canUndo;
+  $("end-undo").textContent = `Undo with the staff (${tools.staff} left)`;
+  hero($("hero-end"), won ? "happy" : "sad");
+  (won ? Kit.sfx.win : Kit.sfx.lose)();
+  Kit.show("end");
+}
+
+function openWorld(k) {
+  gameId++;
+  Kit.anim.cur = null;
+  worldIndex = k;
+  W = WORLDS[k];
+  for (const id of ["intro", "end"]) Kit.hide(id);
+  $("t-world").textContent = `World ${k + 1}: ${W.name}`;
+  $("t-verse").innerHTML = `"${W.verse}"<small>${W.ref}</small>`;
+  $("t-rule").textContent = W.rule;
+  hero($("hero-title"), "happy");
+  Kit.show("title");
+}
+
+function startLevel() {
+  gameId++;
+  Kit.anim.cur = null;
+  busy = false;
+  rodMode = false;
+  S = newLevel();
+  history = [];
+  tools = { staff: CONFIG.staffUses, rod: CONFIG.rodUses };
+  Kit.hide("title");
+  Kit.hide("end");
+  resize();
+  next();
+}
+
+function hud() {
+  if (!S) return;
+  const p = S.winner >= 0 ? (S.winner === ME ? ME : 1) : S.current;
+  $("dot").style.color = PCOL[p];
+  let t;
+  if (S.winner >= 0) t = S.winner === ME ? "You win!" : "The wolf wins";
+  else if (S.current !== ME) t = `${W.name} · ${S.n > 2 ? (S.current === 1 ? "Grey wolf" : "Brown wolf") : "Wolf"} thinking…`;
+  else if (rodMode) t = "Rod: tap a wolf square to clear it";
+  else t = `${W.name} · ${S.movesLeft === 2 ? "Place twice!" : "Your turn"}`;
+  const left = CONFIG.maxTurns - S.turn;
+  if (S.winner < 0 && left <= 40) t = `${left} turns left · ${S.current === ME ? "Your turn" : "Wolf"}`;
+  $("status").textContent = t;
+  const myTurn = !busy && S.winner < 0 && S.current === ME;
+  $("staff").textContent = `Staff ↶ ${tools.staff}`;
+  $("rod").textContent = `Rod ✕ ${tools.rod}`;
+  $("staff").disabled = !myTurn || !tools.staff || !history.length;
+  $("rod").disabled = !myTurn || !tools.rod;
+  $("rod").classList.toggle("on", rodMode);
+}
+
+canvas.addEventListener("pointerdown", (e) => {
+  if (!S || busy || S.winner >= 0 || S.current !== ME || autoplay) return;
+  const { row, col } = Kit.cellAt(canvas, e, geo.cell);
+  if (!Engine.inside(S.b, row, col)) return;
+  const i = row * S.b.cols + col;
+  if (rodMode) {
+    if (S.b.owner[i] > ME) useRod(i);
+    else Kit.sfx.bad();
+    return;
+  }
+  if (isLegal(S, ME, i)) playAt(i);
+  else Kit.sfx.bad();
+});
+
+function useRod(i) {
+  history.push(cloneState(S));
+  S.b.owner[i] = -1;
+  S.b.count[i] = 0;
+  tools.rod--;
+  rodMode = false;
+  Kit.sfx.howl();
+  Kit.shake($("stage"));
+  settle(S);
+  if (S.alive.every((a, q) => q === ME || !a)) S.winner = ME;
+  next();
+}
+
+$("rod").addEventListener("click", () => {
+  rodMode = !rodMode;
+  hud();
+});
+$("end-undo").addEventListener("click", () => {
+  Kit.hide("end");
+  undo();
+});
+$("staff").addEventListener("click", undo);
+function undo() {
+  if (!history.length || !tools.staff) return;
+  S = history.pop();
+  tools.staff--;
+  rodMode = false;
+  Kit.sfx.bleat(1.2);
+  hud();
+}
+
+// ---------- drawing ----------
+function resize() {
+  if (!S) return;
+  geo = Kit.fitBoard(canvas, $("stage"), CONFIG.cols, CONFIG.rows);
+}
+
+const SPOTS = {
+  1: [[0, 0]],
+  2: [[-0.2, 0], [0.2, 0.02]],
+  3: [[-0.2, 0.12], [0.2, 0.12], [0, -0.16]],
+  4: [[-0.2, -0.15], [0.2, -0.15], [-0.2, 0.17], [0.2, 0.17]],
+};
+
+function piece(x, y, c, who, flip, t) {
+  if (who === ME) Kit.drawSheep(ctx, x, y, c * 0.14, PCOL[0], { flip });
+  else Kit.drawWolf(ctx, x, y + c * 0.03, c * 0.28, { t, color: PCOL[who] });
+}
+
+function visible(b, i) {
+  if (!W.fog || b.owner[i] === ME) return true;
+  return Engine.neighbours(b, i, Engine.ALL8).some((n) => b.owner[n] === ME);
+}
+
+function tile(b, i, x, y, c, t) {
+  const chk = (Engine.rowOf(b, i) + Engine.colOf(b, i)) % 2;
+  if (b.rock[i]) {
+    ctx.fillStyle = "#2a3328";
+    ctx.fillRect(x, y, c, c);
+    Kit.ellipse(ctx, x + c * 0.5, y + c * 0.58, c * 0.38, c * 0.28, 0, "#7d7f86");
+    Kit.ellipse(ctx, x + c * 0.42, y + c * 0.48, c * 0.2, c * 0.12, -0.3, "#9a9ca3");
+    return;
+  }
+  let base = chk ? "#3d6a45" : "#44734c";
+  if (b.green[i]) base = chk ? "#5aa83f" : "#63b347";
+  if (b.water[i]) base = chk ? "#2f6f9a" : "#3479a6";
+  if (b.table[i]) base = "#8a5a2b";
+  ctx.fillStyle = base;
+  ctx.fillRect(x, y, c, c);
+  if (b.green[i]) for (const [fx, fy] of [[0.18, 0.2], [0.82, 0.78]]) Kit.circle(ctx, x + fx * c, y + fy * c, c * 0.04, "#fff3a0");
+  if (b.water[i]) {
+    ctx.strokeStyle = "rgba(255,255,255,0.35)";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    const w = Math.sin(t * 2 + i) * c * 0.04;
+    ctx.moveTo(x + c * 0.15, y + c * 0.8 + w);
+    ctx.quadraticCurveTo(x + c * 0.5, y + c * 0.7 - w, x + c * 0.85, y + c * 0.8 + w);
+    ctx.stroke();
+  }
+  if (b.table[i]) {
+    ctx.strokeStyle = "#6d4420";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x + 3, y + 3, c - 6, c - 6);
+    // a little cup
+    ctx.fillStyle = "#e9c46a";
+    ctx.beginPath();
+    ctx.moveTo(x + c * 0.72, y + c * 0.12);
+    ctx.lineTo(x + c * 0.9, y + c * 0.12);
+    ctx.lineTo(x + c * 0.86, y + c * 0.3);
+    ctx.lineTo(x + c * 0.76, y + c * 0.3);
+    ctx.fill();
+  }
+  if (b.owner[i] >= 0) {
+    ctx.fillStyle = b.owner[i] === ME ? "rgba(255,240,190,0.18)" : "rgba(30,25,45,0.35)";
+    ctx.fillRect(x, y, c, c);
+  }
+}
+
+function draw(now) {
+  Kit.anim.step(now);
+  const t = now / 1000;
+  ctx.setTransform(geo.dpr, 0, 0, geo.dpr, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (!S) return requestAnimationFrame(draw);
+  const a = Kit.anim.cur;
+  const b = a ? Kit.anim.base() : S.b;
+  const wave = a && a.start !== null ? a.waves[a.i] : null;
+  const counts = b.count.slice();
+  if (wave) for (const { from } of wave.bursts) counts[from] = Math.max(0, counts[from] - capOf(b, from));
+  const c = geo.cell;
+  for (let i = 0; i < b.size; i++) tile(b, i, Engine.colOf(b, i) * c, Engine.rowOf(b, i) * c, c, t);
+  for (let i = 0; i < b.size; i++) {
+    const n = counts[i];
+    if (n <= 0 || b.owner[i] < 0 || !visible(b, i)) continue;
+    const nervous = n >= capOf(b, i) - 1;
+    const k = Math.min(n, 4);
+    for (let s = 0; s < k; s++) {
+      const [dx, dy] = SPOTS[k][s];
+      const jx = nervous ? Math.sin(t * 40 + i * 3 + s) * c * 0.02 : 0;
+      piece((Engine.colOf(b, i) + 0.5 + dx) * c + jx, (Engine.rowOf(b, i) + 0.5 + dy) * c, c, b.owner[i], s % 2 === 1, t + i + s);
+    }
+  }
+  if (W.fog) {
+    for (let i = 0; i < b.size; i++) {
+      if (visible(b, i)) continue;
+      const x = Engine.colOf(b, i) * c;
+      const y = Engine.rowOf(b, i) * c;
+      ctx.fillStyle = "rgba(18,18,30,0.92)";
+      ctx.fillRect(x, y, c, c);
+      ctx.fillStyle = "rgba(160,160,190,0.08)";
+      Kit.ellipse(ctx, x + c * 0.5 + Math.sin(t * 0.6 + i) * c * 0.15, y + c * 0.5, c * 0.45, c * 0.18, 0, "rgba(160,160,190,0.1)");
+    }
+  }
+  if (wave) {
+    const p = Kit.anim.t(now);
+    const e = 1 - (1 - p) * (1 - p);
+    for (const { from, to, who } of wave.bursts) {
+      if (W.fog && who !== ME && !visible(b, from)) continue;
+      const fx = (Engine.colOf(b, from) + 0.5) * c;
+      const fy = (Engine.rowOf(b, from) + 0.5) * c;
+      for (const d of to) {
+        const tx = (Engine.colOf(b, d) + 0.5) * c;
+        const ty = (Engine.rowOf(b, d) + 0.5) * c;
+        piece(fx + (tx - fx) * e, fy + (ty - fy) * e - Math.sin(Math.PI * p) * c * 0.3, c, who, tx < fx, t);
+      }
+    }
+  }
+  ctx.strokeStyle = "rgba(255,233,168,0.35)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let col = 0; col <= b.cols; col++) {
+    const x = Math.min(Math.max(col * c, 0.5), geo.w - 0.5);
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, geo.h);
+  }
+  for (let row = 0; row <= b.rows; row++) {
+    const y = Math.min(Math.max(row * c, 0.5), geo.h - 0.5);
+    ctx.moveTo(0, y);
+    ctx.lineTo(geo.w, y);
+  }
+  ctx.stroke();
+  if (rodMode) {
+    ctx.strokeStyle = "#ffcf4a";
+    ctx.lineWidth = 3;
+    for (let i = 0; i < b.size; i++)
+      if (b.owner[i] > ME && visible(b, i)) ctx.strokeRect(Engine.colOf(b, i) * c + 3, Engine.rowOf(b, i) * c + 3, c - 6, c - 6);
+  }
+  requestAnimationFrame(draw);
+}
+
+function hero(cv, mood) {
+  const g = Kit.sharp(cv, 240, 130);
+  Kit.drawShepherd(g, 178, 124, 112);
+  Kit.drawLamb(g, 92, 74, 104, { mood });
+}
+
+// ---------- menu ----------
+function renderWorlds() {
+  const box = $("worlds");
+  box.replaceChildren();
+  WORLDS.forEach((w, k) => {
+    const btn = document.createElement("button");
+    btn.className = "world" + (done.includes(k) ? " done" : "");
+    btn.innerHTML = `<span class="num">${done.includes(k) ? "✓" : k + 1}</span><div><b>${w.name}</b><span>${w.rule}</span></div>`;
+    btn.addEventListener("click", () => openWorld(k));
+    box.append(btn);
+  });
+}
+
+$("begin").addEventListener("click", startLevel);
+$("restart").addEventListener("click", () => {
+  if (S) startLevel();
+});
+const toWorlds = () => {
+  gameId++;
+  Kit.anim.cur = null;
+  busy = false;
+  for (const id of ["end", "title"]) Kit.hide(id);
+  renderWorlds();
+  Kit.show("intro");
+};
+$("menu").addEventListener("click", toWorlds);
+$("end-worlds").addEventListener("click", toWorlds);
+Kit.muteButton($("mute"));
+new ResizeObserver(resize).observe($("stage"));
+
+renderWorlds();
+hero($("hero-intro"), "happy");
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>
