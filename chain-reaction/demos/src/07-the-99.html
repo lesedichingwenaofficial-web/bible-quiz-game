@@ -1,0 +1,578 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>The 99</title>
+<meta name="description" content="cheekyfoundlamb demo 7: Chain Reaction with a hand of collectible special sheep." />
+<style>
+/*@KITCSS*/
+.hand { display: flex; gap: 8px; justify-content: center; padding: 0 0 10px; }
+.card-btn {
+  flex: 1; max-width: 120px; min-height: 84px; padding: 6px 4px; border-radius: 14px; background: var(--meadow);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 0.8rem; font-weight: 800; line-height: 1.1;
+  border: 3px solid transparent;
+}
+.card-btn .ic { font-size: 1.6rem; }
+.card-btn.on { border-color: var(--sun); background: var(--meadow-2); }
+.card-btn.special { background: linear-gradient(160deg, #3b5a2f, #2b4a3a); }
+.card-btn:disabled { opacity: 0.4; }
+.hint { text-align: center; color: var(--muted); font-size: 0.85rem; min-height: 1.2em; padding: 0 8px 4px; }
+.grid99 { display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; margin-top: 10px; }
+.slot { aspect-ratio: 1; border-radius: 8px; background: var(--meadow-2); display: grid; place-items: center; font-size: 1rem; color: #5d7a63; font-weight: 900; }
+.slot.got { background: var(--sun); color: #2a2010; cursor: pointer; }
+.slot.special { outline: 2px dashed #8fae84; outline-offset: -3px; }
+.toggle { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; font-weight: 800; }
+.info { min-height: 3.2em; margin-top: 8px; padding: 8px 10px; border-radius: 12px; background: var(--meadow-2); text-align: left; font-size: 0.92rem; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="status"><span class="dot" id="dot"></span><span class="txt" id="status">The 99</span></div>
+    <div class="btns">
+      <button class="ib" id="restart" aria-label="Restart">↻</button>
+      <button class="ib" id="mute" aria-label="Mute">🔊</button>
+      <button class="ib" id="menu" aria-label="Menu">☰</button>
+    </div>
+  </header>
+  <main class="stage" id="stage">
+    <canvas id="board" aria-label="Board"></canvas>
+    <div class="chain" id="chain"></div>
+  </main>
+  <div class="hint" id="hint"></div>
+  <div class="hand" id="hand"></div>
+</div>
+
+<section class="overlay" id="intro">
+  <div class="card">
+    <canvas class="hero" id="hero-intro"></canvas>
+    <h1>The 99</h1>
+    <div class="how">
+      <p>Chain Reaction with a hand of 3 sheep cards. Pick a card, then tap a square to place it. Plain sheep work as normal; special sheep change how their square bursts or do something when placed.</p>
+      <p>Win to add a new special to your collection.</p>
+    </div>
+    <div class="opts"><div class="optrow"><span class="lbl">Play</span><div class="seg" id="mode"><button data-mode="ai">vs Wolf AI</button><button data-mode="pvp">2 players</button></div></div></div>
+    <button class="big" id="play">Play</button>
+    <button class="big alt" id="open-col">Collection</button>
+  </div>
+</section>
+
+<section class="overlay" id="collection" hidden>
+  <div class="card">
+    <h2>Collection</h2>
+    <p id="col-count"></p>
+    <div class="grid99" id="grid99"></div>
+    <div class="info" id="col-info">Tap a sheep to read about it.</div>
+    <label class="toggle">Unlock all (testing) <input type="checkbox" id="unlock-all" /></label>
+    <button class="big" id="col-back">Back</button>
+  </div>
+</section>
+
+<section class="overlay" id="end" hidden>
+  <div class="card">
+    <canvas class="hero" id="hero-end"></canvas>
+    <h2 id="end-title"></h2>
+    <p id="end-sub"></p>
+    <button class="big" id="again">Play again</button>
+    <button class="big alt" id="end-menu">Menu</button>
+  </div>
+</section>
+
+<script>
+/*@ENGINE*/
+/*@KIT*/
+
+// ---------- balance ----------
+const CONFIG = {
+  rows: 9,
+  cols: 6,
+  handSize: 3,
+  plainInDeck: 10, // plain sheep in each deck; every unlocked special is added once
+  startUnlocked: ["popcorn", "star", "magnet"],
+  woollyTurns: 2, // opponent turns a Woolly square can't be flipped
+  safeMoves: 2, // nobody can be knocked out until both sides have made this many moves
+  ai: { mistake: 0.2, look: 5 },
+  waveMs: 130,
+  maxWaves: 200,
+  aiDelayMs: 700,
+  chainShakeAt: 5,
+  chainBigShakeAt: 10,
+};
+
+const SPECIALS = {
+  xburst: { icon: "✖️", name: "Criss-Cross", kind: "burst", text: "When its square bursts, sheep go to the 4 diagonals instead." },
+  star: { icon: "⭐", name: "Twinkle Toes", kind: "burst", text: "When its square bursts, sheep go to all 8 neighbours." },
+  sleepy: { icon: "💤", name: "Snoozy", kind: "burst", text: "Its square needs 1 extra sheep, then sends 2 into each neighbour." },
+  zoomies: { icon: "💨", name: "Zoomies", kind: "burst", text: "When its square bursts, each sheep runs in a straight line until it reaches a square with sheep, or the edge." },
+  magnet: { icon: "🧲", name: "Magnet Mutton", kind: "place", text: "When placed, pulls 1 sheep from each neighbouring enemy square into its own." },
+  woolly: { icon: "🧶", name: "Woolly Jumper", kind: "place", text: `When placed, its square can't be flipped for the opponent's next ${CONFIG.woollyTurns} turns.` },
+  popcorn: { icon: "🍿", name: "Popcorn", kind: "place", text: "When placed, its square bursts straight away." },
+  bell: { icon: "🔔", name: "Ding-a-Ling", kind: "burst", text: "When its square bursts, every one of your squares in that row gets +1." },
+};
+const PLAIN = { icon: "🐑", name: "Sheep", text: "A plain sheep. Adds 1 to the square." };
+
+const { $ } = Kit;
+const LAMB = 0;
+const WOLF = 1;
+const canvas = $("board");
+const ctx = canvas.getContext("2d");
+let geo = { cell: 40, dpr: 1 };
+let mode = "ai";
+let unlocked = CONFIG.startUnlocked.slice();
+let unlockAll = false;
+try {
+  const saved = JSON.parse(localStorage.getItem("cfl-07"));
+  if (saved) ({ unlocked, unlockAll, mode } = { unlocked, unlockAll, mode, ...saved });
+} catch {}
+let S = null;
+let selected = 0;
+let busy = false;
+let gameId = 0;
+let autoplay = false; // tests only
+
+const save = () => {
+  try {
+    localStorage.setItem("cfl-07", JSON.stringify({ unlocked, unlockAll, mode }));
+  } catch {}
+};
+const pool = () => (unlockAll ? Object.keys(SPECIALS) : unlocked);
+const isAI = (p) => autoplay || (mode === "ai" && p === WOLF);
+
+// ---------- cards ----------
+function newDeck() {
+  const deck = Array(CONFIG.plainInDeck).fill("plain").concat(pool());
+  return deck.sort(() => Math.random() - 0.5);
+}
+
+function draw(st, p) {
+  if (!st.decks[p].length) st.decks[p] = newDeck();
+  st.hands[p].push(st.decks[p].pop());
+}
+
+// ---------- rules ----------
+function newGame() {
+  const b = Engine.createBoard(CONFIG.rows, CONFIG.cols, { tag: null, woolly: -1 });
+  const st = { b, current: LAMB, turn: 0, moved: [0, 0], winner: -1, decks: [newDeck(), newDeck()], hands: [[], []] };
+  for (const p of [LAMB, WOLF]) for (let k = 0; k < CONFIG.handSize; k++) draw(st, p);
+  return st;
+}
+
+const cloneState = (st) => ({ ...st, b: Engine.clone(st.b), moved: st.moved.slice(), decks: st.decks.map((d) => d.slice()), hands: st.hands.map((h) => h.slice()) });
+const capOf = (b, i) => Engine.capacity(b, i) + (b.tag[i] === "sleepy" ? 1 : 0);
+const settled = (st) => st.moved[0] >= CONFIG.safeMoves && st.moved[1] >= CONFIG.safeMoves;
+const orbsOf = (b, p) => b.owner.reduce((n, o, i) => n + (o === p ? b.count[i] : 0), 0);
+
+function isLegal(st, p, i) {
+  return st.b.owner[i] === -1 || st.b.owner[i] === p;
+}
+
+function zoom(b, i) {
+  const out = [];
+  const r0 = Engine.rowOf(b, i);
+  const c0 = Engine.colOf(b, i);
+  for (const [dr, dc] of Engine.ORTHO) {
+    let r = r0 + dr;
+    let c = c0 + dc;
+    if (!Engine.inside(b, r, c)) continue;
+    while (b.count[r * b.cols + c] === 0 && Engine.inside(b, r + dr, c + dc)) {
+      r += dr;
+      c += dc;
+    }
+    out.push(r * b.cols + c);
+  }
+  return out;
+}
+
+// Plays hand card k of the current player onto square i, on a copy of st.
+function simulate(st0, k, i, record) {
+  const st = cloneState(st0);
+  const b = st.b;
+  const p = st.current;
+  const card = st.hands[p][k];
+  st.hands[p].splice(k, 1);
+  if (record) draw(st, p);
+  Engine.place(b, i, p);
+  st.moved[p]++;
+  if (card === "popcorn") b.count[i] = Math.max(b.count[i], capOf(b, i));
+  else if (card === "magnet") {
+    for (const n of Engine.neighbours(b, i)) {
+      if (b.owner[n] !== 1 - p || b.count[n] === 0 || b.woolly[n] >= st.turn) continue;
+      b.count[n]--;
+      if (b.count[n] === 0) b.owner[n] = -1;
+      b.count[i]++;
+    }
+  } else if (card === "woolly") b.woolly[i] = st.turn + CONFIG.woollyTurns * 2 - 1;
+  else if (card !== "plain") b.tag[i] = card;
+  const pre = record ? Engine.clone(b) : null;
+  const turn = st.turn;
+  let spend = 0;
+  const { waves, capped } = Engine.resolve(
+    b,
+    {
+      cap: capOf,
+      targets: (bb, c) => {
+        const tag = bb.tag[c];
+        spend = capOf(bb, c);
+        bb.tag[c] = null; // a special's tag is used up by its burst
+        if (tag === "xburst") return Engine.neighbours(bb, c, Engine.DIAG);
+        if (tag === "star") return Engine.neighbours(bb, c, Engine.ALL8);
+        if (tag === "sleepy") return Engine.neighbours(bb, c).flatMap((n) => [n, n]);
+        if (tag === "zoomies") return zoom(bb, c);
+        if (tag === "bell") {
+          const who = bb.owner[c];
+          const r = Engine.rowOf(bb, c);
+          for (let col = 0; col < bb.cols; col++) {
+            const j = r * bb.cols + col;
+            if (j !== c && bb.owner[j] === who) bb.count[j]++;
+          }
+        }
+        return Engine.neighbours(bb, c);
+      },
+      spend: () => spend,
+      land: (bb, from, to, who) => {
+        if (bb.owner[to] >= 0 && bb.owner[to] !== who && bb.woolly[to] >= turn) return; // woolly: can't be flipped
+        bb.owner[to] = who;
+        bb.count[to]++;
+      },
+      done: (bb) => settled(st) && (orbsOf(bb, 0) === 0 || orbsOf(bb, 1) === 0),
+      maxWaves: CONFIG.maxWaves,
+    },
+    record
+  );
+  st.turn++;
+  if (settled(st)) {
+    if (orbsOf(b, 1 - p) === 0 || capped) st.winner = p;
+    else if (orbsOf(b, p) === 0) st.winner = 1 - p;
+  }
+  if (st.winner < 0) st.current = 1 - p;
+  return { st, pre, waves, card };
+}
+
+// ---------- AI ----------
+function scoreFor(st, side) {
+  if (st.winner >= 0) return st.winner === side ? 1e6 : -1e6;
+  const b = st.b;
+  let s = Kit.evaluate(b, (o) => o === side, (o) => o === 1 - side, (i) => capOf(b, i));
+  for (let i = 0; i < b.size; i++) if (b.woolly[i] >= st.turn && b.owner[i] === side) s += 3;
+  return s;
+}
+
+function aiMove(st) {
+  const me = st.current;
+  const first = [];
+  const seen = new Set();
+  st.hands[me].forEach((card, k) => {
+    if (seen.has(card)) return;
+    seen.add(card);
+    for (let i = 0; i < st.b.size; i++) {
+      if (!isLegal(st, me, i)) continue;
+      const r = simulate(st, k, i, false);
+      first.push({ move: [k, i], r, score: scoreFor(r.st, me) });
+    }
+  });
+  first.sort((a, b) => b.score - a.score);
+  const look = CONFIG.ai.look;
+  for (const cand of first.slice(0, look)) {
+    const after = cand.r.st;
+    if (after.winner >= 0) continue;
+    // assume the reply is a plain sheep, since the AI can't see your hand
+    const probe = cloneState(after);
+    probe.hands[probe.current] = ["plain"];
+    let best = -Infinity;
+    let mine = cand.score;
+    for (let i = 0; i < probe.b.size; i++) {
+      if (!isLegal(probe, probe.current, i)) continue;
+      const r2 = simulate(probe, 0, i, false);
+      const theirs = scoreFor(r2.st, probe.current);
+      if (theirs > best) {
+        best = theirs;
+        mine = scoreFor(r2.st, me);
+      }
+    }
+    cand.score = mine;
+  }
+  return Kit.pickBest(first.slice(0, look).map(({ move, score }) => ({ move, score })), CONFIG.ai.mistake);
+}
+
+// ---------- flow ----------
+async function play(k, i) {
+  busy = true;
+  const myGame = gameId;
+  const p = S.current;
+  const r = simulate(S, k, i, true);
+  Kit.sfx.place();
+  if (r.card !== "plain") {
+    Kit.popText($("chain"), `${SPECIALS[r.card].icon} ${SPECIALS[r.card].name}!`);
+    Kit.sfx.chime(4);
+  }
+  S = { ...S, b: r.pre, hands: r.st.hands };
+  selected = 0;
+  renderHand();
+  await Kit.anim.play(r.waves, CONFIG.waveMs, (w) => {
+    Kit.sfx.burst(p === WOLF ? w - 7 : w);
+    if (w >= 1) Kit.popText($("chain"), `Chain x${w + 1}!`);
+    if (w === CONFIG.chainShakeAt) Kit.shake($("stage"));
+    if (w === CONFIG.chainBigShakeAt) Kit.shake($("stage"), true);
+  }, r.pre);
+  if (myGame !== gameId) return;
+  S = r.st;
+  busy = false;
+  next();
+}
+
+async function next() {
+  hud();
+  renderHand();
+  if (S.winner >= 0) {
+    await Kit.sleep(700);
+    return finish();
+  }
+  if (isAI(S.current)) {
+    busy = true;
+    renderHand();
+    const myGame = gameId;
+    await Kit.sleep(CONFIG.aiDelayMs);
+    if (myGame !== gameId) return;
+    const [k, i] = aiMove(S);
+    play(k, i);
+  }
+}
+
+function finish() {
+  const w = S.winner;
+  const youWon = mode === "pvp" || w === LAMB;
+  let sub = mode === "pvp" ? `${w === LAMB ? "Lamb" : "Wolf"} wins after ${S.turn} moves.` : youWon ? "" : "The wolf took the field. Try again?";
+  if (mode === "ai" && w === LAMB && !autoplay) {
+    const locked = Object.keys(SPECIALS).filter((k) => !unlocked.includes(k));
+    if (locked.length) {
+      const got = locked[Math.floor(Math.random() * locked.length)];
+      unlocked.push(got);
+      save();
+      sub = `New sheep for your collection: ${SPECIALS[got].icon} ${SPECIALS[got].name}! ${SPECIALS[got].text}`;
+    } else sub = "Your collection of specials is complete!";
+  }
+  $("end-title").textContent = mode === "pvp" ? `${w === LAMB ? "The lamb's flock" : "The wolf"} wins!` : youWon ? "You win!" : "The wolf wins";
+  $("end-sub").textContent = sub;
+  hero($("hero-end"), youWon ? "happy" : "sad");
+  (youWon ? Kit.sfx.win : Kit.sfx.lose)();
+  Kit.show("end");
+}
+
+function start() {
+  gameId++;
+  Kit.anim.cur = null;
+  busy = false;
+  selected = 0;
+  S = newGame();
+  save();
+  for (const id of ["intro", "end", "collection"]) Kit.hide(id);
+  resize();
+  next();
+}
+
+function hud() {
+  if (!S) return;
+  const p = S.winner >= 0 ? S.winner : S.current;
+  $("dot").style.color = p === LAMB ? "#fff4d6" : "#8a87a3";
+  const name = p === LAMB ? "Lamb" : "Wolf";
+  $("status").textContent = S.winner >= 0 ? `${name} wins!` : isAI(p) ? `${name} is thinking…` : mode === "pvp" ? `${name}'s turn` : "Your turn";
+}
+
+function renderHand() {
+  const box = $("hand");
+  box.replaceChildren();
+  if (!S) return;
+  const p = S.current;
+  const showing = isAI(p) && mode === "ai" ? LAMB : p;
+  const mine = !busy && !isAI(p) && S.winner < 0;
+  S.hands[showing].forEach((card, k) => {
+    const info = card === "plain" ? PLAIN : SPECIALS[card];
+    const btn = document.createElement("button");
+    btn.className = "card-btn" + (card !== "plain" ? " special" : "") + (mine && k === selected ? " on" : "");
+    btn.innerHTML = `<span class="ic">${info.icon}</span><span>${info.name}</span>`;
+    btn.disabled = !mine;
+    btn.addEventListener("click", () => {
+      selected = k;
+      renderHand();
+    });
+    box.append(btn);
+  });
+  const card = S.hands[showing][selected];
+  $("hint").textContent = mine && card ? (card === "plain" ? PLAIN : SPECIALS[card]).text : "";
+}
+
+canvas.addEventListener("pointerdown", (e) => {
+  if (!S || busy || S.winner >= 0 || isAI(S.current)) return;
+  const { row, col } = Kit.cellAt(canvas, e, geo.cell);
+  if (!Engine.inside(S.b, row, col)) return;
+  const i = row * S.b.cols + col;
+  if (isLegal(S, S.current, i)) play(selected, i);
+  else Kit.sfx.bad();
+});
+
+// ---------- drawing ----------
+function resize() {
+  if (!S) return;
+  geo = Kit.fitBoard(canvas, $("stage"), CONFIG.cols, CONFIG.rows);
+}
+
+const SPOTS = {
+  1: [[0, 0]],
+  2: [[-0.2, 0], [0.2, 0.02]],
+  3: [[-0.2, 0.12], [0.2, 0.12], [0, -0.16]],
+  4: [[-0.2, -0.15], [0.2, -0.15], [-0.2, 0.17], [0.2, 0.17]],
+};
+
+function piece(x, y, c, who, flip, t) {
+  if (who === LAMB) Kit.drawSheep(ctx, x, y, c * 0.14, "#fff4d6", { flip });
+  else Kit.drawWolf(ctx, x, y + c * 0.03, c * 0.28, { t, color: "#8a87a3" });
+}
+
+function drawFrame(now) {
+  Kit.anim.step(now);
+  const t = now / 1000;
+  ctx.setTransform(geo.dpr, 0, 0, geo.dpr, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (!S) return requestAnimationFrame(drawFrame);
+  const a = Kit.anim.cur;
+  const b = a ? Kit.anim.base() : S.b;
+  const wave = a && a.start !== null ? a.waves[a.i] : null;
+  const counts = b.count.slice();
+  if (wave) for (const { from } of wave.bursts) counts[from] = Math.max(0, counts[from] - capOf(b, from));
+  const c = geo.cell;
+  for (let i = 0; i < b.size; i++) {
+    const x = Engine.colOf(b, i) * c;
+    const y = Engine.rowOf(b, i) * c;
+    const chk = (Engine.rowOf(b, i) + Engine.colOf(b, i)) % 2;
+    const o = b.owner[i];
+    ctx.fillStyle = o === LAMB ? (chk ? "#79a957" : "#82b25f") : o === WOLF ? (chk ? "#2b2838" : "#322e42") : chk ? "#3d6a45" : "#44734c";
+    ctx.fillRect(x, y, c, c);
+    ctx.font = `${Math.round(c * 0.24)}px system-ui`;
+    ctx.textBaseline = "top";
+    if (b.tag[i]) ctx.fillText(SPECIALS[b.tag[i]].icon, x + c * 0.03, y + c * 0.03);
+    if (b.woolly[i] >= S.turn && o >= 0) ctx.fillText("🧶", x + c * 0.68, y + c * 0.03);
+  }
+  for (let i = 0; i < b.size; i++) {
+    const n = counts[i];
+    if (n <= 0 || b.owner[i] < 0) continue;
+    const nervous = n >= capOf(b, i) - 1;
+    const k = Math.min(n, 4);
+    for (let s = 0; s < k; s++) {
+      const [dx, dy] = SPOTS[k][s];
+      const jx = nervous ? Math.sin(t * 40 + i * 3 + s) * c * 0.02 : 0;
+      piece((Engine.colOf(b, i) + 0.5 + dx) * c + jx, (Engine.rowOf(b, i) + 0.5 + dy) * c, c, b.owner[i], s % 2 === 1, t + i + s);
+    }
+    if (n > 4) {
+      ctx.fillStyle = "#ffcf4a";
+      ctx.font = `900 ${Math.round(c * 0.24)}px system-ui`;
+      ctx.textBaseline = "alphabetic";
+      ctx.fillText(n, (Engine.colOf(b, i) + 0.72) * c, (Engine.rowOf(b, i) + 0.95) * c);
+    }
+  }
+  if (wave) {
+    const p = Kit.anim.t(now);
+    const e = 1 - (1 - p) * (1 - p);
+    for (const { from, to, who } of wave.bursts) {
+      const fx = (Engine.colOf(b, from) + 0.5) * c;
+      const fy = (Engine.rowOf(b, from) + 0.5) * c;
+      for (const d of to) {
+        const tx = (Engine.colOf(b, d) + 0.5) * c;
+        const ty = (Engine.rowOf(b, d) + 0.5) * c;
+        piece(fx + (tx - fx) * e, fy + (ty - fy) * e - Math.sin(Math.PI * p) * c * 0.3, c, who, tx < fx, t);
+      }
+    }
+  }
+  ctx.strokeStyle = S.current === LAMB ? "rgba(255,233,168,0.5)" : "rgba(140,130,180,0.6)";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let col = 0; col <= b.cols; col++) {
+    const x = Math.min(Math.max(col * c, 0.75), geo.w - 0.75);
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, geo.h);
+  }
+  for (let row = 0; row <= b.rows; row++) {
+    const y = Math.min(Math.max(row * c, 0.75), geo.h - 0.75);
+    ctx.moveTo(0, y);
+    ctx.lineTo(geo.w, y);
+  }
+  ctx.stroke();
+  requestAnimationFrame(drawFrame);
+}
+
+function hero(cv, mood) {
+  const g = Kit.sharp(cv, 240, 130);
+  Kit.drawSheep(g, 40, 95, 16, "#ffd25a");
+  Kit.drawSheep(g, 200, 95, 16, "#ff6fc8", { flip: true });
+  g.font = "22px system-ui";
+  g.fillText("⭐", 186, 52);
+  g.fillText("🧲", 28, 52);
+  Kit.drawLamb(g, 120, 72, 108, { mood });
+}
+
+// ---------- collection ----------
+function renderCollection() {
+  const keys = Object.keys(SPECIALS);
+  const have = pool();
+  $("col-count").textContent = `${have.length} of 99 found. Specials are the dashed slots; the rest are still out there.`;
+  const grid = $("grid99");
+  grid.replaceChildren();
+  for (let s = 0; s < 99; s++) {
+    const el = document.createElement("button");
+    const k = keys[s];
+    const got = k && have.includes(k);
+    el.className = "slot" + (k ? " special" : "") + (got ? " got" : "");
+    el.textContent = got ? SPECIALS[k].icon : "?";
+    el.setAttribute("aria-label", got ? SPECIALS[k].name : "Not found yet");
+    el.addEventListener("click", () => {
+      $("col-info").innerHTML = got ? `<b>${SPECIALS[k].icon} ${SPECIALS[k].name}</b><br>${SPECIALS[k].text}` : "Not found yet. Win games to find more.";
+    });
+    grid.append(el);
+  }
+  $("unlock-all").checked = unlockAll;
+}
+
+$("unlock-all").addEventListener("change", (e) => {
+  unlockAll = e.target.checked;
+  save();
+  renderCollection();
+});
+$("open-col").addEventListener("click", () => {
+  renderCollection();
+  Kit.hide("intro");
+  Kit.show("collection");
+});
+$("col-back").addEventListener("click", () => {
+  Kit.hide("collection");
+  Kit.show("intro");
+});
+function renderMode() {
+  for (const btn of $("mode").querySelectorAll("button")) btn.classList.toggle("on", btn.dataset.mode === mode);
+}
+$("mode").addEventListener("click", (e) => {
+  const m = e.target.closest("button")?.dataset.mode;
+  if (!m) return;
+  mode = m;
+  renderMode();
+});
+$("play").addEventListener("click", start);
+$("again").addEventListener("click", start);
+$("restart").addEventListener("click", () => S && start());
+const toMenu = () => {
+  gameId++;
+  Kit.anim.cur = null;
+  busy = false;
+  Kit.hide("end");
+  Kit.show("intro");
+};
+$("menu").addEventListener("click", toMenu);
+$("end-menu").addEventListener("click", toMenu);
+Kit.muteButton($("mute"));
+new ResizeObserver(resize).observe($("stage"));
+
+renderMode();
+hero($("hero-intro"), "happy");
+requestAnimationFrame(drawFrame);
+</script>
+</body>
+</html>
