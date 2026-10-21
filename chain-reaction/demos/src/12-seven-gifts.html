@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Seven Gifts</title>
+<meta name="description" content="cheekyfoundlamb demo 12: every player holds 7 wrapped gifts and picks when to open them." />
+<style>
+/*@KITCSS*/
+/*@CARDSCSS*/
+.top { min-height: 46px; padding-bottom: 2px; }
+.seats { display: grid; gap: 6px; }
+.seat { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 12px; background: var(--meadow-2); }
+.seat .dot { width: 18px; height: 18px; border-radius: 50%; background: currentColor; flex: none; }
+.seat .nm { flex: 1; font-weight: 800; text-align: left; }
+.stepper { display: flex; align-items: center; gap: 4px; background: var(--meadow-2); border-radius: 12px; padding: 4px; }
+.stepper button { width: 40px; height: 40px; border-radius: 9px; background: transparent; font-size: 1.3rem; font-weight: 900; }
+.stepper output { min-width: 22px; text-align: center; font-weight: 900; }
+.gifts { display: flex; gap: 4px; flex: 1 1 100%; justify-content: center; }
+.gift { position: relative; width: 44px; height: 50px; border-radius: 10px; padding: 0; display: grid; place-items: center; font-size: 1.3rem;
+  background: repeating-linear-gradient(45deg, #c84b5a 0 6px, #d8606e 6px 12px); box-shadow: 0 3px 0 rgba(0,0,0,0.35); }
+.gift::after { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 6px; margin-left: -3px; background: #ffd25a; }
+.gift.gold { background: linear-gradient(160deg, #ffe680, #d4a017); }
+.gift.opened { background: var(--meadow); box-shadow: none; opacity: 0.45; }
+.gift.opened::after { display: none; }
+.gift span { position: relative; z-index: 1; }
+.gift:disabled { cursor: default; }
+.hand { flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="status"><span class="dot" id="dot"></span><span class="txt" id="status">Seven Gifts</span></div>
+    <div class="btns">
+      <button class="ib" id="restart" aria-label="Restart">↻</button>
+      <button class="ib" id="mute" aria-label="Mute">🔊</button>
+      <button class="ib" id="menu" aria-label="Menu">☰</button>
+    </div>
+  </header>
+  <div class="chips" id="chips"></div>
+  <main class="stage" id="stage">
+    <canvas id="board" aria-label="Board"></canvas>
+    <div class="chain" id="chain"></div>
+  </main>
+  <div class="hint" id="hint"></div>
+  <div class="hand" id="hand"></div>
+</div>
+
+<section class="overlay" id="intro">
+  <div class="card">
+    <canvas class="hero" id="hero-intro"></canvas>
+    <h1>Seven Gifts</h1>
+    <div class="how">
+      <p>Classic Chain Reaction, but every lamb holds 7 wrapped gifts. Once per turn, before or after placing, you may open one. It must be used straight away (Grace is kept until it saves you).</p>
+      <p>Some gifts hide a wolf! Open all 7 and the last is always golden Pentecost. Gifts still wrapped when the game ends are lost, so pick your moments.</p>
+    </div>
+    <div class="opts">
+      <div class="optrow"><span class="lbl">Players</span>
+        <div class="stepper"><button id="fewer" aria-label="Fewer players">−</button><output id="count">2</output><button id="more" aria-label="More players">+</button></div>
+      </div>
+      <div class="seats" id="seats"></div>
+    </div>
+    <button class="big" id="play">Play</button>
+  </div>
+</section>
+
+<section class="overlay" id="end" hidden>
+  <div class="card">
+    <canvas class="hero" id="hero-end"></canvas>
+    <h2 id="end-title"></h2>
+    <p id="end-sub"></p>
+    <button class="big" id="again">Play again</button>
+    <button class="big alt" id="end-menu">Change players</button>
+  </div>
+</section>
+
+<script>
+/*@ENGINE*/
+/*@KIT*/
+/*@CARDS*/
+/*@TABLE*/
+
+// ---------- balance ----------
+const CONFIG = {
+  rows: 9,
+  cols: 6,
+  gifts: 7, // wrapped gifts per player; the last one opened is always Pentecost
+  waveMs: 130,
+  aiDelayMs: 650,
+  aiMistake: 0.12,
+  aiOpenChance: 0.45, // chance an AI opens a gift on a turn when it has no better reason
+  safeRounds: 2, // nobody can be knocked out during the first rounds
+  pool: { ...Cards.POOL }, // draw weights for every card; set one to 0 to remove it
+};
+Cards.safeRounds = CONFIG.safeRounds;
+
+const { $ } = Kit;
+const COLORS = Kit.COLORS.slice(0, 6);
+const NAMES = Kit.COLOR_NAMES.slice(0, 6);
+let setup = { n: 2, seats: ["human", "ai", "ai", "ai", "ai", "ai"] };
+try {
+  Object.assign(setup, JSON.parse(localStorage.getItem("cfl-12")) || {});
+} catch {}
+let S = null;
+let gameId = 0;
+let lastHuman = -1;
+
+const kind = (p) => S.kinds[p];
+const humans = () => S.kinds.filter((k) => k === "human").length;
+const viewer = () => (!S ? -1 : kind(S.current) === "human" ? S.current : humans() === 1 ? S.kinds.indexOf("human") : -1);
+const left = (p) => CONFIG.gifts - S.opened[p];
+// The next gift to open: the 7th is always Pentecost.
+const nextGift = (p) => (S.opened[p] === CONFIG.gifts - 1 ? "pentecost" : S.wrapped[p][S.opened[p]]);
+
+Cards.hooks = {};
+
+function newGame() {
+  const b = Engine.createBoard(CONFIG.rows, CONFIG.cols, { still: -1, mustard: -1 });
+  const st = Cards.newState(b, setup.n);
+  st.kinds = setup.seats.slice(0, setup.n);
+  st.wrapped = Array.from({ length: setup.n }, () => Array.from({ length: CONFIG.gifts }, () => Cards.draw(CONFIG.pool)));
+  st.opened = new Array(setup.n).fill(0);
+  st.forcedNext = 2;
+  return st;
+}
+
+const legalPlace = (st) => [...Array(st.b.size).keys()].filter((i) => Cards.canPlace(st, st.current, i));
+const aiScore = (st, p) => Cards.score(st, p);
+
+// ---------- flow ----------
+async function loop(myGame) {
+  while (myGame === gameId) {
+    if (S.winner >= 0) return finish();
+    const p = S.current;
+    hud();
+    if (kind(p) === "human" && humans() > 1 && lastHuman !== p) {
+      await Cards.passPhone(`${NAMES[p]}'s lamb`, COLORS[p]);
+      if (myGame !== gameId) return;
+    }
+    if (kind(p) === "human") lastHuman = p;
+    const pre = Engine.clone(S.b);
+    const bt = Cards.beginTurn(S);
+    hud();
+    if (bt.skipped) {
+      Kit.popText($("chain"), `${NAMES[p]} skips a turn 💤`);
+      await Kit.sleep(1000);
+      Cards.endTurn(S);
+      await Table.events(S);
+      continue;
+    }
+    if (bt.given?.length) Kit.popText($("chain"), "It is given back: +3!");
+    await Table.waves(bt.waves, pre, () => Table.jump(p));
+    await Table.events(S);
+    if (S.winner >= 0 || myGame !== gameId) continue;
+
+    let placesLeft = S.ps[p].gifts.leadership > 0 ? 2 : 1;
+    let canOpen = left(p) > 0;
+    if (S.forced?.victim === p) {
+      const forced = S.forced;
+      S.forced = null;
+      Kit.popText($("chain"), `${NAMES[p]}'s sheep go where ${NAMES[forced.by]} chose`);
+      for (const i of forced.cells) {
+        if (!Cards.canPlace(S, p, i)) continue;
+        await Table.place(p, i, () => Cards.place(S, p, i));
+        await Table.events(S);
+        if (S.winner >= 0 || myGame !== gameId) break;
+      }
+      placesLeft = 0;
+    }
+
+    if (kind(p) === "human") {
+      while (myGame === gameId && S.winner < 0 && (placesLeft > 0 || canOpen)) {
+        hud();
+        const a = await Table.ask({
+          st: S, p,
+          canPlace: (i) => Cards.canPlace(S, p, i),
+          placeOk: placesLeft > 0,
+          placeText: placesLeft === 2 ? "👑 Place 2 sheep" : "Tap a square to place a sheep",
+          text: placesLeft > 0 ? (canOpen ? "Place a sheep, or open a gift." : "Tap a square to place a sheep.") : "Open a gift, or end your turn.",
+          cardsOk: false,
+          endOk: placesLeft === 0,
+          extra: giftsRow(p, canOpen),
+        });
+        if (myGame !== gameId) return;
+        if (a.type === "end") break;
+        if (a.type === "place") {
+          await Table.place(p, a.cell, () => Cards.place(S, p, a.cell));
+          placesLeft--;
+        } else if (a.type === "open") {
+          await openGift(p);
+          canOpen = false;
+        }
+        await Table.events(S);
+      }
+    } else {
+      await Kit.sleep(CONFIG.aiDelayMs);
+      if (myGame !== gameId) return;
+      // open before placing when it's worth it: always if Discernment shows a good gift,
+      // late in the game so gifts aren't wasted, or just sometimes
+      const peek = nextGift(p);
+      const knows = S.ps[p].discern;
+      const late = S.round > 12;
+      if (left(p) > 0 && (knows ? Cards.DEF[peek].group !== "wolf" : late || Math.random() < CONFIG.aiOpenChance)) {
+        await openGift(p);
+        await Table.events(S);
+      }
+      for (let k = 0; k < placesLeft && S.winner < 0 && myGame === gameId; k++) {
+        const legal = legalPlace(S);
+        const cell = Math.random() < CONFIG.aiMistake ? legal[Math.floor(Math.random() * legal.length)] : Cards.bestPlace(S, p, legal, aiScore).cell;
+        if (cell < 0) continue;
+        await Table.place(p, cell, () => Cards.place(S, p, cell));
+        await Table.events(S);
+      }
+    }
+    if (myGame !== gameId) return;
+    Cards.endTurn(S);
+    await Table.events(S);
+  }
+}
+
+// Unwraps p's next gift and uses it right away.
+async function openGift(p) {
+  const key = nextGift(p);
+  S.opened[p]++;
+  const d = Cards.DEF[key];
+  const golden = key === "pentecost" && S.opened[p] === CONFIG.gifts;
+  hud();
+  await Cards.reveal(key, COLORS[p], { golden, label: `${NAMES[p]}'s lamb opens gift ${S.opened[p]} of ${CONFIG.gifts}` });
+  if (key === "grace") {
+    S.ps[p].hand.push("grace");
+    Kit.popText($("chain"), "🛡️ Grace is kept until it's needed");
+    hud();
+    return;
+  }
+  let target = null;
+  if (Cards.picksNeeded(key, S) > 0) {
+    if (kind(p) === "human") {
+      S.ps[p].hand.push(key);
+      const a = await Table.ask({ st: S, p, placeOk: false, cardsOk: true, endOk: false, noCancel: true, autoPick: S.ps[p].hand.length - 1, cardFilter: (k) => k === key, canPlace: () => false, extra: giftsRow(p, false) });
+      S.ps[p].hand.pop();
+      target = a.target;
+    } else {
+      const options = Cards.aiTargets(S, p, key);
+      let best = -Infinity;
+      for (const t of options) {
+        const s2 = Cards.clone(S);
+        Cards.apply(s2, p, key, t, false);
+        const sc = aiScore(s2, p);
+        if (sc > best) [best, target] = [sc, t];
+      }
+    }
+    if (target === null || (Array.isArray(target) && !target.length)) {
+      Kit.popText($("chain"), `${d.name} had nothing to aim at`);
+      await Kit.sleep(800);
+      return;
+    }
+  }
+  await Table.card(p, key, () => Cards.apply(S, p, key, target), { label: `${NAMES[p]}: ${d.name}`, golden });
+  hud();
+}
+
+// The row of 7 gifts under the board for player p.
+function giftsRow(p, canOpen) {
+  const row = document.createElement("div");
+  row.className = "gifts";
+  const see = S.ps[p].discern;
+  for (let k = 0; k < CONFIG.gifts; k++) {
+    const btn = document.createElement("button");
+    const opened = k < S.opened[p];
+    const key = k === CONFIG.gifts - 1 ? "pentecost" : S.wrapped[p][k];
+    btn.className = "gift" + (opened ? " opened" : "") + (k === CONFIG.gifts - 1 ? " gold" : "");
+    btn.innerHTML = `<span>${opened || see ? Cards.DEF[key].icon : ""}</span>`;
+    btn.setAttribute("aria-label", opened ? Cards.DEF[key].name : "Wrapped gift");
+    btn.disabled = opened || !canOpen || k !== S.opened[p];
+    if (!btn.disabled) btn.addEventListener("click", () => Table.act({ type: "open" }));
+    row.append(btn);
+  }
+  return row;
+}
+
+function finish() {
+  const w = S.winner;
+  const won = kind(w) === "human" || humans() === 0;
+  $("end-title").textContent = humans() > 1 || won ? `${NAMES[w]}'s flock wins!` : "The other flock won";
+  $("end-title").style.color = COLORS[w];
+  const lost = S.kinds.map((_, p) => `${NAMES[p]} ${left(p)}`).join(" · ");
+  $("end-sub").textContent = `Last flock standing after ${S.round} rounds. Gifts left unopened: ${lost}.`;
+  const g = Kit.sharp($("hero-end"), 220, 120);
+  Kit.drawLamb(g, 110, 66, 104, { scarf: COLORS[w], mood: won || humans() > 1 ? "happy" : "sad" });
+  (won ? Kit.sfx.win : Kit.sfx.lose)();
+  Kit.show("end");
+}
+
+function hud() {
+  if (!S) return;
+  const p = S.winner >= 0 ? S.winner : S.current;
+  $("dot").style.color = COLORS[p];
+  $("status").textContent = S.winner >= 0 ? `${NAMES[p]} wins!` : `${NAMES[p]}${kind(p) === "ai" ? " is thinking…" : "'s turn"} · round ${S.round}`;
+  const v = viewer();
+  Table.chips(S, S.kinds, (q) => {
+    const see = v >= 0 && S.ps[v].discern && q !== v;
+    const shown = see ? S.wrapped[q].slice(S.opened[q], CONFIG.gifts - 1).map((k) => Cards.DEF[k].icon).join("") + (left(q) ? "🌟" : "") : "";
+    return `🎁${left(q)}${shown ? ` ${shown}` : ""}${S.ps[q].hand.includes("grace") ? " 🛡️" : ""} `;
+  });
+  if (kind(S.current) !== "human" || S.winner >= 0) Table.hand(S, v, { enabled: false, extra: v >= 0 ? giftsRow(v, false) : null });
+}
+
+// ---------- menu ----------
+function renderSeats() {
+  $("count").textContent = setup.n;
+  const box = $("seats");
+  box.replaceChildren();
+  for (let p = 0; p < setup.n; p++) {
+    const row = document.createElement("div");
+    row.className = "seat";
+    row.innerHTML = `<span class="dot" style="color:${COLORS[p]}"></span><span class="nm">${NAMES[p]}</span>`;
+    const seg = document.createElement("div");
+    seg.className = "seg";
+    for (const [k, label] of [["human", "Human"], ["ai", "AI"]]) {
+      const btn = document.createElement("button");
+      btn.textContent = label;
+      btn.className = setup.seats[p] === k ? "on" : "";
+      btn.addEventListener("click", () => {
+        setup.seats[p] = k;
+        renderSeats();
+      });
+      seg.append(btn);
+    }
+    row.append(seg);
+    box.append(row);
+  }
+}
+
+function start() {
+  gameId++;
+  Table.cancelAsk();
+  Kit.anim.cur = null;
+  Cards.fx.cur = null;
+  try {
+    localStorage.setItem("cfl-12", JSON.stringify(setup));
+  } catch {}
+  S = newGame();
+  lastHuman = -1;
+  for (const id of ["intro", "end"]) Kit.hide(id);
+  Table.resize();
+  loop(gameId);
+}
+
+$("fewer").addEventListener("click", () => {
+  setup.n = Math.max(2, setup.n - 1);
+  renderSeats();
+});
+$("more").addEventListener("click", () => {
+  setup.n = Math.min(6, setup.n + 1);
+  renderSeats();
+});
+$("play").addEventListener("click", start);
+$("again").addEventListener("click", start);
+$("restart").addEventListener("click", () => S && start());
+const toMenu = () => {
+  gameId++;
+  Table.cancelAsk();
+  Kit.anim.cur = null;
+  Cards.fx.cur = null;
+  Kit.hide("end");
+  renderSeats();
+  Kit.show("intro");
+};
+$("menu").addEventListener("click", toMenu);
+$("end-menu").addEventListener("click", toMenu);
+Kit.muteButton($("mute"));
+
+Table.init({ colors: COLORS, names: NAMES, state: () => S, viewer, waveMs: CONFIG.waveMs });
+renderSeats();
+{
+  const g = Kit.sharp($("hero-intro"), 220, 120);
+  for (let k = 0; k < 7; k++) {
+    g.fillStyle = k === 6 ? "#e7b416" : "#c84b5a";
+    g.fillRect(8 + k * 30, 96, 24, 20);
+    g.fillStyle = "#ffd25a";
+    g.fillRect(18 + k * 30, 96, 4, 20);
+  }
+  Kit.drawLamb(g, 110, 54, 88, { scarf: COLORS[0], mood: "happy" });
+}
+</script>
+</body>
+</html>

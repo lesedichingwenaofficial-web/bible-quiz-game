@@ -89,7 +89,7 @@ const Table = (() => {
 
   function pickCard(idx, key) {
     if (!ctxTurn) return;
-    if (sel?.idx === idx) return cancelSel();
+    if (sel?.idx === idx) return ctxTurn.noCancel ? null : cancelSel();
     sel = { idx, key, picks: [], axis: "row" };
     refreshTargets();
   }
@@ -99,27 +99,31 @@ const Table = (() => {
     view.highlight = [];
     view.preview = [];
     idleHint();
-    hand(ctxTurn.st, ctxTurn.p, { enabled: ctxTurn.cardsOk, costs: ctxTurn.costs });
+    hand(ctxTurn.st, ctxTurn.p, { enabled: ctxTurn.cardsOk, costs: ctxTurn.costs, extra: ctxTurn.extra });
   }
 
   function refreshTargets() {
     const { st, p } = ctxTurn;
     const d = Cards.DEF[sel.key];
-    hand(st, p, { enabled: true, costs: ctxTurn.costs });
+    hand(st, p, { enabled: true, costs: ctxTurn.costs, extra: ctxTurn.extra });
     view.highlight = Cards.selectable(st, p, sel.key, sel.picks);
     view.preview = sel.picks.slice();
     const need = Cards.picksNeeded(sel.key, st);
     if (need === 0) {
       view.highlight = [];
-      hint(`${d.icon} <b>${d.name}</b>: ${d.text}`, [["Play", () => finishCard(null), "on"], ["Cancel", cancelSel]]);
+      hint(`${d.icon} <b>${d.name}</b>: ${d.text}`, [["Play", () => finishCard(null), "on"], ...cancelBtn()]);
     } else if (d.target === "line") {
-      hint(`Tap a square to part its ${sel.axis}.`, [[sel.axis === "row" ? "Row ⇄ Column" : "Column ⇄ Row", () => { sel.axis = sel.axis === "row" ? "col" : "row"; refreshTargets(); }], ["Cancel", cancelSel]]);
+      hint(`Tap a square to part its ${sel.axis}.`, [[sel.axis === "row" ? "Row ⇄ Column" : "Column ⇄ Row", () => { sel.axis = sel.axis === "row" ? "col" : "row"; refreshTargets(); }], ...cancelBtn()]);
     } else {
       const left = need - sel.picks.length;
       const what = { area: "the middle of a 3×3 area", mine: "one of your squares", any: "any square", empty: "an empty square", enemy: "an enemy square", cells: `${left} square${left > 1 ? "s" : ""} for the next player`, faith: sel.picks.length ? "an empty square to move to" : "a square of yours to move" }[d.target];
-      hint(`${d.icon} Tap ${what}.`, [["Cancel", cancelSel]]);
+      hint(`${d.icon} Tap ${what}.`, cancelBtn());
     }
+    // nothing to aim at: the card fizzles
+    if (need > 0 && !view.highlight.length) hint(`${d.icon} Nothing to aim ${d.name} at.`, [[ctxTurn.noCancel ? "OK" : "Cancel", ctxTurn.noCancel ? () => finishCard(null) : cancelSel]]);
   }
+
+  const cancelBtn = () => (ctxTurn?.noCancel ? [] : [["Cancel", cancelSel]]);
 
   function finishCard(target) {
     const done = { type: "card", idx: sel.idx, key: sel.key, target };
@@ -160,8 +164,10 @@ const Table = (() => {
     ctxTurn = c;
     sel = null;
     idleHint();
-    hand(c.st, c.p, { enabled: c.cardsOk, costs: c.costs });
-    return new Promise((r) => (pending = r));
+    hand(c.st, c.p, { enabled: c.cardsOk, costs: c.costs, extra: c.extra });
+    const promise = new Promise((r) => (pending = r));
+    if (c.autoPick !== undefined) pickCard(c.autoPick, c.st.ps[c.p].hand[c.autoPick]);
+    return promise;
   }
 
   function resolveTurn(action) {
@@ -354,6 +360,6 @@ const Table = (() => {
     ctx.globalAlpha = 1;
   }
 
-  return { init, resize, chips, jump, hand, hint, ask, cancelAsk, waves, card, place, events, view, get geo() { return geo; } };
+  return { init, resize, chips, jump, hand, hint, ask, cancelAsk, act: (a) => resolveTurn(a), waves, card, place, events, view, get geo() { return geo; } };
 })();
 // ======================= END SHARED TABLE UI =======================
