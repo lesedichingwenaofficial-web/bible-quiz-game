@@ -35,6 +35,7 @@ Eight takes on demo 8, all on one shared real-time core (`src/_stampede.js`) so 
 | S4 | Big Bad Wolf | Co-op boss fight for 1–4: hurt the 2x2 wolf with bursts, dodge Swipe, Howl, Pups and Stomp |
 | S5 | Shrinking Pasture | Battle royale for 2–4: every 20 seconds the outer ring turns to stone |
 | S6 | Lost Lamb | King of the hill for 2–4: own the square the wandering lamb stands on to fill your bar |
+| S7 | Sheep Rush | 60-second solo score attack: claim grey sheep, smash rocks, keep the combo multiplier going, copy a share line |
 
 Balance numbers sit in a `CONFIG` object at the top of each file.
 

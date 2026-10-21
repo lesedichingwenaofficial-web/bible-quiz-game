@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Sheep Rush</title>
+<meta name="description" content="cheekyfoundlamb Stampede S7: a 60-second solo score attack. Chain bursts, claim grey sheep, smash rocks and keep the combo going." />
+<style>
+/*@KITCSS*/
+/*@STAMPEDECSS*/
+.hud { gap: 8px; }
+.score { font-size: 1.5rem; font-weight: 900; color: var(--sun); font-variant-numeric: tabular-nums; min-width: 90px; text-align: right; }
+.combo { position: relative; width: 92px; height: 30px; border-radius: 10px; background: var(--meadow-2); overflow: hidden; display: grid; place-items: center; font-weight: 900; }
+.combo i { position: absolute; inset: 0 auto 0 0; background: #ff9a5c; }
+.combo b { position: relative; }
+.copy { margin-top: 8px; }
+.share { font-size: 0.85rem; color: var(--muted); margin-top: 6px; }
+</style>
+</head>
+<body>
+<!--@STAMPEDEHTML-->
+<script>
+/*@ENGINE*/
+/*@KIT*/
+/*@STAMPEDE*/
+
+// ======================= S7: SHEEP RUSH =======================
+const CONFIG = {
+  seconds: 60,
+  comboMs: 2000, // chains closer than this raise the multiplier; this long without one resets it
+  bonusSecs: 3, // for breaking a rock or a chain this long
+  maxBonusSecs: 30, // at most this much extra time per round
+  bonusChain: 20,
+  start: { own: 0.3, neutral: 0.4, rocks: 3 }, // how the board starts
+  neutralEveryMs: 3500, // new grey sheep drop in this often (2 at a time)
+  rockEveryMs: 12000, // and a new rock this often
+  pointsPerBurst: 10,
+  chainCap: 20, // chain size counts up to this in the points
+  homePoints: 5, // per square cleared when a chain ends
+  refill: { upTo: 0.5, own: 0.4 }, // after a chain clears, sheep drop in until half the board is full (40% yours, the rest grey)
+};
+const N = Stampede.NEUTRAL;
+const best = () => {
+  try {
+    return Number(localStorage.getItem("cfl-s7-best")) || 0;
+  } catch {
+    return 0;
+  }
+};
+
+Stampede.run({
+  key: "s7",
+  title: "Sheep Rush",
+  how: ["Tap to drop a sheep. Bursts claim grey sheep and smash rocks.", "Keep chaining fast for a bigger multiplier. 60 seconds!"],
+  solo: true,
+  maxRun: 14, // a cascade settles after 14 waves (about 2 s), then its squares clear
+  tune: { roundSecs: CONFIG.seconds },
+  players: () => [{ seat: 0, kind: "human" }],
+  options(ui) {
+    const b = best();
+    if (b) ui.row("Best", Object.assign(document.createElement("b"), { textContent: b.toLocaleString() }));
+  },
+  hooks: {
+    setup(G) {
+      const b = G.b;
+      const now = performance.now();
+      G.data = { burst: new Set(), score: 0, mult: 1, lastBurst: 0, chainStart: 0, bonus: 0, best: 0, rocksBroken: 0, nextNeutral: now + CONFIG.neutralEveryMs, nextRock: now + CONFIG.rockEveryMs, last: "" };
+      const cells = [...Array(b.size).keys()].sort(() => Math.random() - 0.5);
+      cells.slice(0, CONFIG.start.rocks).forEach((i) => addRock(G, i));
+      for (const i of cells.slice(CONFIG.start.rocks)) {
+        const r = Math.random();
+        if (r < CONFIG.start.own) fill(b, i, 0);
+        else if (r < CONFIG.start.own + CONFIG.start.neutral) fill(b, i, N);
+      }
+    },
+    noElimination: true,
+    roundSecs: (G) => Stampede.tune.roundSecs + G.data.bonus,
+    inPath: (G, i) => G.b.kind[i] !== "rock",
+    blocked: (G, i) => G.b.kind[i] === "rock",
+    land(G, b, from, to, who) {
+      if (b.kind[to] !== "rock") return false;
+      hitRock(G, to);
+      return true;
+    },
+    specialHit(G, k) {
+      if (G.b.kind[k] !== "rock") return false;
+      hitRock(G, k);
+      return true;
+    },
+    targets(G, b, i, t) {
+      if (b.owner[i] === 0) G.data.burst.add(i);
+      return t;
+    },
+    afterWave(G, now, bursts) {
+      const D = G.data;
+      const pl = G.players[0];
+      if (!bursts[0]) return;
+      if (pl.chain === bursts[0]) {
+        // a new chain: close to the last one raises the multiplier
+        D.mult = now - D.lastBurst < CONFIG.comboMs ? D.mult + 1 : 1;
+        if (D.mult > 1) Kit.tone(400 + D.mult * 80, 0.12, "triangle", 0.07, 700 + D.mult * 80);
+        if (D.mult === 3 || D.mult === 5 || D.mult === 8) Stampede.shout(pl, `x${D.mult}!`, 1.2 + D.mult * 0.05, "#ff9a5c");
+      }
+      D.lastBurst = now;
+      D.score += bursts[0] * CONFIG.pointsPerBurst * Math.min(pl.chain, CONFIG.chainCap) * D.mult;
+    },
+    onChain(G, pl, prev, now) {
+      if (prev < CONFIG.bonusChain && now >= CONFIG.bonusChain) bonus(G);
+    },
+    chainEnd(G, pl, chain, now) {
+      const D = G.data;
+      const b = G.b;
+      D.best = Math.max(D.best, chain);
+      // the sheep that burst find their way home: their squares clear, so the board never clogs
+      const cells = [...D.burst].filter((i) => b.owner[i] === 0);
+      D.burst.clear();
+      for (const i of cells) {
+        b.owner[i] = -1;
+        b.count[i] = 0;
+        b.tag[i] = null;
+      }
+      D.score += cells.length * CONFIG.homePoints * D.mult;
+      G.effects.push({ type: "overflow", cells, color: "#ffe680", t0: now });
+      if (cells.length >= 8) Kit.tone(1046, 0.2, "sine", 0.05, 1568);
+      // like Candy Crush, fresh sheep drop into the gaps
+      const fresh = [];
+      const empty = [];
+      for (let i = 0; i < b.size; i++) if (b.owner[i] === -1 && !b.kind[i]) empty.push(i);
+      let room = Math.floor(b.size * CONFIG.refill.upTo) - (b.size - empty.length);
+      for (const i of empty.sort(() => Math.random() - 0.5)) {
+        if (room-- <= 0) break;
+        fill(b, i, Math.random() < CONFIG.refill.own ? 0 : N);
+        fresh.push(i);
+      }
+      if (fresh.length) G.effects.push({ type: "hit", cells: fresh, color: "#fffaf0", t0: now });
+    },
+    update(G, now) {
+      const D = G.data;
+      if (D.mult > 1 && now - D.lastBurst > CONFIG.comboMs) {
+        D.mult = 1;
+        Kit.tone(300, 0.15, "sine", 0.04, 180);
+      }
+      if (now >= D.nextNeutral) {
+        D.nextNeutral = now + CONFIG.neutralEveryMs;
+        for (let k = 0; k < 2; k++) {
+          const i = randomEmpty(G);
+          if (i >= 0) {
+            fill(G.b, i, N);
+            G.effects.push({ type: "hit", cells: [i], color: "#c9c9d4", t0: now });
+          }
+        }
+      }
+      if (now >= D.nextRock) {
+        D.nextRock = now + CONFIG.rockEveryMs;
+        const i = randomEmpty(G);
+        if (i >= 0) addRock(G, i);
+      }
+      const left = Math.max(0, 1 - (now - D.lastBurst) / CONFIG.comboMs);
+      const html = `<div class="combo"><i style="width:${D.mult > 1 ? left * 100 : 0}%"></i><b>x${D.mult}</b></div><span class="score">${D.score.toLocaleString()}</span>`;
+      if (html !== D.last) {
+        D.last = html;
+        Kit.$("hud").innerHTML = html;
+      }
+    },
+    shift(G, d) {
+      const D = G.data;
+      D.nextNeutral += d;
+      D.nextRock += d;
+      D.lastBurst += d;
+    },
+    endCheck(G, now, left) {
+      if (left > 0) return null;
+      const D = G.data;
+      D.best = Math.max(D.best, G.players[0].chain);
+      const prev = best();
+      if (D.score > prev) {
+        try {
+          localStorage.setItem("cfl-s7-best", D.score);
+        } catch {}
+      }
+      return { team: 0, title: D.score > prev ? "New best!" : "Time!", sub: `${D.score.toLocaleString()} points`, color: "#ffcf4a" };
+    },
+    endExtra(G, res, el) {
+      const D = G.data;
+      const line = `🐑 Sheep Rush: ${D.score.toLocaleString()} points, best chain ${D.best}, ${D.rocksBroken} rocks smashed. Beat that! (cheekyfoundlamb)`;
+      el.innerHTML = `<p style="font-weight:900">Best: ${best().toLocaleString()}</p><p class="share"></p><button class="big alt copy">Copy</button>`;
+      el.querySelector(".share").textContent = line;
+      const btn = el.querySelector(".copy");
+      btn.addEventListener("click", () => copy(line, btn));
+    },
+    aiValue: () => 0,
+    drawCell(ctx, G, i, x, y, c) {
+      if (G.b.kind[i] !== "rock") return false;
+      const k = Stampede.cursorCell(G.players[0]);
+      drawRock(ctx, x + c / 2, y + c / 2, c * 0.4, G.b.hp[i], G.data.maxHp?.[i] ?? G.b.hp[i], { x: (Engine.colOf(G.b, k) + 0.5) * c, y: (Engine.rowOf(G.b, k) + 0.5) * c });
+      return true;
+    },
+  },
+});
+
+function fill(b, i, who) {
+  b.owner[i] = who;
+  b.count[i] = 1 + Math.floor(Math.random() * (Engine.capacity(b, i) - 1));
+}
+
+function randomEmpty(G) {
+  const b = G.b;
+  const free = [];
+  for (let i = 0; i < b.size; i++) if (b.owner[i] === -1 && !b.kind[i]) free.push(i);
+  return free.length ? free[Math.floor(Math.random() * free.length)] : -1;
+}
+
+function addRock(G, i) {
+  const b = G.b;
+  b.owner[i] = -1;
+  b.count[i] = 0;
+  b.kind[i] = "rock";
+  b.hp[i] = 1 + Math.floor(Math.random() * 3);
+  (G.data.maxHp ??= [])[i] = b.hp[i];
+  rebuild(G);
+}
+
+function hitRock(G, i) {
+  const b = G.b;
+  const D = G.data;
+  b.hp[i]--;
+  D.score += 25 * D.mult;
+  Kit.tone(140 + b.hp[i] * 30, 0.08, "square", 0.05);
+  G.effects.push({ type: "hit", cells: [i], color: "#ffffff", t0: performance.now() });
+  if (b.hp[i] > 0) return;
+  b.kind[i] = null;
+  D.rocksBroken++;
+  D.score += 100 * D.mult;
+  Kit.tone(90, 0.25, "sawtooth", 0.08, 50);
+  rebuild(G);
+  bonus(G);
+}
+
+function bonus(G) {
+  if (G.data.bonus >= CONFIG.maxBonusSecs) return;
+  G.data.bonus += CONFIG.bonusSecs;
+  Stampede.shout(G.players[0], `+${CONFIG.bonusSecs}s`, 1.3, "#7be0a8");
+  Kit.tone(880, 0.12, "sine", 0.06, 1320);
+}
+
+function rebuild(G) {
+  if (!G.path.length) return; // still setting up: the core builds the path next
+  const at = Stampede.cursorCell(G.players[0]);
+  Stampede.buildPath();
+  const p = G.path.indexOf(at);
+  if (p >= 0) G.players[0].pos = p;
+}
+
+function copy(text, btn) {
+  const done = () => (btn.textContent = "Copied!");
+  if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text).then(done, () => fallback(text, done));
+  else fallback(text, done);
+}
+
+function fallback(text, done) {
+  const t = document.createElement("textarea");
+  t.value = text;
+  document.body.append(t);
+  t.select();
+  try {
+    document.execCommand("copy");
+    done();
+  } catch {}
+  t.remove();
+}
+
+function drawRock(g, cx, cy, r, hp, maxHp, look) {
+  Kit.ellipse(g, cx, cy + r * 0.08, r * 0.95, r * 0.8, 0, "#7d828d");
+  Kit.ellipse(g, cx - r * 0.25, cy - r * 0.2, r * 0.45, r * 0.3, -0.3, "#9599a3");
+  const hits = maxHp - hp;
+  g.strokeStyle = "#3e4048";
+  g.lineWidth = Math.max(1.5, r * 0.07);
+  for (let k = 0; k < hits; k++) {
+    const a = k * 2.1 + 0.6;
+    g.beginPath();
+    g.moveTo(cx + Math.cos(a) * r * 0.85, cy + Math.sin(a) * r * 0.7);
+    g.lineTo(cx + Math.cos(a) * r * 0.45, cy + Math.sin(a + 0.4) * r * 0.4);
+    g.stroke();
+  }
+  for (const side of [-1, 1]) {
+    const ex = cx + side * r * 0.32;
+    const ey = cy - r * 0.05;
+    Kit.circle(g, ex, ey, r * 0.2, "#fff");
+    const dx = look.x - ex;
+    const dy = look.y - ey;
+    const d = Math.hypot(dx, dy) || 1;
+    Kit.circle(g, ex + (dx / d) * r * 0.08, ey + (dy / d) * r * 0.08, r * 0.1, "#1a1622");
+    g.strokeStyle = "#2e2a33";
+    g.lineWidth = r * 0.09;
+    g.beginPath();
+    g.moveTo(ex - side * r * 0.2, ey - r * (0.3 - hits * 0.06));
+    g.lineTo(ex + side * r * 0.18, ey - r * (0.3 + hits * 0.06));
+    g.stroke();
+  }
+  for (let k = 0; k < hp; k++) Kit.circle(g, cx - ((hp - 1) / 2) * r * 0.22 + k * r * 0.22, cy + r * 0.6, r * 0.07, "#ffcf4a");
+}
+</script>
+</body>
+</html>

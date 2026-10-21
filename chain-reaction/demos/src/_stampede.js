@@ -207,7 +207,7 @@ const Stampede = (() => {
     G.flights = waves.length ? waves[0].bursts.map((x) => ({ ...x, t0: now })) : [];
     // a board packed full can burst forever: after MAX_RUN waves in a row, let it settle
     G.run = waves.length ? (G.run || 0) + 1 : 0;
-    if (G.run > MAX_RUN) {
+    if (G.run > (V.maxRun ?? MAX_RUN)) {
       for (let i = 0; i < G.b.size; i++) if (G.b.owner[i] >= 0 && !G.b.rock[i]) G.b.count[i] = Math.min(G.b.count[i], Engine.capacity(G.b, i) - 1);
       G.run = 0;
     }
