@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>The Daily Gift</title>
+<meta name="description" content="cheekyfoundlamb demo 18: a daily Chain Reaction puzzle. Clear the wolf's shadow in as few moves as you can." />
+<style>
+/*@KITCSS*/
+/*@CARDSCSS*/
+.top { min-height: 46px; padding-bottom: 2px; }
+.share { margin: 10px auto 0; padding: 12px; border-radius: 14px; background: var(--meadow-2); font-size: 1.15rem; line-height: 1.5; white-space: pre-wrap; user-select: text; -webkit-user-select: text; font-family: var(--round); }
+.score { display: flex; justify-content: center; gap: 16px; margin-top: 6px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.score span { display: flex; flex-direction: column; align-items: center; font-size: 1.4rem; }
+.score small { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="status"><span class="dot" id="dot"></span><span class="txt" id="status">The Daily Gift</span></div>
+    <div class="btns">
+      <button class="ib" id="restart" aria-label="Start this puzzle again">↻</button>
+      <button class="ib" id="mute" aria-label="Mute">🔊</button>
+      <button class="ib" id="menu" aria-label="Menu">☰</button>
+    </div>
+  </header>
+  <div class="chips" id="chips"></div>
+  <main class="stage" id="stage">
+    <canvas id="board" aria-label="Puzzle board"></canvas>
+    <div class="chain" id="chain"></div>
+  </main>
+  <div class="hint" id="hint"></div>
+  <div class="hand" id="hand"></div>
+</div>
+
+<section class="overlay" id="intro">
+  <div class="card">
+    <canvas class="hero" id="hero-intro"></canvas>
+    <h1>The Daily Gift</h1>
+    <p id="intro-day" style="font-weight:800;color:var(--cream)"></p>
+    <div class="how">
+      <p>A new puzzle every day, the same for everyone. Your sheep and the wolf's shadow are already on the board, and you have 3 gift cards. The wolf doesn't move.</p>
+      <p>Clear every bit of shadow in as few moves as you can. Each sheep you place and each card you play is one move. Can you beat par?</p>
+    </div>
+    <button class="big" id="play">Play today's puzzle</button>
+    <button class="big alt" id="practice">Practice (random puzzle)</button>
+  </div>
+</section>
+
+<section class="overlay" id="end" hidden>
+  <div class="card">
+    <canvas class="hero" id="hero-end"></canvas>
+    <h2 id="end-title"></h2>
+    <div class="score" id="score"></div>
+    <div class="share" id="share"></div>
+    <button class="big" id="copy">Copy result</button>
+    <button class="big alt" id="end-practice">Practice puzzle</button>
+    <button class="big alt" id="end-menu">Menu</button>
+  </div>
+</section>
+
+<script>
+/*@ENGINE*/
+/*@KIT*/
+/*@CARDS*/
+/*@TABLE*/
+
+// ---------- balance ----------
+const CONFIG = {
+  size: 6,
+  myCells: [4, 6], // your squares at the start (min, max)
+  shadowCells: [6, 9], // the wolf's squares at the start
+  cards: 3,
+  parRange: [3, 8], // a puzzle is kept only if its par falls in this range
+  beam: 40, // how hard the par solver searches (higher = slower, more accurate par)
+  maxDepth: 10,
+  firstDay: "2026-10-21", // Daily Gift #1
+  waveMs: 120,
+  // cards that make sense in a puzzle where the wolf never moves (nothing random)
+  pool: { sea: 5, fire: 5, sling: 6, loaves: 6, water: 6, call: 5, jericho: 3, tongues: 4, faith: 4, pentecost: 2 },
+};
+Cards.safeRounds = 0;
+
+const { $ } = Kit;
+const ME = 0;
+const WOLF = 1;
+const COLORS = ["#fff4d6", "#6b5a8e"];
+const NAMES = ["You", "Shadow"];
+let S = null;
+let puzzle = null; // { seed, number, daily, start (state), par }
+let log = []; // per move: "🟩" (cleared shadow), "⬜" (no capture) or "🎁" (card)
+let gameId = 0;
+
+// You can't be knocked out; the puzzle is over when the shadow is gone.
+Cards.hooks = { keepsAlive: (st, p) => p === ME };
+
+// ---------- seeded puzzles ----------
+function rng(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function hash(text) {
+  let h = 2166136261;
+  for (const ch of text) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+  return h >>> 0;
+}
+
+function today() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+const dayNumber = (date) => Math.round((Date.parse(date) - Date.parse(CONFIG.firstDay)) / 86400000) + 1;
+const shadowOrbs = (st) => Cards.orbs(st.b, WOLF);
+
+function makeState(rand) {
+  const n = CONFIG.size;
+  const b = Engine.createBoard(n, n, { still: -1, mustard: -1 });
+  const cells = [...Array(b.size).keys()];
+  for (let i = cells.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [cells[i], cells[j]] = [cells[j], cells[i]];
+  }
+  const span = ([lo, hi]) => lo + Math.floor(rand() * (hi - lo + 1));
+  const mine = span(CONFIG.myCells);
+  const shadow = span(CONFIG.shadowCells);
+  cells.slice(0, mine).forEach((i) => Engine.place(b, i, ME, 1 + Math.floor(rand() * (Engine.capacity(b, i) - 1))));
+  cells.slice(mine, mine + shadow).forEach((i) => Engine.place(b, i, WOLF, 1 + Math.floor(rand() * (Engine.capacity(b, i) - 1))));
+  const st = Cards.newState(b, 2);
+  st.moved = [true, true];
+  st.round = 99;
+  const keys = [];
+  while (keys.length < CONFIG.cards) {
+    const k = Cards.draw(CONFIG.pool, (x) => !keys.includes(x), rand);
+    keys.push(k);
+  }
+  st.ps[ME].hand = keys;
+  return st;
+}
+
+// ---------- par solver: a beam search over placements and cards ----------
+function movesFor(st) {
+  const b = st.b;
+  const out = [];
+  const near = (i) => Engine.neighbours(b, i, Engine.ALL8).some((j) => b.owner[j] === WOLF) || (b.owner[i] === ME && b.count[i] >= Engine.capacity(b, i) - 1);
+  for (let i = 0; i < b.size; i++) if (Cards.canPlace(st, ME, i) && near(i)) out.push({ place: i });
+  st.ps[ME].hand.forEach((key, idx) => {
+    for (const t of cardTargets(st, key)) out.push({ card: key, idx, t });
+  });
+  return out;
+}
+
+// Every sensible target, in a fixed order, so the par is the same on every device.
+function cardTargets(st, key) {
+  const b = st.b;
+  const all = [...Array(b.size).keys()];
+  const shadowNear = (i) => b.owner[i] === WOLF || Engine.neighbours(b, i).some((j) => b.owner[j] === WOLF);
+  switch (Cards.DEF[key].target) {
+    case "none": return [null];
+    case "line": return [...Array(b.rows).keys()].map((r) => ({ axis: "row", index: r })).concat([...Array(b.cols).keys()].map((c) => ({ axis: "col", index: c })));
+    case "area": return all.filter((i) => Cards.area(b, i).some((j) => b.owner[j] === WOLF));
+    case "mine": return all.filter((i) => b.owner[i] === ME);
+    case "any": return all.filter((i) => (b.owner[i] === WOLF || b.owner[i] === -1) && shadowNear(i));
+    case "faith": {
+      const from = all.filter((i) => b.owner[i] === ME && b.count[i] > 0).sort((x, y) => b.count[y] - b.count[x] || x - y).slice(0, 2);
+      const to = all.filter((i) => b.owner[i] === -1 && shadowNear(i)).slice(0, 6);
+      return from.flatMap((f) => to.map((t) => [f, t]));
+    }
+    default: return [];
+  }
+}
+
+function step(st, m) {
+  const s2 = Cards.clone(st);
+  if (m.place !== undefined) Cards.place(s2, ME, m.place, false);
+  else {
+    s2.ps[ME].hand.splice(m.idx, 1);
+    Cards.apply(s2, ME, m.card, m.t, false);
+  }
+  // the wolf never moves, but your gifts tick down as turns pass
+  for (const k in s2.ps[ME].gifts) if (s2.ps[ME].gifts[k] > 0) s2.ps[ME].gifts[k]--;
+  return s2;
+}
+
+const heuristic = (st) => shadowOrbs(st) * 3 + Cards.cells(st.b, WOLF) * 2 - Cards.orbs(st.b, ME) * 0.2;
+
+function solve(st0) {
+  let beam = [st0];
+  for (let depth = 1; depth <= CONFIG.maxDepth; depth++) {
+    const next = [];
+    for (const st of beam) {
+      for (const m of movesFor(st)) {
+        const s2 = step(st, m);
+        if (shadowOrbs(s2) === 0) return depth;
+        next.push([heuristic(s2), s2]);
+      }
+    }
+    next.sort((x, y) => x[0] - y[0]);
+    beam = next.slice(0, CONFIG.beam).map((x) => x[1]);
+    if (!beam.length) return Infinity;
+  }
+  return Infinity;
+}
+
+function makePuzzle(seed) {
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const st = makeState(rng(seed + attempt * 7919));
+    const par = solve(st);
+    if (par >= CONFIG.parRange[0] && par <= CONFIG.parRange[1]) return { start: st, par };
+  }
+  const st = makeState(rng(seed));
+  return { start: st, par: solve(st) };
+}
+
+// ---------- play ----------
+async function loop(myGame) {
+  while (myGame === gameId) {
+    hud();
+    if (shadowOrbs(S) === 0) return finish();
+    const a = await Table.ask({ st: S, p: ME, canPlace: (i) => Cards.canPlace(S, ME, i), placeOk: true, cardsOk: true, endOk: false });
+    if (myGame !== gameId) return;
+    const before = shadowOrbs(S);
+    if (a.type === "place") {
+      await Table.place(ME, a.cell, () => Cards.place(S, ME, a.cell));
+      log.push(shadowOrbs(S) < before ? "🟩" : "⬜");
+    } else {
+      S.ps[ME].hand.splice(a.idx, 1);
+      await Table.card(ME, a.key, () => Cards.apply(S, ME, a.key, a.target));
+      log.push("🎁");
+    }
+    for (const k in S.ps[ME].gifts) if (S.ps[ME].gifts[k] > 0) S.ps[ME].gifts[k]--;
+    await Table.events(S);
+  }
+}
+
+function begin(p) {
+  gameId++;
+  Table.cancelAsk();
+  Kit.anim.cur = null;
+  Cards.fx.cur = null;
+  puzzle = p;
+  S = Cards.clone(p.start);
+  log = [];
+  for (const id of ["intro", "end"]) Kit.hide(id);
+  Table.resize();
+  loop(gameId);
+}
+
+function playDaily() {
+  const date = today();
+  const n = dayNumber(date);
+  $("status").textContent = "Wrapping today's gift…";
+  setTimeout(() => {
+    const p = makePuzzle(hash("daily-" + date));
+    begin({ ...p, daily: true, number: n, date });
+  }, 30);
+}
+
+function playPractice() {
+  $("status").textContent = "Wrapping a practice gift…";
+  setTimeout(() => {
+    const seed = (Math.random() * 2 ** 31) | 0;
+    begin({ ...makePuzzle(seed), daily: false, number: 0, seed });
+  }, 30);
+}
+
+function shareText() {
+  const moves = log.length;
+  const head = puzzle.daily ? `Daily Gift #${puzzle.number}` : "Daily Gift practice";
+  const rows = [];
+  for (let k = 0; k < log.length; k += 5) rows.push(log.slice(k, k + 5).join(""));
+  return `${head} 🐑 ${moves}/${puzzle.par}\n${rows.join("\n")}`;
+}
+
+function finish() {
+  const moves = log.length;
+  const diff = moves - puzzle.par;
+  $("end-title").textContent = diff < 0 ? "Under par! 🎉" : diff === 0 ? "Right on par!" : "The shadow is gone!";
+  $("score").innerHTML = `<span>${moves}<small>moves</small></span><span>${puzzle.par}<small>par</small></span>`;
+  $("share").textContent = shareText();
+  $("copy").textContent = "Copy result";
+  const g = Kit.sharp($("hero-end"), 220, 120);
+  g.font = "26px system-ui";
+  g.fillText("🎁", 160, 60);
+  Kit.drawLamb(g, 90, 66, 100, { mood: "happy" });
+  Kit.sfx.win();
+  if (puzzle.daily) {
+    try {
+      localStorage.setItem("cfl-18-" + puzzle.date, JSON.stringify({ moves, par: puzzle.par, log }));
+    } catch {}
+  }
+  Kit.show("end");
+}
+
+$("copy").addEventListener("click", () => {
+  const text = shareText();
+  const done = () => ($("copy").textContent = "Copied!");
+  const fallback = () => {
+    const range = document.createRange();
+    range.selectNodeContents($("share"));
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    $("copy").textContent = "Selected: copy it from here";
+  };
+  try {
+    navigator.clipboard.writeText(text).then(done, fallback);
+  } catch {
+    fallback();
+  }
+});
+
+function hud() {
+  if (!S) return;
+  $("dot").style.color = COLORS[WOLF];
+  const label = puzzle.daily ? `Daily Gift #${puzzle.number}` : "Practice";
+  $("status").textContent = `${label} · Par ${puzzle.par} · Move ${log.length}`;
+  Table.chips(S, ["human", "human"], (q) => (q === WOLF ? `${shadowOrbs(S)} shadow left ` : ""));
+  const cv = document.querySelector(`#chip-${WOLF} canvas`);
+  if (cv) Kit.drawWolf(Kit.sharp(cv, 34, 30), 17, 17, 26, { color: "#6b5a8e" });
+}
+
+$("play").addEventListener("click", playDaily);
+$("practice").addEventListener("click", playPractice);
+$("end-practice").addEventListener("click", playPractice);
+$("restart").addEventListener("click", () => puzzle && begin(puzzle));
+const toMenu = () => {
+  gameId++;
+  Table.cancelAsk();
+  Kit.hide("end");
+  renderIntro();
+  Kit.show("intro");
+};
+$("menu").addEventListener("click", toMenu);
+$("end-menu").addEventListener("click", toMenu);
+Kit.muteButton($("mute"));
+
+function renderIntro() {
+  const date = today();
+  let done = null;
+  try {
+    done = JSON.parse(localStorage.getItem("cfl-18-" + date));
+  } catch {}
+  $("intro-day").textContent = `Daily Gift #${dayNumber(date)}${done ? ` · solved in ${done.moves} (par ${done.par})` : ""}`;
+}
+
+Table.init({ colors: COLORS, names: NAMES, state: () => S, viewer: () => ME, waveMs: CONFIG.waveMs });
+renderIntro();
+{
+  const g = Kit.sharp($("hero-intro"), 220, 120);
+  g.fillStyle = "#c84b5a";
+  g.fillRect(150, 66, 44, 40);
+  g.fillStyle = "#ffd25a";
+  g.fillRect(168, 66, 8, 40);
+  g.fillRect(146, 60, 52, 8);
+  Kit.drawLamb(g, 85, 66, 100, { mood: "happy" });
+}
+</script>
+</body>
+</html>
