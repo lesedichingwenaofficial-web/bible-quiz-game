@@ -55,6 +55,7 @@ The five favourite Stampede versions, rebuilt to a finished-game standard on the
 | File | Demo | Idea |
 |---|---|---|
 | `n1-wool-ball.html` | Wool Ball | Football with explosions, 1v1 or 2v2: bursts kick the ball, first to 3 goals, then sudden death |
+| `n2-flock-fall.html` | Flock Fall | Puyo-style versus on two 6x10 boards: drop down columns, everything falls, 4+ chains pop and send rocks |
 
 Balance numbers sit in a `CONFIG` object at the top of each file.
 

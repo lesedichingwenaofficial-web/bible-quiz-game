@@ -1693,6 +1693,7 @@ const Stampede = (() => {
   function aiStep(pl, now) {
     if (pl.kind !== "ai" || !pl.alive || pl.pen <= 0 || now < pl.lockUntil || G.tut) return;
     const skill = AI[pl.level || settings.ai] ?? AI.normal;
+    if (H.aiDecide) return H.aiDecide(G, pl, now, skill); // a game with its own idea of a good drop
     const i = cursorCell(pl);
     const ok = H.canDrop ? H.canDrop(G, pl, i, defaultCanDrop) : defaultCanDrop(pl, i);
     if (!ok && Math.random() >= skill.miss) return;

@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#13201a" />
+<title>Flock Fall</title>
+<meta name="description" content="Flock Fall, a cheekyfoundlamb game: Puyo Puyo-style versus Chain Reaction. Drop sheep down columns, chain bursts, send rocks to your rival." />
+<style>
+/*@KITCSS*/
+/*@STAMPEDE2CSS*/
+.hud { gap: 18px; }
+.hud .side { display: flex; align-items: center; gap: 6px; font-size: 1.1rem; }
+</style>
+</head>
+<body>
+<!--@STAMPEDE2HTML-->
+<script>
+/*@ENGINE*/
+/*@KIT*/
+/*@STAMPEDE2*/
+
+// ======================= N2: FLOCK FALL =======================
+// Two 6x10 boards side by side, split by a stone column. The bottom player's sheep fall down;
+// the top player's board is upside down, so from their side of the phone their sheep fall down too.
+// ---------- CONFIG ----------
+const CONFIG = {
+  rows: 10,
+  width: 6, // each board
+  rockFrom: 4, // a chain this long pops (its burst squares clear, like Puyo) and sends rocks
+  maxRocks: 6, // most rocks one chain can send
+  rockHits: 2,
+  aiReact: [120, 240], // AI taps this long after its cursor reaches a column
+};
+const COLS = CONFIG.width * 2 + 1;
+const S = Stampede;
+const $ = (id) => document.getElementById(id);
+
+// Board geometry for player p (0 = bottom player on the left, 1 = top player on the right).
+const geom = (p) => ({ c0: p === 0 ? 0 : CONFIG.width + 1, floor: p === 0 ? CONFIG.rows - 1 : 0, top: p === 0 ? 0 : CONFIG.rows - 1, up: p === 0 ? -1 : 1 });
+const at = (r, c) => r * COLS + c;
+// column k as player p sees it (left to right from their seat)
+const screenCol = (p, k) => (p === 0 ? k : COLS - 1 - k);
+
+// Where a sheep dropped down column k lands: the top of the stack (+1 if it is mine), or null when full.
+function landing(G, p, k) {
+  const b = G.b;
+  const g = geom(p);
+  const c = screenCol(p, k);
+  let prev = null;
+  for (let r = g.top; r !== g.floor - g.up; r -= g.up) {
+    const i = at(r, c);
+    if (b.owner[i] >= 0 || b.kind[i]) return b.owner[i] === p && !b.kind[i] ? i : prev;
+    prev = i;
+  }
+  return prev;
+}
+const displayCell = (p, k) => at(geom(p).top, screenCol(p, k));
+const sideOf = (b, i) => (Engine.colOf(b, i) < CONFIG.width ? 0 : Engine.colOf(b, i) > CONFIG.width ? 1 : -1);
+const heightOf = (G, p, k) => {
+  const g = geom(p);
+  let h = 0;
+  for (let r = g.floor; r !== g.top + g.up; r += g.up) if (G.b.owner[at(r, screenCol(p, k))] >= 0 || G.b.kind[at(r, screenCol(p, k))]) h++;
+  return h;
+};
+
+// After every wave, everything falls down to fill the gaps.
+const FIELDS = ["owner", "count", "tag", "kind", "hp", "mhp"];
+function gravity(G) {
+  const b = G.b;
+  let moved = false;
+  for (let p = 0; p < 2; p++) {
+    const g = geom(p);
+    for (let k = 0; k < CONFIG.width; k++) {
+      const c = screenCol(p, k);
+      let write = g.floor;
+      for (let r = g.floor; r !== g.top + g.up; r += g.up) {
+        const i = at(r, c);
+        if (b.owner[i] < 0 && !b.kind[i]) continue;
+        if (r !== write) {
+          const j = at(write, c);
+          for (const f of FIELDS) b[f][j] = b[f][i];
+          b.owner[i] = -1;
+          b.count[i] = 0;
+          b.tag[i] = null;
+          b.kind[i] = null;
+          G.popAt[j] = performance.now();
+          moved = true;
+        }
+        write += g.up;
+      }
+    }
+  }
+  return moved;
+}
+
+function sendRocks(G, to, n) {
+  const b = G.b;
+  for (let k = 0; k < n; k++) {
+    const col = Math.floor(Math.random() * CONFIG.width);
+    const g = geom(to);
+    // rocks sit on top of the stack, never merging into a sheep square
+    let cell = null;
+    for (let r = g.floor; r !== g.top + g.up; r += g.up) {
+      const j = at(r, screenCol(to, col));
+      if (b.owner[j] < 0 && !b.kind[j]) {
+        cell = j;
+        break;
+      }
+    }
+    if (cell === null) {
+      G.data.topped = to;
+      return;
+    }
+    b.kind[cell] = "rock";
+    b.hp[cell] = b.mhp[cell] = CONFIG.rockHits;
+    S.puff(cell, "#9aa0aa", 4);
+  }
+}
+
+// ---------- MODE ----------
+S.run({
+  key: "n2",
+  title: "Flock Fall",
+  how: ["Your cursor sweeps your board's top. Tap to drop a sheep down that column.", "Chains of 4+ pop and send rocks to your rival. Reach the top and you lose!"],
+  rows: CONFIG.rows,
+  cols: COLS,
+  maxRun: 20, // a cascade settles after 20 waves
+  setupDefaults: { vs: "ai" },
+  players: (s) => [
+    { seat: 0, kind: "human", col: 0, cdir: 1 },
+    { seat: 1, kind: s.vs, col: CONFIG.width - 1, cdir: -1 },
+  ],
+  options(ui) {
+    ui.seg("Opponent", "vs", [["ai", "AI"], ["human", "Friend"]]);
+  },
+  hero(g, t) {
+    for (let k = 0; k < 5; k++) {
+      const y = ((t * 60 + k * 26) % 130) - 10;
+      Kit.drawSheep(g, 40 + k * 36, y, 10, S.COLORS[k % 2]);
+    }
+    Kit.drawLamb(g, 110, 74, 80, { t, scarf: S.COLORS[0], mood: "happy" });
+  },
+  music: {
+    bpm: 136, root: 57, scale: "minor", prog: [0, 5, 3, 4],
+    lead: ["0.2.3.4.3.2.0...", "4.5.4.3.2.3.4...", "2.3.4.5.7.5.4...", "4.3.2.1.0...4..."],
+    bass: "x.x.x.x.x.x.x.x.",
+    drums: { kick: "x..x..x.x..x..x.", snare: "....x.......x...", hat: "x.x.x.x.x.x.x.x." },
+  },
+  badges: [
+    { id: "win", icon: "🏆", name: "Last flock standing", desc: "Win a match", test: (c) => c.won },
+    { id: "rocks", icon: "🪨", name: "Avalanche", desc: "Send 6 rocks in one game", test: (c) => c.hs.some((p) => p.sent >= 6) },
+    { id: "chain8", icon: "⚡", name: "Cascade", desc: "Make an 8-chain", test: (c) => c.hs.some((p) => Math.max(p.best, p.chain) >= 8) },
+  ],
+  hooks: {
+    setup(G) {
+      const b = G.b;
+      for (let r = 0; r < CONFIG.rows; r++) b.rock[at(r, CONFIG.width)] = true; // the stone divider
+      G.data = { topped: -1, last: "" };
+      for (const pl of G.players) {
+        pl.sent = 0;
+        pl.burst = new Set();
+        pl.pos = null;
+      }
+    },
+    hud(G) {
+      for (const pl of G.players) pl.pos = G.path.indexOf(displayCell(pl.id, pl.col));
+      hud(G);
+    },
+    noElimination: true,
+    roundSecs: () => Infinity,
+    timerText: () => "",
+    inPath: () => true, // the cursor is placed by this game, so every square is reachable
+    onStep(G, pl) {
+      if (pl.id > 1) return;
+      // back and forth along the top of my board
+      pl.col += pl.cdir;
+      if (pl.col < 0 || pl.col >= CONFIG.width) {
+        pl.cdir = -pl.cdir;
+        pl.col += pl.cdir * 2;
+      }
+      pl.pos = G.path.indexOf(displayCell(pl.id, pl.col));
+    },
+    // drop down the column: point the core at the landing square, then back at the cursor
+    beforeDrop(G, pl) {
+      const i = landing(G, pl.id, pl.col);
+      pl.pos = G.path.indexOf(i ?? displayCell(pl.id, pl.col));
+      pl.full = i === null;
+    },
+    canDrop: (G, pl, i, def) => !pl.full && def(pl, i),
+    afterDrop(G, pl) {
+      pl.pos = G.path.indexOf(displayCell(pl.id, pl.col));
+      checkTop(G);
+    },
+    onWaste(G, pl) {
+      pl.pos = G.path.indexOf(displayCell(pl.id, pl.col));
+    },
+    // a Line or Bomb sheep's area stops at the stone divider
+    specialHit: (G, k, who) => sideOf(G.b, k) !== who,
+    targets(G, b, i, t) {
+      G.players[b.owner[i]]?.burst?.add(i);
+      return t;
+    },
+    afterWave(G) {
+      gravity(G);
+      checkTop(G);
+    },
+    chainEnd(G, pl, chain, now) {
+      const popped = [...pl.burst];
+      pl.burst.clear();
+      if (chain < CONFIG.rockFrom) return;
+      // a big chain pops: the squares that burst clear, and everything falls
+      const b = G.b;
+      const fx = S.effect("overflow", -1, pl.color, now);
+      for (const i of popped) {
+        if (b.owner[i] !== pl.id) continue;
+        b.owner[i] = -1;
+        b.count[i] = 0;
+        b.tag[i] = null;
+        if (fx.n < fx.cells.length) fx.cells[fx.n++] = i;
+        S.puff(i, pl.color, 2);
+      }
+      gravity(G);
+      const n = Math.min(CONFIG.maxRocks, chain - CONFIG.rockFrom + 1);
+      pl.sent += n;
+      sendRocks(G, 1 - pl.id, n);
+      S.shout(G.players[1 - pl.id], n > 1 ? `${n} rocks!` : "Rock!", 1.3, "#c7cad1");
+      S.Sfx.crack();
+      S.shake(6);
+    },
+    aiDecide(G, pl, now) {
+      const i = landing(G, pl.id, pl.col);
+      if (i === null) return;
+      const b = G.b;
+      const h = heightOf(G, pl.id, pl.col);
+      const cap = Engine.capacity(b, i);
+      const mine = b.owner[i] === pl.id;
+      let go = false;
+      if (mine && b.count[i] + 1 >= cap) {
+        // a burst: how big a chain?
+        const sim = Engine.clone(b);
+        Engine.place(sim, i, pl.id);
+        let n = 0;
+        Engine.resolve(sim, { maxWaves: 30, canBurst: (bb, c) => bb.owner[c] === pl.id && !bb.kind[c], targets: (bb, c) => (n++, Engine.neighbours(bb, c)) }, false);
+        go = n >= 3 || h >= CONFIG.rows - 3 || Math.random() < 0.35;
+      } else if (h < CONFIG.rows - 3) go = mine ? Math.random() < 0.6 : Math.random() < 0.25;
+      if (go) pl.aiPlan = { cell: displayCell(pl.id, pl.col), at: now + CONFIG.aiReact[0] + Math.random() * (CONFIG.aiReact[1] - CONFIG.aiReact[0]) };
+    },
+    update(G) {
+      hud(G);
+    },
+    endCheck(G) {
+      const t = G.data.topped;
+      if (t < 0) return null;
+      return { team: 1 - t, sub: `${G.players[t].name}'s flock reached the top.` };
+    },
+    drawOver(ctx, G, c, t) {
+      const b = G.b;
+      // a danger strip along each board's top, and a ghost where my next sheep will land
+      for (let p = 0; p < 2; p++) {
+        const g = geom(p);
+        const x0 = g.c0 * c;
+        ctx.fillStyle = `rgba(255,80,80,${0.12 + 0.06 * Math.sin(t * 4)})`;
+        ctx.fillRect(x0, g.top * c, CONFIG.width * c, c);
+        const pl = G.players[p];
+        const i = landing(G, p, pl.col);
+        const col = screenCol(p, pl.col);
+        ctx.fillStyle = "rgba(255,255,255,0.06)";
+        ctx.fillRect(col * c, 0, c, b.rows * c);
+        if (i !== null && b.owner[i] < 0) {
+          ctx.globalAlpha = 0.35;
+          Kit.drawSheep(ctx, (col + 0.5) * c, (Engine.rowOf(b, i) + 0.5) * c, c * 0.14, pl.color);
+          ctx.globalAlpha = 1;
+        }
+      }
+    },
+  },
+});
+
+function checkTop(G) {
+  if (G.data.topped >= 0) return;
+  for (let p = 0; p < 2; p++)
+    for (let k = 0; k < CONFIG.width; k++) {
+      const i = displayCell(p, k);
+      if (G.b.owner[i] >= 0 || G.b.kind[i]) {
+        G.data.topped = p;
+        S.Sfx.howl();
+        return;
+      }
+    }
+}
+
+function hud(G) {
+  const D = G.data;
+  const html = G.players
+    .map((p) => `<span class="side" style="color:${p.color}">${S.SYMBOLS[p.id] === "circle" ? "●" : "▲"} ${Math.max(...Array.from({ length: CONFIG.width }, (_, k) => heightOf(G, p.id, k)))}/${CONFIG.rows} · 🪨 ${p.sent}</span>`)
+    .join("");
+  if (html !== D.last) {
+    D.last = html;
+    $("hud").innerHTML = html;
+  }
+}
+</script>
+</body>
+</html>
