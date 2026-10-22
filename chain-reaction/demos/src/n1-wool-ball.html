@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#13201a" />
+<title>Wool Ball</title>
+<meta name="description" content="Wool Ball, a cheekyfoundlamb game: football with explosions. Bursts kick a big woolly ball; score in the other team's goal." />
+<style>
+/*@KITCSS*/
+/*@STAMPEDE2CSS*/
+.hud { gap: 14px; font-size: 1.5rem; }
+.hud .team { display: flex; align-items: center; gap: 6px; }
+.hud .team i { width: 14px; height: 14px; border-radius: 50%; }
+.hud .sd { font-size: 0.9rem; color: #ff8a8a; }
+</style>
+</head>
+<body>
+<!--@STAMPEDE2HTML-->
+<script>
+/*@ENGINE*/
+/*@KIT*/
+/*@STAMPEDE2*/
+
+// ======================= N1: WOOL BALL =======================
+// ---------- CONFIG ----------
+const CONFIG = {
+  rows: 9,
+  cols: 6,
+  goalCols: [2, 3], // the goal mouth: the middle 2 squares of each end
+  goalsToWin: 3,
+  roundSecs: 180, // then sudden death
+  kick: { near: 1, own: 2, special: 3 }, // squares the ball travels
+  maxKickPerWave: 4, // a wave's kicks add up to at most this many squares
+  respawnMs: 1000, // after a goal the ball drops back in this soon
+  ballAnimMs: 220,
+};
+const S = Stampede;
+const $ = (id) => document.getElementById(id);
+const TEAM_COLOR = ["#ff5a5f", "#3fa7ff"];
+const sign = (x) => (x > 0 ? 1 : x < 0 ? -1 : 0);
+
+// ---------- MODE ----------
+S.run({
+  key: "n1",
+  title: "Wool Ball",
+  how: ["Bursts kick the woolly ball away. A burst under the ball blasts it at their goal.", "Score in the far goal. First to 3 wins!"],
+  rows: CONFIG.rows,
+  cols: CONFIG.cols,
+  tune: { roundSecs: CONFIG.roundSecs },
+  setupDefaults: { size: 1, seats: ["human", "ai", "ai", "ai"] },
+  // team 0 defends the bottom goal and attacks the top; team 1 the other way
+  players: (s) =>
+    (s.size === 2 ? [0, 1, 2, 3] : [0, 1]).map((seat) => ({
+      seat,
+      kind: s.seats[seat],
+      team: seat === 0 || seat === 3 ? 0 : 1,
+      ...(s.size === 2 ? { color: ["#ff5a5f", "#3fa7ff", "#7fd0ff", "#ff9a5c"][seat], name: ["Red", "Blue", "Sky", "Orange"][seat] } : {}),
+    })),
+  options(ui, s) {
+    ui.seg("Teams", "size", [[1, "1 v 1"], [2, "2 v 2"]]);
+    ui.seats(s.size === 2 ? 4 : 2);
+  },
+  hero(g, t) {
+    drawBall(g, 110 + Math.sin(t * 3) * 40, 62 - Math.abs(Math.sin(t * 6)) * 14, 34, t);
+    Kit.drawLamb(g, 40, 80, 60, { t, scarf: TEAM_COLOR[0], mood: "happy" });
+    Kit.drawLamb(g, 180, 80, 60, { t, scarf: TEAM_COLOR[1], mood: "happy", flip: true });
+  },
+  music: {
+    bpm: 128, root: 60, scale: "major", prog: [0, 4, 5, 4],
+    lead: ["0.0.4.4.5.5.4...", "3.3.2.2.1.1.0...", "4.4.3.3.2.2.1...", "4.4.3.3.2.2.1..."],
+    bass: "x.x.x.x.x.x.x.x.",
+    drums: { kick: "x...x...x...x...", snare: "....x.......x.x.", hat: "x.x.x.x.x.x.x.x." },
+  },
+  mvpScore: (p) => p.goals * 1000 + p.bursts,
+  badges: [
+    { id: "win", icon: "⚽", name: "Woolly cup", desc: "Win a match", test: (c) => c.won },
+    { id: "hat", icon: "🎩", name: "Hat-trick", desc: "Score all 3 goals yourself", test: (c) => c.hs.some((p) => p.goals >= 3) },
+    { id: "clean", icon: "🧤", name: "Clean sheet", desc: "Win without conceding", test: (c) => c.won && c.G.data.goals[1 - c.res.team] === 0 },
+    { id: "sudden", icon: "⚡", name: "Golden goal", desc: "Win in sudden death", test: (c) => c.won && c.G.data.sudden },
+  ],
+  hooks: {
+    setup(G) {
+      G.data = { goals: [0, 0], ball: { r: 4, c: 2 + Math.round(Math.random()), fr: 4, fc: 2.5, at: 0 }, kicks: [], respawnAt: 0, sudden: false, lastKicker: -1, last: "" };
+      for (const p of G.players) p.goals = 0;
+    },
+    hud: (G) => hud(G),
+    noElimination: true,
+    roundSecs: (G) => (G.data.sudden ? Infinity : S.tune.roundSecs),
+    timerText: () => "⚡ Next goal wins",
+    targets(G, b, i, t) {
+      const B = G.data.ball;
+      if (G.data.respawnAt) return t;
+      const r = Engine.rowOf(b, i);
+      const c = Engine.colOf(b, i);
+      const who = b.owner[i];
+      if (r === B.r && c === B.c) G.data.kicks.push({ toward: G.players[who].team, n: CONFIG.kick.own, who });
+      else if (Math.abs(r - B.r) <= 1 && Math.abs(c - B.c) <= 1) G.data.kicks.push({ dr: sign(B.r - r), dc: sign(B.c - c), n: CONFIG.kick.near, who });
+      return t;
+    },
+    onSpecial(G, sp) {
+      const B = G.data.ball;
+      if (G.data.respawnAt) return;
+      const r = Engine.rowOf(G.b, sp.cell);
+      const c = Engine.colOf(G.b, sp.cell);
+      if (Math.abs(r - B.r) > 2 || Math.abs(c - B.c) > 2) return;
+      if (r === B.r && c === B.c) G.data.kicks.push({ toward: G.players[sp.who].team, n: CONFIG.kick.special, who: sp.who });
+      else G.data.kicks.push({ dr: sign(B.r - r), dc: sign(B.c - c), n: CONFIG.kick.special, who: sp.who });
+    },
+    afterWave(G, now) {
+      const D = G.data;
+      if (!D.kicks.length) return;
+      let budget = CONFIG.maxKickPerWave;
+      for (const k of D.kicks) {
+        if (budget <= 0 || D.respawnAt) break;
+        const n = Math.min(k.n, budget);
+        budget -= n;
+        kick(G, k, n, now);
+      }
+      D.kicks.length = 0;
+    },
+    update(G, now) {
+      const D = G.data;
+      if (D.respawnAt && now >= D.respawnAt) {
+        D.respawnAt = 0;
+        Object.assign(D.ball, { r: 4, c: 2 + Math.round(Math.random()), fr: -1, fc: 2.5, at: now });
+        S.Sfx.chime(7);
+      }
+    },
+    shift(G, d) {
+      if (G.data.respawnAt) G.data.respawnAt += d;
+      G.data.ball.at += d;
+    },
+    aiValue(G, pl, i) {
+      const b = G.b;
+      const B = G.data.ball;
+      const r = Engine.rowOf(b, i);
+      const c = Engine.colOf(b, i);
+      const bursts = b.count[i] + 1 >= Engine.capacity(b, i);
+      const up = pl.team === 0; // team 0 shoots up the board
+      if (r === B.r && c === B.c) return bursts ? 7 : 2;
+      if (Math.abs(r - B.r) > 1 || Math.abs(c - B.c) > 1) return 0;
+      const behind = up ? r > B.r : r < B.r; // bursting here pushes the ball towards our target
+      return (behind ? 1 : -1) * (bursts ? 6 : 1.5);
+    },
+    endCheck(G, now, left) {
+      const D = G.data;
+      const champ = D.goals.findIndex((g) => g >= CONFIG.goalsToWin);
+      if (champ >= 0) return { team: champ, sub: `${D.goals[0]} – ${D.goals[1]}` };
+      if (left <= 0 && !D.sudden) {
+        if (D.goals[0] !== D.goals[1]) return { team: D.goals[0] > D.goals[1] ? 0 : 1, sub: `${D.goals[0]} – ${D.goals[1]} at full time` };
+        D.sudden = true;
+        S.shout(null, "Sudden death!", 1.5, "#ff6b6b");
+        S.Sfx.howl();
+        hud(G);
+      }
+      if (D.sudden && D.suddenWinner !== undefined) return { team: D.suddenWinner, sub: `Golden goal! ${D.goals[0]} – ${D.goals[1]}` };
+      return null;
+    },
+    drawOver(ctx, G, c, t, now) {
+      const D = G.data;
+      const b = G.b;
+      // goal mouths at each end
+      for (const [row, team] of [[-1, 1], [b.rows, 0]]) {
+        ctx.fillStyle = TEAM_COLOR[team];
+        ctx.globalAlpha = 0.85;
+        const y = row < 0 ? -S.PAD + 1 : b.rows * c + 1;
+        ctx.fillRect(CONFIG.goalCols[0] * c, y, CONFIG.goalCols.length * c, S.PAD - 2);
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = "rgba(255,255,255,0.7)";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(CONFIG.goalCols[0] * c + 1, row < 0 ? 1 : b.rows * c - 1 - c * 0.18, CONFIG.goalCols.length * c - 2, c * 0.18);
+      }
+      if (D.respawnAt) return;
+      const B = D.ball;
+      const p = Math.min(1, (now - B.at) / CONFIG.ballAnimMs);
+      const e = 1 - (1 - p) * (1 - p);
+      const x = (B.fc + (B.c - B.fc) * e + 0.5) * c;
+      const y = (B.fr + (B.r - B.fr) * e + 0.5) * c - Math.sin(Math.PI * p) * c * 0.35;
+      ctx.fillStyle = "rgba(0,0,0,0.25)";
+      ctx.beginPath();
+      ctx.ellipse((B.c + 0.5) * c, (B.r + 0.85) * c, c * 0.3, c * 0.09, 0, 0, Math.PI * 2);
+      ctx.fill();
+      drawBall(ctx, x, y, c * 0.36, t);
+    },
+  },
+});
+
+// ---------- THE BALL ----------
+function kick(G, k, n, now) {
+  const D = G.data;
+  const b = G.b;
+  const B = D.ball;
+  let dr = k.dr;
+  let dc = k.dc;
+  if (k.toward !== undefined) {
+    // blasted at the bursting team's target goal
+    dr = k.toward === 0 ? -1 : 1;
+    dc = CONFIG.goalCols.includes(B.c) ? 0 : B.c < CONFIG.goalCols[0] ? 1 : -1;
+  }
+  if (!dr && !dc) return;
+  B.fr = B.r;
+  B.fc = B.c;
+  B.at = now;
+  D.lastKicker = k.who;
+  for (let s = 0; s < n; s++) {
+    let nr = B.r + dr;
+    let nc = B.c + dc;
+    if (nc < 0 || nc >= b.cols) {
+      // off the side wall
+      dc = -dc;
+      nc = B.c + dc;
+      S.Audio.tone(300, 0.05, "square", 0.04);
+    }
+    if (nr < 0 || nr >= b.rows) {
+      if (CONFIG.goalCols.includes(nc)) return goal(G, nr < 0 ? 0 : 1, now);
+      dr = -dr;
+      nr = B.r + dr;
+      S.Audio.tone(300, 0.05, "square", 0.04);
+    }
+    B.r = nr;
+    B.c = nc;
+  }
+  S.Audio.tone(220, 0.08, "triangle", 0.08, 140);
+  S.Audio.noise(0.06, 600, 0.06);
+}
+
+function goal(G, team, now) {
+  const D = G.data;
+  const b = G.b;
+  D.goals[team]++;
+  const kicker = G.players[D.lastKicker];
+  if (kicker && kicker.team === team) kicker.goals++;
+  if (D.sudden) D.suddenWinner = team;
+  S.shout(null, "GOAL!", 2, TEAM_COLOR[team]);
+  S.Sfx.win();
+  S.Sfx.bleat(1.3, 0.2);
+  S.shake(14);
+  S.buzz([80, 40, 80]);
+  for (const p of G.players) if (p.team === team) S.mood(p, "cheer", 2000);
+  // the board clears and the ball drops back into the centre
+  for (let i = 0; i < b.size; i++) {
+    if (b.owner[i] >= 0) S.puff(i, G.players[b.owner[i]]?.color ?? "#fff", 1);
+    b.owner[i] = -1;
+    b.count[i] = 0;
+    b.tag[i] = null;
+  }
+  D.respawnAt = now + CONFIG.respawnMs;
+  hud(G);
+}
+
+function hud(G) {
+  const D = G.data;
+  const html = `<span class="team" style="color:${TEAM_COLOR[0]}"><i style="background:${TEAM_COLOR[0]}"></i>${D.goals[0]}</span><span>–</span><span class="team" style="color:${TEAM_COLOR[1]}">${D.goals[1]}<i style="background:${TEAM_COLOR[1]}"></i></span>${D.sudden ? '<span class="sd">sudden death</span>' : ""}`;
+  if (html !== D.last) {
+    D.last = html;
+    $("hud").innerHTML = html;
+  }
+}
+
+function drawBall(g, x, y, r, t) {
+  Kit.circle(g, x, y, r, "#fbf4e6");
+  g.strokeStyle = "#d9cdb4";
+  g.lineWidth = r * 0.12;
+  g.beginPath();
+  g.arc(x - r * 0.15, y - r * 0.1, r * 0.6, 0.3 + t * 2, 2.4 + t * 2);
+  g.stroke();
+  g.beginPath();
+  g.arc(x + r * 0.2, y + r * 0.15, r * 0.45, 3.4 + t * 2, 5.3 + t * 2);
+  g.stroke();
+  for (let k = 0; k < 7; k++) {
+    const a = (k / 7) * Math.PI * 2;
+    Kit.circle(g, x + Math.cos(a) * r * 0.88, y + Math.sin(a) * r * 0.88, r * 0.22, "#fbf4e6");
+  }
+}
+</script>
+</body>
+</html>

@@ -50,6 +50,12 @@ The five favourite Stampede versions, rebuilt to a finished-game standard on the
 | `s6-lost-lamb-v2.html` | Lost Lamb | Open, Rocky and Ring arenas, a lamb that yawns into naps and wiggles into zoomies, golden moments, best of 3 |
 | `s7-sheep-rush-v2.html` | Sheep Rush | Daily Rush (same board for everyone, seeded by date) and Free Play, medals, clock / golden sheep / mystery box pickups, share line |
 
+## New Stampede demos (v2 core)
+
+| File | Demo | Idea |
+|---|---|---|
+| `n1-wool-ball.html` | Wool Ball | Football with explosions, 1v1 or 2v2: bursts kick the ball, first to 3 goals, then sudden death |
+
 Balance numbers sit in a `CONFIG` object at the top of each file.
 
 ## Editing
