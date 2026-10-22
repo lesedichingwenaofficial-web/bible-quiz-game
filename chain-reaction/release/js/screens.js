@@ -333,7 +333,7 @@ Nav.define("journal", {
     el.replaceChildren(UI.header(STRINGS.home.journal));
     const page = UI.h("div", { class: "page" });
     const got = Object.keys(p.journal).length;
-    page.append(UI.h("p", { class: "note", html: `${Icons.get("book")} The Shepherd's Journal: <b>${got}</b> of 9 verse cards.${got ? "" : " " + STRINGS.empty.journal}` }));
+    page.append(UI.h("p", { class: "note", html: `${Icons.get("book")} The Shepherd's Journal: <b>${got}</b> of ${Object.keys(Progress.JOURNAL).length} verse cards.${got ? "" : " " + STRINGS.empty.journal}` }));
     const grid = UI.h("div", { class: "journal" });
     for (const m of App.MODES) {
       const j = Progress.JOURNAL[m.key];

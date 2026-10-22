@@ -14,8 +14,9 @@ const App = (() => {
     { key: "saga", file: "saga", title: "Sheep Saga", group: "solo", players: "1", icon: "star" },
     { key: "rush", file: "rush", title: "Sheep Rush", group: "solo", players: "1", icon: "timer" },
     { key: "leadhome", file: "leadhome", title: "Lead Him Home", group: "solo", players: "1–2", icon: "crook" },
+    { key: "party", file: "party", title: "Party Night", group: "party", players: "2–4", icon: "party" },
   ];
-  const BUILT = new Set(["stampede", "saga", "wolf", "rush", "lostlamb", "flockfall", "guard", "leadhome", "bridge"]); // modes finished in this build
+  const BUILT = new Set(["stampede", "saga", "wolf", "rush", "lostlamb", "flockfall", "guard", "leadhome", "bridge", "party"]); // modes finished in this build
   const meta = (key) => MODES.find((m) => m.key === key);
   let hasKeyboard = false;
   const lowEnd = (navigator.hardwareConcurrency || 8) <= 4 && (navigator.deviceMemory || 4) <= 2;
@@ -201,10 +202,9 @@ const App = (() => {
     return card;
   }
   function partyCard() {
-    const cv = h("canvas", { class: "card-art" });
-    const card = h("div", { class: "mode-card party soon" }, cv, h("div", { class: "mc-text" }, h("b", {}, STRINGS.party.name), h("small", {}, STRINGS.party.desc), h("small", { class: "best" }, "Coming soon")));
-    card.addEventListener("click", () => UI.toast(`${STRINGS.party.name} arrives in a coming update`, { icon: "party" }));
-    requestAnimationFrame(() => ModeArt.draw(Art.sharp(cv, 96, 72), "party", 96, 72, 0));
+    const card = modeCard(meta("party"));
+    card.classList.add("party");
+    card.querySelector(".best").textContent = STRINGS.party.desc;
     return card;
   }
 
@@ -354,10 +354,18 @@ const App = (() => {
     if (!def) return;
     setup ??= def.continueSetup?.() ?? loadSetup(def);
     Sound.unlock();
+    // Party Night runs its own rounds, each one an ordinary game
+    if (def.launch) {
+      Save.profile.lastMode = key;
+      Save.save();
+      return def.launch(setup, o);
+    }
     if (session.key !== key) Object.assign(session, { key, wins: {}, games: 0 });
-    Save.profile.lastMode = key;
-    Save.save();
-    const firstSteps = !Save.profile.firstSteps && key === "stampede" && !o.replay;
+    if (!o.party) {
+      Save.profile.lastMode = key;
+      Save.save();
+    }
+    const firstSteps = !Save.profile.firstSteps && key === "stampede" && !o.replay && !o.party;
     if (firstSteps) setup = def.firstStepsSetup?.(setup) ?? setup;
     current = { def, setup, opts: o };
     const inGame = Nav.is("game") || Nav.is("results");
@@ -366,7 +374,7 @@ const App = (() => {
     Core.start(def, setup, {
       firstSteps,
       seed: o.seed ?? def.seedFor?.(setup),
-      onEnd: (sum) => finished(def, sum),
+      onEnd: (sum) => (o.onEnd ? o.onEnd(sum) : finished(def, sum)),
       onBetween: (info) => Nav.go("between", info),
     });
   }
@@ -417,17 +425,23 @@ const App = (() => {
         <button class="btn big" id="p-restart">${Icons.get("refresh")}<span>${STRINGS.pause.restart}</span></button>
         <div class="two"><button class="btn" id="p-help">${Icons.get("question")}<span>${STRINGS.pause.help}</span></button>
         <button class="btn" id="p-settings">${Icons.get("gear")}<span>${STRINGS.pause.settings}</span></button></div>
-        <button class="btn ghost" id="p-home">${Icons.get("home")}<span>${STRINGS.pause.home}</span></button></div>`;
+        <button class="btn ghost" id="p-home">${Icons.get(current?.opts?.onQuit ? "party" : "home")}<span>${esc(current?.opts?.quitLabel || STRINGS.pause.home)}</span></button></div>`;
       $("p-resume").onclick = () => resumeGame();
       $("p-restart").onclick = () => {
         Nav.close("pause");
-        play(def.key, current.setup);
+        play(def.key, current.setup, current.opts);
       };
       $("p-help").onclick = () => Nav.go("help", { key: def.key });
       $("p-settings").onclick = () => Nav.go("settings", { fromGame: true });
       $("p-home").onclick = async () => {
         if (Save.settings.confirmQuit && !(await UI.confirm(STRINGS.pause.confirm, STRINGS.pause.yes, STRINGS.pause.no))) return;
-        leaveGame();
+        if (current?.opts?.onQuit) {
+          // leaving a Party Night round goes back to the scoreboard; the round doesn't count
+          Nav.close("pause");
+          Core.quit();
+          Pwa.gameEnded();
+          current.opts.onQuit();
+        } else leaveGame();
       };
     },
     onBack() {
@@ -691,7 +705,7 @@ const App = (() => {
   }
 
   return {
-    boot, play, openSetup, applySettings, palette, musicFor, homeMusic, crash, leaveGame, loadMode, quickPlay, MODES, BUILT, meta, symSvg, loadSetup, saveSetup,
+    boot, play, openSetup, finished, applySettings, palette, musicFor, homeMusic, crash, leaveGame, loadMode, quickPlay, MODES, BUILT, meta, symSvg, loadSetup, saveSetup,
     get hasKeyboard() { return hasKeyboard; }, get lowEnd() { return lowEnd; }, get current() { return current; },
   };
 })();

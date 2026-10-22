@@ -202,6 +202,7 @@ const Progress = (() => {
     guard: { ref: "Psalm 121:3-4", goal: "Guard a fold through all 10 waves", test: (ms) => (ms.progress.cleared || 0) >= 1 },
     leadhome: { ref: "Luke 15:5", goal: "Lead him home through world 1", test: (ms) => (ms.progress.cleared || 0) >= 10 },
     bridge: { ref: "John 14:6", goal: "Build 5 bridges", test: (ms) => (ms.progress.bridges || 0) >= 5 },
+    party: { ref: "Psalm 118:24", goal: "Finish a Party Night", test: (ms) => ms.stats.played >= 1 },
   };
   function checkJournal(modeDef, modeSave, ctx) {
     const j = JOURNAL[modeDef?.key];
