@@ -60,6 +60,7 @@ The five favourite Stampede versions, rebuilt to a finished-game standard on the
 | `n4-guard-the-fold.html` | Guard the Fold | Co-op tower defence for 1–4: bursts beside a dirt path hit walking wolves; 10 waves, 5 hearts, 3 paths |
 | `n5-lead-him-home.html` | Lead Him Home | Escort, solo or 2 co-op: the lamb walks home over your squares while wolves scare him back; 10 levels |
 | `n6-the-lost-coin.html` | The Lost Coin | Treasure hunt for 2–4: bursts uncover the grass to find coins and golden coins, and spring wolf traps |
+| `n7-hot-wolf.html` | Hot Wolf | Hot potato for 2–4: kick the ticking wolf off your square before he pounces on everything near him |
 
 Balance numbers sit in a `CONFIG` object at the top of each file.
 

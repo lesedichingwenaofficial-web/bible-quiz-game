@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#13201a" />
+<title>Hot Wolf</title>
+<meta name="description" content="Hot Wolf, a cheekyfoundlamb game: real-time Chain Reaction hot potato for 2-4 players. Kick the ticking wolf away before he pounces on your flock." />
+<style>
+/*@KITCSS*/
+/*@STAMPEDE2CSS*/
+</style>
+</head>
+<body>
+<!--@STAMPEDE2HTML-->
+<script>
+/*@ENGINE*/
+/*@KIT*/
+/*@STAMPEDE2*/
+
+// ======================= N7: HOT WOLF =======================
+// ---------- CONFIG ----------
+const CONFIG = {
+  fuseSecs: [10, 20], // a new wolf's fuse
+  pounceRadius: 2, // the owner of his square loses every square this close to him
+  respawnMs: 1200,
+  roundSecs: 90,
+};
+const S = Stampede;
+
+// ---------- MODE ----------
+S.run({
+  key: "n7",
+  title: "Hot Wolf",
+  how: ["A little wolf ticks down on the board. Bursts on his square kick him next door.", "When the fuse runs out he pounces on that square's flock. Most squares wins!"],
+  tune: { roundSecs: CONFIG.roundSecs },
+  setupDefaults: { n: 2, seats: ["human", "ai", "ai", "ai"] },
+  players: (s) => Array.from({ length: s.n }, (_, p) => ({ seat: p, kind: s.seats[p] })),
+  options(ui, s) {
+    ui.stepper("Players", "n", 2, 4);
+    ui.seats(s.n);
+  },
+  hero(g, t) {
+    drawHotWolf(g, 110, 70, 90, 0.5 + 0.5 * Math.sin(t), t);
+  },
+  music: {
+    bpm: 150, root: 57, scale: "minor", prog: [0, 0, 5, 4],
+    lead: ["0.0.3.0.5.0.3.0.", "0.0.3.0.7.5.3.0.", "5.5.3.3.2.2.0...", "4.3.2.1.0.1.2.4."],
+    bass: "x.x.x.x.x.x.x.x.",
+    drums: { kick: "x...x...x...x...", snare: "....x.......x...", hat: "xxxxxxxxxxxxxxxx" },
+  },
+  badges: [
+    { id: "win", icon: "🏆", name: "Cool head", desc: "Win a round", test: (c) => c.won },
+    { id: "never", icon: "😎", name: "Not me!", desc: "Win without being pounced", test: (c) => c.won && c.hs.every((p) => !p.pounced) },
+    { id: "kicks", icon: "🦶", name: "Hot potato", desc: "Kick the wolf 10 times in one round", test: (c) => c.hs.some((p) => p.kicks >= 10) },
+  ],
+  hooks: {
+    setup(G) {
+      G.data = { wolf: null, kick: -1, respawnAt: performance.now() + 1500, nextTick: 0 };
+      for (const p of G.players) p.kicks = 0;
+    },
+    noElimination: true, // a pounced flock can drop back in: the full 90 seconds decide
+    endCheck: (G, now, left, defaultEnd) => (left > 0 ? null : defaultEnd(left)),
+    land(G, b, from, to, who) {
+      const W = G.data.wolf;
+      if (W && to === W.cell) G.data.kick = who; // a burst on his square: he gets kicked next door
+      return false;
+    },
+    afterWave(G, now) {
+      const D = G.data;
+      if (D.kick < 0 || !D.wolf) return;
+      const pl = G.players[D.kick];
+      if (pl) pl.kicks++;
+      D.kick = -1;
+      const n = Engine.neighbours(G.b, D.wolf.cell);
+      const to = n[Math.floor(Math.random() * n.length)];
+      Object.assign(D.wolf, { from: D.wolf.cell, cell: to, at: now });
+      S.Audio.tone(300, 0.08, "triangle", 0.07, 180);
+      S.Sfx.bleat(1.6);
+    },
+    update(G, now) {
+      const D = G.data;
+      if (!D.wolf) {
+        if (now < D.respawnAt) return;
+        const free = [];
+        for (let i = 0; i < G.b.size; i++) if (!G.b.rock[i]) free.push(i);
+        const cell = free[Math.floor(Math.random() * free.length)];
+        const len = (CONFIG.fuseSecs[0] + Math.random() * (CONFIG.fuseSecs[1] - CONFIG.fuseSecs[0])) * 1000;
+        D.wolf = { cell, from: cell, at: now, end: now + len, len };
+        D.nextTick = now;
+        S.puff(cell, "#8b8f9c", 6);
+        S.Sfx.howl();
+        return;
+      }
+      const W = D.wolf;
+      const left = (W.end - now) / W.len;
+      // the tick speeds up as the fuse runs low
+      if (now >= D.nextTick) {
+        D.nextTick = now + 120 + 880 * Math.max(0, left);
+        S.Sfx.tickTock(left < 0.25);
+      }
+      if (now >= W.end) pounce(G, now);
+    },
+    shift(G, d) {
+      const D = G.data;
+      D.respawnAt += d;
+      D.nextTick += d;
+      if (D.wolf) {
+        D.wolf.end += d;
+        D.wolf.at += d;
+      }
+    },
+    aiValue(G, pl, i) {
+      const W = G.data.wolf;
+      if (!W) return 0;
+      const b = G.b;
+      const dist = Math.max(Math.abs(Engine.rowOf(b, i) - Engine.rowOf(b, W.cell)), Math.abs(Engine.colOf(b, i) - Engine.colOf(b, W.cell)));
+      const urgent = (W.end - performance.now()) / W.len < 0.35;
+      // kick him off my square, and don't build up next to him when he is about to pounce
+      if (b.owner[W.cell] === pl.id && Engine.neighbours(b, W.cell).includes(i) && b.count[i] + 1 >= Engine.capacity(b, i)) return 8;
+      return urgent && dist <= CONFIG.pounceRadius ? -5 : 0;
+    },
+    drawOver(ctx, G, c, t, now) {
+      const W = G.data.wolf;
+      if (!W) return;
+      const b = G.b;
+      const p = Math.min(1, (now - W.at) / 220);
+      const x = (Engine.colOf(b, W.from) + (Engine.colOf(b, W.cell) - Engine.colOf(b, W.from)) * p + 0.5) * c;
+      const y = (Engine.rowOf(b, W.from) + (Engine.rowOf(b, W.cell) - Engine.rowOf(b, W.from)) * p + 0.5) * c - Math.sin(Math.PI * p) * c * 0.4;
+      const left = Math.max(0, (W.end - now) / W.len);
+      if (left < 0.3) {
+        // the danger zone
+        ctx.fillStyle = `rgba(255,60,60,${0.1 + 0.12 * Math.abs(Math.sin(t * (6 + (1 - left) * 14)))})`;
+        const r0 = Engine.rowOf(b, W.cell);
+        const c0 = Engine.colOf(b, W.cell);
+        ctx.fillRect(Math.max(0, c0 - CONFIG.pounceRadius) * c, Math.max(0, r0 - CONFIG.pounceRadius) * c, (Math.min(b.cols - 1, c0 + CONFIG.pounceRadius) - Math.max(0, c0 - CONFIG.pounceRadius) + 1) * c, (Math.min(b.rows - 1, r0 + CONFIG.pounceRadius) - Math.max(0, r0 - CONFIG.pounceRadius) + 1) * c);
+      }
+      drawHotWolf(ctx, x, y, c * 0.8, left, t);
+    },
+  },
+});
+
+// ---------- THE WOLF ----------
+function pounce(G, now) {
+  const D = G.data;
+  const b = G.b;
+  const W = D.wolf;
+  const victim = b.owner[W.cell];
+  const r0 = Engine.rowOf(b, W.cell);
+  const c0 = Engine.colOf(b, W.cell);
+  if (S.isPlayer(victim)) {
+    G.players[victim].pounced = true;
+    for (let i = 0; i < b.size; i++) {
+      if (b.owner[i] !== victim) continue;
+      if (Math.abs(Engine.rowOf(b, i) - r0) > CONFIG.pounceRadius || Math.abs(Engine.colOf(b, i) - c0) > CONFIG.pounceRadius) continue;
+      b.owner[i] = -1;
+      b.count[i] = 0;
+      b.tag[i] = null;
+      S.puff(i, G.players[victim].color, 3);
+    }
+    S.shout(G.players[victim], "Pounce!", 1.6, "#ff6b6b");
+    S.mood(G.players[victim], "oops", 1500);
+  } else S.shout(null, "Missed!", 1.2, "#c7cad1");
+  S.Sfx.roar();
+  S.shake(14);
+  S.buzz([90, 40, 90]);
+  D.wolf = null;
+  D.respawnAt = now + CONFIG.respawnMs;
+}
+
+function drawHotWolf(g, x, y, s, left, t) {
+  // the fuse ring
+  g.lineWidth = s * 0.08;
+  g.strokeStyle = "rgba(0,0,0,0.35)";
+  g.beginPath();
+  g.arc(x, y, s * 0.62, 0, Math.PI * 2);
+  g.stroke();
+  g.strokeStyle = left < 0.25 ? "#ff3d3d" : left < 0.5 ? "#ff9a5c" : "#ffcf4a";
+  g.beginPath();
+  g.arc(x, y, s * 0.62, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * left);
+  g.stroke();
+  const jit = left < 0.25 && !S.settings.reduced ? Math.sin(t * 60) * s * 0.03 : 0;
+  Kit.drawWolf(g, x + jit, y + s * 0.06, s, { t, mood: "happy" });
+  // his eyes widen as the fuse runs low
+  const wide = 1 - left;
+  if (wide > 0.5) {
+    for (const side of [-1, 1]) {
+      Kit.circle(g, x + jit + side * s * 0.13, y - s * 0.08, s * (0.06 + 0.06 * wide), "#ffffff");
+      Kit.circle(g, x + jit + side * s * 0.13, y - s * 0.08, s * 0.035, "#1a1622");
+    }
+  }
+}
+</script>
+</body>
+</html>

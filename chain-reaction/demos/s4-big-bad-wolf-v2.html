@@ -1275,6 +1275,7 @@ const Stampede = (() => {
   let lastFrame = 0;
   let pointerX = 0.5;
   let betweenTimer = 0;
+  let resultsTimer = 0;
   const EMPTY = [];
 
   const key = (k) => `cfl2-${V.key}-${k}`;
@@ -1338,6 +1339,7 @@ const Stampede = (() => {
 
   function startRound() {
     clearTimeout(betweenTimer);
+    clearTimeout(resultsTimer);
     const now = performance.now();
     const dims = V.board ? V.board(setup) : { rows: V.rows ?? 9, cols: V.cols ?? 6 };
     const b = Engine.createBoard(dims.rows, dims.cols, { tag: null, kind: null, hp: 0, mhp: 0 });
@@ -1352,8 +1354,12 @@ const Stampede = (() => {
     for (const pl of players) if (pl.seat >= 0) seatPlayer[pl.seat] = pl;
     H.setup?.(G, setup, match);
     buildPath();
+    // fair starts: each player's cursor begins in the board corner on their side
+    const corners = [(b.rows - 1) * b.cols, b.cols - 1, 0, b.size - 1];
     players.forEach((pl, k) => {
-      if (pl.pos === null) pl.pos = Math.floor((k * G.path.length) / players.length);
+      if (pl.pos !== null) return;
+      const at = pl.seat >= 0 ? G.path.indexOf(corners[pl.seat]) : -1;
+      pl.pos = at >= 0 ? at : Math.floor((k * G.path.length) / players.length);
     });
     $("app").classList.toggle("solo", G.solo);
     $("app").classList.remove("rush");
@@ -1513,20 +1519,37 @@ const Stampede = (() => {
       b.owner[i] = -1;
       H.emptied?.(G, b, i);
     },
-    land: (b, from, to, who) => {
-      if (!G.players[who].alive) return;
-      if (H.land?.(G, b, from, to, who)) return;
-      if (b.kind[to] && hitKind(to, who)) return;
-      landOn(to, who);
-    },
+    // landings wait until the wave is over, then go down in a shuffled order: the engine lands
+    // bursts in board order, which would hand every contested square to the lower flock
+    land: (b, from, to, who) => landQ.push(from, to, who),
     maxWaves: 1,
   };
+  const landQ = [];
+  function applyLandings() {
+    const b = G.b;
+    const n = landQ.length / 3;
+    for (let k = n - 1; k > 0; k--) {
+      const j = Math.floor(Math.random() * (k + 1));
+      for (let f = 0; f < 3; f++) [landQ[k * 3 + f], landQ[j * 3 + f]] = [landQ[j * 3 + f], landQ[k * 3 + f]];
+    }
+    for (let k = 0; k < n; k++) {
+      const from = landQ[k * 3];
+      const to = landQ[k * 3 + 1];
+      const who = landQ[k * 3 + 2];
+      if (!G.players[who].alive) continue;
+      if (H.land?.(G, b, from, to, who)) continue;
+      if (b.kind[to] && hitKind(to, who)) continue;
+      landOn(to, who);
+    }
+    landQ.length = 0;
+  }
 
   function tickWave(now) {
     const n = G.players.length;
     burstsBy.fill(0);
     pending.length = 0;
     const { waves } = Engine.resolve(G.b, waveRules, false);
+    applyLandings();
     G.flights = waves.length ? waves[0].bursts : EMPTY;
     G.flightAt = now;
     for (const f of G.flights) puff(f.from, G.players[f.who]?.color ?? "#fff", 3);
@@ -1684,7 +1707,9 @@ const Stampede = (() => {
       res.matchWon = Number(champ);
       res.team = Number(champ);
     }
-    setTimeout(() => results(res), 650);
+    const ended = G;
+    clearTimeout(resultsTimer);
+    resultsTimer = setTimeout(() => G === ended && results(res), 650);
     (res.sad ?? !humanWon(res)) && humans().length ? Sfx.lose() : Sfx.win();
   }
 
@@ -2619,6 +2644,7 @@ const Stampede = (() => {
 
   function home() {
     clearTimeout(betweenTimer);
+    clearTimeout(resultsTimer);
     if (G) G.over = true;
     G = null;
     match = null;
