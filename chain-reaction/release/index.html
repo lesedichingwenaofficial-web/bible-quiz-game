@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Lamb Stampede</title>
+<meta name="description" content="A free, joyful Chain Reaction party game for 1 to 4 players on one phone. Nine games, hymn music, Verse of the Day and a cheeky little lamb. No ads, no purchases.">
+<meta name="theme-color" content="#3f8f4e">
+<meta name="color-scheme" content="light">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Stampede">
+<meta name="format-detection" content="telephone=no">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Lamb Stampede">
+<meta property="og:description" content="A free, joyful Chain Reaction party game for 1 to 4 players on one phone. No ads, no purchases.">
+<meta property="og:image" content="img/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="img/og.jpg">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/favicon.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preload" href="fonts/fredoka.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div id="boot" class="boot"><div class="boot-lamb"></div><p>Lamb Stampede</p></div>
+
+<!-- screens (filled in by js) -->
+<section class="screen home" id="scr-home" hidden></section>
+<section class="screen" id="scr-play" hidden></section>
+<section class="screen" id="scr-setup" hidden></section>
+<section class="screen" id="scr-results" hidden></section>
+<section class="screen" id="scr-daily" hidden></section>
+<section class="screen" id="scr-wardrobe" hidden></section>
+<section class="screen" id="scr-journal" hidden></section>
+<section class="screen" id="scr-stats" hidden></section>
+<section class="screen" id="scr-settings" hidden></section>
+<section class="screen" id="scr-about" hidden></section>
+<section class="screen" id="scr-dev" hidden></section>
+
+<!-- the game -->
+<section class="screen game" id="scr-game" hidden>
+  <div class="game-wrap" id="game">
+    <div class="band top"><canvas id="band-top" aria-label="Top players' buttons"></canvas><div class="mid flip"><span class="timer" id="timer-top"></span></div></div>
+    <div class="hud" id="hud"></div>
+    <main class="stage" id="stage">
+      <canvas id="board" aria-label="The field"></canvas>
+      <div class="shouts" id="shouts"></div>
+      <div class="tip" id="tip" hidden></div>
+      <div class="hint" id="hint" hidden></div>
+      <div class="replay-badge">Replay</div>
+    </main>
+    <div class="band bottom"><canvas id="band-bottom" aria-label="Bottom players' buttons"></canvas>
+      <div class="mid" id="mid-bottom"><span class="timer" id="timer"></span><button class="ib pause" id="pause-btn" aria-label="Pause"></button></div>
+    </div>
+  </div>
+  <div class="fs-ghost" id="ghost" hidden><i></i><b></b><span></span></div>
+</section>
+
+<!-- sheets (open on top of a screen) -->
+<section class="screen sheet" id="scr-pause" hidden></section>
+<section class="screen sheet" id="scr-between" hidden></section>
+<section class="screen sheet" id="scr-help" hidden></section>
+<section class="screen sheet" id="scr-photo" hidden></section>
+<section class="screen sheet" id="scr-card" hidden></section>
+<section class="screen sheet" id="scr-backup" hidden></section>
+<section class="screen sheet" id="scr-privacy" hidden></section>
+<section class="screen sheet" id="scr-whatsnew" hidden></section>
+<section class="screen sheet" id="scr-confirm" hidden></section>
+<section class="screen sheet" id="scr-rename" hidden></section>
+<section class="screen sheet" id="scr-installios" hidden></section>
+<section class="screen sheet" id="scr-flock" hidden></section>
+
+<div class="toast" id="toast" hidden role="status"></div>
+<div class="fps" id="fps" hidden></div>
+<div class="crash" id="crash" hidden><div class="sheet-card"><canvas></canvas><h2></h2><p></p><button class="btn primary big" id="crash-home"><span>Back to Home</span></button><button class="btn" id="crash-copy"><span>Copy error log</span></button></div></div>
+<div class="rotate" id="rotate"><div><div class="rotate-phone"></div><p>Turn your phone upright to play</p></div></div>
+<noscript><p class="noscript">Lamb Stampede needs JavaScript switched on. Please turn it on and reload. Baa!</p></noscript>
+
+<!-- Join the Flock: Netlify finds this hidden form when the site is deployed (the game posts to it) -->
+<form name="join-the-flock" data-netlify="true" netlify-honeypot="bot-field" hidden>
+  <input type="email" name="email"><input name="signup"><input name="consent"><input name="bot-field">
+</form>
+
+<script src="js/config.js"></script>
+<script src="js/strings.js"></script>
+<script src="js/licences.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/base.js"></script>
+<script src="js/art.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/progress.js"></script>
+<script src="js/core.js"></script>
+<script src="js/share.js"></script>
+<script src="js/screens.js"></script>
+<script src="js/app.js"></script>
+<script src="js/pwa.js"></script>
+<script>
+  try {
+    $("pause-btn").innerHTML = Icons.get("pause");
+    $("pause-btn").onclick = () => Nav.back();
+    App.boot();
+  } catch (e) {
+    ErrorLog.add(e.message, e.stack);
+    App.crash(e);
+  }
+</script>
+</body>
+</html>

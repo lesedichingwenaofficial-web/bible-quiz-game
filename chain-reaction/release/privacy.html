@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Privacy · Lamb Stampede</title>
+<meta name="description" content="Lamb Stampede's privacy promise, in plain words.">
+<link rel="icon" href="icons/favicon.png" type="image/png">
+<style>
+  @font-face { font-family: "Fredoka"; src: url("fonts/fredoka.woff2") format("woff2"); font-weight: 300 700; font-display: swap; }
+  body { margin: 0; background: #fff8ec; color: #2b3a2f; font: 500 1.05rem/1.55 "Fredoka", ui-rounded, system-ui, sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 32px 20px 48px; }
+  h1 { color: #2c6b39; font-size: 2rem; margin: 0 0 8px; }
+  h2 { color: #2c6b39; font-size: 1.2rem; margin: 28px 0 6px; }
+  p { margin: 0 0 10px; }
+  a { color: #2a78b5; }
+  .card { background: #fffdf8; border-radius: 18px; padding: 4px 18px 10px; box-shadow: 0 2px 0 rgba(43,58,47,.08), 0 8px 24px rgba(43,58,47,.1); margin-top: 16px; }
+  .back { display: inline-block; margin-top: 24px; padding: 12px 20px; border-radius: 16px; background: #ffcf4a; color: #3a2a05; font-weight: 700; text-decoration: none; }
+  small { color: #5d6d5f; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Privacy, in plain words</h1>
+  <p>Lamb Stampede is a free game. There are no adverts and nothing to buy.</p>
+  <div class="card">
+    <h2>No tracking</h2>
+    <p>There are no adverts, no trackers and no cookies. We don't know who you are, and we don't want to.</p>
+    <div id="counter" hidden>
+      <h2>Counting visits</h2>
+      <p>We count how many times the game is opened, with no cookies and nothing that identifies you.</p>
+    </div>
+    <h2>Your progress stays with you</h2>
+    <p>Your wool, outfits, scores and settings are saved on your device only. They never leave it unless you copy a backup code yourself.</p>
+    <h2>Email only if you choose</h2>
+    <p>If you join the Flock, your email address is used only to send game news and updates. We never sell or share it. You can unsubscribe at any time with the link in every email. The game itself only remembers that you signed up, never your address.</p>
+    <h2>Children</h2>
+    <p>If you are under 18, a parent or guardian needs to sign up for you.</p>
+    <h2>Questions</h2>
+    <p>Write to us at <a id="contact" href="mailto:hello@example.com">hello@example.com</a>.</p>
+  </div>
+  <p><small>Last updated 22 October 2026.</small></p>
+  <a class="back" href="./">Back to the game</a>
+</main>
+<script src="js/config.js"></script>
+<script>
+  if (typeof CONFIG !== "undefined") {
+    const a = document.getElementById("contact");
+    a.href = "mailto:" + CONFIG.contactEmail;
+    a.textContent = CONFIG.contactEmail;
+    document.getElementById("counter").hidden = !CONFIG.counter.enabled;
+  }
+</script>
+</body>
+</html>

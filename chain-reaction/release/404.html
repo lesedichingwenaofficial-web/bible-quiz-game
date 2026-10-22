@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lost lamb · Lamb Stampede</title>
+<link rel="icon" href="/icons/favicon.png" type="image/png">
+<style>
+  @font-face { font-family: "Fredoka"; src: url("/fonts/fredoka.woff2") format("woff2"); font-weight: 300 700; font-display: swap; }
+  html, body { height: 100%; margin: 0; }
+  body { display: grid; place-items: center; background: linear-gradient(#b8e3ff, #fff8ec 60%); color: #2b3a2f; font: 500 1.1rem/1.5 "Fredoka", ui-rounded, system-ui, sans-serif; text-align: center; padding: 24px; box-sizing: border-box; }
+  h1 { color: #2c6b39; font-size: 2.2rem; margin: 8px 0; }
+  a { display: inline-block; margin-top: 18px; padding: 14px 24px; border-radius: 18px; background: #ffcf4a; color: #3a2a05; font-weight: 700; text-decoration: none; box-shadow: 0 4px 0 #d9a12a; }
+  canvas { display: block; margin: 0 auto; }
+</style>
+</head>
+<body>
+<div>
+  <canvas id="lamb" width="200" height="140" aria-hidden="true"></canvas>
+  <h1>This lamb wandered off</h1>
+  <p>The page you were looking for isn't here. Let's lead you home.</p>
+  <a href="/">Back to the pasture</a>
+</div>
+<script>
+  // a tiny lamb, looking around for the way home
+  const cv = document.getElementById("lamb");
+  const g = cv.getContext("2d");
+  const c = (x, y, r, f) => { g.beginPath(); g.arc(x, y, r, 0, 7); g.fillStyle = f; g.fill(); };
+  let t = 0;
+  (function draw() {
+    t += 0.03;
+    g.clearRect(0, 0, 200, 140);
+    const y = 80 + Math.sin(t * 3) * 2;
+    g.fillStyle = "#3b3340";
+    for (const x of [72, 88, 108, 124]) g.fillRect(x, y + 10, 8, 26);
+    for (const [x, yy] of [[70, 0], [82, -16], [100, -20], [118, -14], [128, 0], [118, 14], [98, 18], [80, 14]]) c(x, y + yy, 19, "#fff");
+    c(100, y, 30, "#fff");
+    const hx = 128, hy = y - 22;
+    g.beginPath(); g.ellipse(hx, hy + 3, 17, 20, 0, 0, 7); g.fillStyle = "#f6e6da"; g.fill();
+    const look = Math.sin(t) * 2;
+    for (const [s, px, py] of [[-1, -2.5, -1.5], [1, 2.2, 1.8]]) { c(hx + s * 7, hy, 5.5, "#fff"); c(hx + s * 7 + px + look, hy + py, 2.7, "#241d2a"); }
+    if (!matchMedia("(prefers-reduced-motion: reduce)").matches) requestAnimationFrame(draw);
+  })();
+</script>
+</body>
+</html>

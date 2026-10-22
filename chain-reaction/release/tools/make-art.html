@@ -1,0 +1,61 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>@font-face { font-family: "Fredoka"; src: url("../fonts/fredoka.woff2") format("woff2"); font-weight: 300 700; }</style>
+</head><body>
+<script src="../js/config.js"></script>
+<script src="../js/base.js"></script>
+<script src="../js/art.js"></script>
+<script>
+  // Draws the app icons and the link-preview picture. Used by tools/make-art.cjs.
+  function icon(size, maskable) {
+    const cv = document.createElement("canvas");
+    cv.width = cv.height = size;
+    const g = cv.getContext("2d");
+    const s = size;
+    const r = maskable ? 0 : s * 0.22;
+    const bg = g.createLinearGradient(0, 0, 0, s);
+    bg.addColorStop(0, "#9fdcff");
+    bg.addColorStop(0.55, "#d8f1ff");
+    bg.addColorStop(0.56, "#7cc46a");
+    bg.addColorStop(1, "#4f9a52");
+    g.fillStyle = bg;
+    g.beginPath();
+    g.roundRect(0, 0, s, s, r);
+    g.fill();
+    // a soft sun of golden light behind him
+    const sun = g.createRadialGradient(s * 0.5, s * 0.45, s * 0.05, s * 0.5, s * 0.45, s * 0.5);
+    sun.addColorStop(0, "rgba(255,236,170,0.95)");
+    sun.addColorStop(1, "rgba(255,236,170,0)");
+    g.fillStyle = sun;
+    g.fillRect(0, 0, s, s);
+    const k = maskable ? 0.62 : 0.8; // maskable icons keep the lamb in the safe middle
+    Art.drawLamb(g, s * 0.47, s * 0.6, s * k, { mood: "happy", scarf: "#ff5a5f", still: true });
+    return cv.toDataURL("image/png");
+  }
+  async function og() {
+    await document.fonts.load("700 80px Fredoka");
+    const W = 1200, H = 630;
+    const cv = document.createElement("canvas");
+    cv.width = W; cv.height = H;
+    const g = cv.getContext("2d");
+    Art.drawPasture(g, W, H, { t: 0, part: "day", season: null, dpr: 1, reduced: true });
+    Art.ellipse(g, W * 0.72, H * 0.86, 170, 26, 0, "rgba(0,0,0,0.18)");
+    Art.drawLamb(g, W * 0.72, H * 0.62, 420, { mood: "joy", scarf: "#ff5a5f", still: true });
+    const cols = ["#ff5a5f", "#3fa7ff", "#ffc93c", "#2fd38a"];
+    cols.forEach((c, k) => Art.drawSheep(g, 90 + k * 70, H * 0.86, 22, c, { flip: k % 2 }));
+    g.textAlign = "left";
+    const text = (t, x, y, size, fill) => {
+      g.font = `700 ${size}px Fredoka`;
+      g.lineWidth = size * 0.2;
+      g.strokeStyle = "rgba(255,255,255,0.95)";
+      g.strokeText(t, x, y);
+      g.fillStyle = fill;
+      g.fillText(t, x, y);
+    };
+    text("Lamb Stampede", 70, 190, 104, "#2c6b39");
+    text("A joyful Chain Reaction party game", 72, 268, 40, "#2b3a2f");
+    text("1–4 players · free · no ads", 72, 326, 36, "#5d6d5f");
+    return cv.toDataURL("image/jpeg", 0.88);
+  }
+</script>
+</body></html>
