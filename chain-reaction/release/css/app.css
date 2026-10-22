@@ -505,3 +505,16 @@ html.reduced .hud .goldtag { animation: none; }
 .best-line { display: flex; align-items: center; gap: 6px; justify-content: center; }
 .share-line { display: flex; gap: 8px; align-items: center; padding: 10px 12px; border-radius: var(--r-m); background: var(--cream-2); text-align: left; font-size: 0.85rem; margin: 8px 0; }
 .share-line span { flex: 1; min-width: 0; overflow-wrap: anywhere; -webkit-user-select: text; user-select: text; }
+/* ---------- Lost Lamb ---------- */
+.ll-hud { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.ll-hud.golden .llbar span { box-shadow: 0 0 10px #ffcf4a; }
+.llbar { display: flex; align-items: center; gap: 4px; }
+.llbar .sym { width: 16px; height: 16px; }
+.llbar span { display: block; width: 64px; height: 12px; border-radius: 6px; background: rgba(255,255,255,0.14); overflow: hidden; }
+.llbar span i { display: block; height: 100%; transition: width 0.2s; }
+.llbar.lead span { outline: 2px solid #ffcf4a; }
+.ll-bars { display: grid; gap: 6px; margin: 8px 0; }
+.ll-bars div { display: grid; grid-template-columns: 22px 1fr 32px; gap: 8px; align-items: center; font-weight: 600; }
+.ll-bars .sym { width: 20px; height: 20px; }
+.ll-bars .bar { height: 12px; border-radius: 6px; background: var(--cream-2); overflow: hidden; }
+.ll-bars .bar i { display: block; height: 100%; }

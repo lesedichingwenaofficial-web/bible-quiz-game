@@ -658,7 +658,7 @@ const Core = (() => {
     return {
       res, won, mode: V.key, setup, firstSteps: !!opts.firstSteps, solo: G.solo,
       title: res.title ?? (res.team < 0 ? STRINGS.results.tie : hs.length === 1 ? (won ? STRINGS.results.win : STRINGS.results.lose) : `${teamName(res.team)} win${teamName(res.team).includes("&") ? "" : "s"}!`),
-      sub: res.sub ?? (res.team >= 0 && hs.length === 1 && won ? STRINGS.results.winSub : res.matchWon !== undefined ? "Match won!" : res.why === "last" ? "Last flock grazing." : res.why === "time" ? "Most squares when time ran out." : ""),
+      sub: res.sub && hs.length === 1 && !won && res.team >= 0 && !res.title ? `${teamName(res.team)}: ${res.sub}` : res.sub ?? (res.team >= 0 && hs.length === 1 && won ? STRINGS.results.winSub : res.matchWon !== undefined ? "Match won!" : res.why === "last" ? "Last flock grazing." : res.why === "time" ? "Most squares when time ran out." : ""),
       color: res.color ?? (res.team >= 0 ? teamColor(res.team) : null),
       players, humans: players.filter((p) => p.human), awards, chainRec: chainRec?.best?.len >= 4 && !opts.firstSteps ? chainRec : null,
       match: match ? { wins: { ...match.wins }, need: match.need, teams: [...new Set(players.map((p) => p.team))].map((t) => ({ team: t, name: teamName(t), color: teamColor(t), wins: match.wins[t] || 0 })) } : null,
