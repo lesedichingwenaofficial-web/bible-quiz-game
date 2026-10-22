@@ -371,7 +371,7 @@
   function hud(G) {
     const D = G.data;
     const icon = D.attack ? ATTACK_ICON[D.attack.type] : shielded(G) ? "shield" : D.B.icon;
-    const html = `<div class="wolfbar${D.angry ? " angry" : ""}">${Icons.get(icon)}<div class="bar"><i style="width:${(100 * Math.max(0, D.hp)) / D.max}%"></i><b>${esc(D.B.name)}${D.rush ? ` · ${D.beaten.length + (D.fleeAt ? 0 : 1)}/3` : ""}</b></div></div>`;
+    const html = `<div class="wolfbar${D.angry ? " angry" : ""}">${Icons.get(icon)}<div class="meter"><i style="width:${(100 * Math.max(0, D.hp)) / D.max}%"></i><b>${esc(D.B.name)}${D.rush ? ` · ${D.beaten.length + (D.fleeAt ? 0 : 1)}/3` : ""}</b></div></div>`;
     S.setHud(html);
   }
 

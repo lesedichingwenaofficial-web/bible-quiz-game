@@ -476,10 +476,10 @@ fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 6px; }
 /* the wolf's bar */
 .hud .wolfbar { display: flex; align-items: center; gap: 8px; width: min(320px, 80vw); }
 .hud .wolfbar .ico { width: 22px; height: 22px; }
-.hud .wolfbar .bar { flex: 1; height: 18px; border-radius: 9px; background: rgba(255,255,255,0.14); overflow: hidden; position: relative; }
-.hud .wolfbar .bar i { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, #ffcf4a, #ff9a5c); transition: width 0.2s; }
-.hud .wolfbar.angry .bar i { background: linear-gradient(90deg, #ff8a5c, #ff5a5f); }
-.hud .wolfbar .bar b { position: relative; display: block; text-align: center; font-size: 0.78rem; line-height: 18px; color: #2b2010; }
+.hud .wolfbar .meter { flex: 1; height: 18px; border-radius: 9px; background: rgba(255,255,255,0.14); overflow: hidden; position: relative; }
+.hud .wolfbar .meter i { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, #ffcf4a, #ff9a5c); transition: width 0.2s; }
+.hud .wolfbar.angry .meter i { background: linear-gradient(90deg, #ff8a5c, #ff5a5f); }
+.hud .wolfbar .meter b { position: relative; display: block; text-align: center; font-size: 0.78rem; line-height: 18px; color: #2b2010; }
 .hud .attack { color: #ff8a8a; display: flex; gap: 4px; align-items: center; }
 .dmg { display: grid; gap: 6px; margin: 8px 0; text-align: left; }
 .dmg div { display: grid; grid-template-columns: 90px 1fr 32px; gap: 8px; align-items: center; font-weight: 600; font-size: 0.9rem; }
@@ -516,8 +516,8 @@ html.reduced .hud .goldtag { animation: none; }
 .ll-bars { display: grid; gap: 6px; margin: 8px 0; }
 .ll-bars div { display: grid; grid-template-columns: 22px 1fr 32px; gap: 8px; align-items: center; font-weight: 600; }
 .ll-bars .sym { width: 20px; height: 20px; }
-.ll-bars .bar { height: 12px; border-radius: 6px; background: var(--cream-2); overflow: hidden; }
-.ll-bars .bar i { display: block; height: 100%; }
+.ll-bars .meter { display: block; height: 12px; border-radius: 6px; background: var(--cream-2); overflow: hidden; }
+.ll-bars .meter i { display: block; height: 100%; }
 /* ---------- Flock Fall ---------- */
 .ff-side { display: flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; }
 .ff-side .sym { width: 16px; height: 16px; }
@@ -554,3 +554,14 @@ html.reduced .lh-stuck { animation: none; }
 .lh-mates { justify-self: center; }
 .results .verse { font-style: italic; color: var(--ink-2); font-size: 0.92rem; margin: 4px 16px; text-align: center; }
 .results .verse small { font-style: normal; font-weight: 700; }
+
+/* Bridge */
+.br-hud { display: flex; align-items: center; gap: 10px; min-height: 30px; }
+.br-hud > .ico { width: 22px; height: 22px; opacity: 0.8; }
+.br-side { display: flex; align-items: center; gap: 6px; }
+.br-side .sym { width: 18px; height: 18px; }
+.br-side .meter { width: min(110px, 26vw); height: 12px; border-radius: 6px; background: rgba(255,255,255,0.14); overflow: hidden; display: block; }
+.br-side .meter i { display: block; height: 100%; transition: width 0.25s; }
+.br-side.close { animation: beat 0.5s ease-in-out infinite; }
+html.reduced .br-side.close { animation: none; text-decoration: underline; }
+.br-bars div { grid-template-columns: 22px 80px 1fr 40px; }

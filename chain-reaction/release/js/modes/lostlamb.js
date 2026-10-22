@@ -65,7 +65,7 @@
       Save.save();
       const G = sum.G;
       return {
-        html: `<div class="ll-bars">${G.players.map((q) => `<div>${App.symSvg(q.sym, q.color)}<span class="bar"><i style="width:${(100 * q.score) / LOST.target}%;background:${q.color}"></i></span><b>${q.score}</b></div>`).join("")}</div>`,
+        html: `<div class="ll-bars">${G.players.map((q) => `<div>${App.symSvg(q.sym, q.color)}<span class="meter"><i style="width:${(100 * q.score) / LOST.target}%;background:${q.color}"></i></span><b>${q.score}</b></div>`).join("")}</div>`,
         shareLine: sum.won ? "Found the lost lamb!" : "",
       };
     },

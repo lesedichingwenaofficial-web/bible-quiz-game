@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.0: the full release (in progress, step 8 of 11)
+## 1.0.0: the full release (in progress, step 9 of 11)
 
 ### New
 - **One app for every game.** A home pasture that follows the time of day, a Play screen grouped into Play Together, Team Up and Solo, a Daily hub, Wardrobe, Shepherd's Journal, Stats, Settings and About.
@@ -12,6 +12,7 @@
 - **Flock Fall, finished.** Head-to-head against an AI (Easy to Expert), against a friend on one screen, or Endless alone. Your chains drop rocks onto the other side's pasture; both sides get the same rocks in the same order, so it's fair. Incoming rocks wait in a queue you can see, and a chain of your own clears them before they land. When your pasture fills past the danger line the music quickens and the edges glow red. Endless speeds up gently, keeps a score and remembers your best.
 - **Guard the Fold, finished.** Three folds (Zigzag, Middle Road, Hillside), 10 waves each, opening one after another, then Endless on any fold you've cleared. Between waves the HUD shows what's coming (pups, wolves, Big Wolves, Sneaky Wolves dressed as sheep) and a Go button calls the next wave early for wool. Wave 10 brings the Grandfather Wolf. Bigger teams meet more wolves, and smaller teams meet slower ones. A wolf whose pips run out turns tail and runs; one who reaches the fold only startles the lambs and costs a heart. Stars come from hearts kept. Clear a fold and the sun sets with the lambs asleep inside.
 - **Lead Him Home, finished.** 30 levels over Meadow Lane, Muddy Hills and Wolf Wood on a world map where your lamb walks to the next level. Play solo or with a second shepherd (a friend, or an AI helper). One new idea at a time: building a road, rocks, wolves, thorns, mud, boulders, a home in a new place, wolf dens. Speed stars, with each level's 3-star time shown before you play. After 3 tries the Shepherd marks a path on the board. Wolves keep a respectful distance from the lamb; only their bursts can scare him back. At the end the Shepherd lifts him onto his shoulders (Luke 15:5); from the second time on you can skip it.
+- **Bridge, finished.** 1 v 1 or 2 v 2 on a 5 × 5, 7 × 7 or 9 × 9 board, single or best of 3 or 5, against people or AI from Easy to Expert. Sunrise links left to right, Moonrise top to bottom. Each side's best connected group glows. When a side is one square from across, that square flashes and a rising note plays until someone fills it. The winner's lamb runs across the bridge. In simulated games each AI level beats the one below it.
 - **First Steps.** The very first match is an easy one: a ghost thumb shows the button, your cursor waits on a ready square, and your first tap sets off a chain.
 - **Smart hints.** After 3 lockouts in a row the squares you may use glow. After 5 seconds without a tap your button pulses. Both retire once learned and can be switched off.
 - **Tips per mode.** One animated icon and up to 6 words, once ever, never pausing play.
@@ -33,6 +34,7 @@
 - Expert AI now sees further into a stampede than Normal, so the levels really differ (Expert beats Normal 11–5, Hard beats Easy 9–3 in simulated duels).
 - Music has a limiter and ducking, softer voices, and goes quiet when the app is hidden.
 - Saves are one versioned file, migrated forward and never wiped; a backup code moves them between devices.
+- Lost Lamb's results bars and the Big Bad Wolf's bluster bar no longer clash with the screen-header style (they're now `.meter`).
 - Shouts no longer steal a busy slot; the screen between rounds can be skipped with a tap.
 
 ### Studio choices
@@ -44,5 +46,6 @@
 - **Calling a wave early** is logged like a button press, so replays stay exact.
 - **Lead Him Home's wolves** fill their pens more slowly than a player and never drop right next to the lamb. In testing, AI wolves at full speed simply took over the pasture.
 - **Lead Him Home's 3-star times** come from each level's shortest walk: 12 seconds plus 2.3 per step. Every level was finished by an Expert AI shepherd, solo and in co-op.
+- **Bridge's sides** take the players' own colours (so colour-blind palettes still apply), not the demo's fixed gold and violet. A bridge can grow from anywhere on the board, not only from its own edge.
 - **Teams** share a colour so a glance tells you who's with whom; each player keeps their own shape.
 - **Default AI level** is Auto.
