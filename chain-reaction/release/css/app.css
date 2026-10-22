@@ -518,3 +518,10 @@ html.reduced .hud .goldtag { animation: none; }
 .ll-bars .sym { width: 20px; height: 20px; }
 .ll-bars .bar { height: 12px; border-radius: 6px; background: var(--cream-2); overflow: hidden; }
 .ll-bars .bar i { display: block; height: 100%; }
+/* ---------- Flock Fall ---------- */
+.ff-side { display: flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; }
+.ff-side .sym { width: 16px; height: 16px; }
+.ff-side .ico { width: 16px; height: 16px; }
+.ff-side.danger { animation: beat 0.5s ease-in-out infinite; }
+html.reduced .ff-side.danger { animation: none; text-decoration: underline; }
+.ff-side .incoming { color: #ff9a9a; display: inline-flex; align-items: center; gap: 2px; }
