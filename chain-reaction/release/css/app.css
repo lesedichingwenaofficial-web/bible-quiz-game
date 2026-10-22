@@ -540,3 +540,17 @@ html.reduced .ff-side.danger { animation: none; text-decoration: underline; }
 .gf-go { border: 0; border-radius: 999px; padding: 4px 12px; font: inherit; font-size: 0.9rem; background: var(--gold); color: #2b2010; box-shadow: 0 2px 0 var(--gold-d); cursor: pointer; font-variant-numeric: tabular-nums; }
 .gf-go:active { transform: translateY(2px); box-shadow: none; }
 .gf-next .gf-pup .ico { width: 13px; height: 13px; }
+
+/* Lead Him Home */
+.lh-hud { display: flex; align-items: center; gap: 12px; min-height: 30px; }
+.lh-hud span { display: flex; align-items: center; gap: 4px; }
+.lh-hud .ico { width: 18px; height: 18px; }
+.lh-stuck { color: #ffd27a; animation: beat 0.8s ease-in-out infinite; }
+html.reduced .lh-stuck { animation: none; }
+.map-panel .obj.new { background: var(--gold-l); }
+.map-panel .obj small { font-size: 0.72rem; font-weight: 700; }
+.lh-par { display: flex; justify-content: center; align-items: center; gap: 2px; margin: 0; }
+.lh-par .ico { width: 14px; height: 14px; color: var(--gold); }
+.lh-mates { justify-self: center; }
+.results .verse { font-style: italic; color: var(--ink-2); font-size: 0.92rem; margin: 4px 16px; text-align: center; }
+.results .verse small { font-style: normal; font-weight: 700; }
