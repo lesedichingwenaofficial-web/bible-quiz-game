@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#13201a" />
+<title>The Lost Coin</title>
+<meta name="description" content="The Lost Coin, a cheekyfoundlamb game: a real-time Chain Reaction treasure hunt for 2-4 players. Bursts uncover the grass to find coins, but watch out for wolf traps." />
+<style>
+/*@KITCSS*/
+/*@STAMPEDE2CSS*/
+.hud { gap: 12px; font-size: 1.1rem; }
+.hud .c { display: flex; align-items: center; gap: 4px; }
+.verse { font-style: italic; color: var(--cream) !important; }
+</style>
+</head>
+<body>
+<!--@STAMPEDE2HTML-->
+<script>
+/*@ENGINE*/
+/*@KIT*/
+/*@STAMPEDE2*/
+
+// ======================= N6: THE LOST COIN =======================
+// ---------- CONFIG ----------
+const CONFIG = {
+  coins: 10,
+  golden: 3, // worth 3 each
+  goldenValue: 3,
+  traps: 4,
+  trapSteal: 2, // a trap takes this many of your coins and hides them again
+  target: 8, // first to this many coins wins
+  glintEveryMs: [5000, 9000], // each hidden coin glints on its own rhythm, somewhere in this range
+  glintMs: 350,
+  roundSecs: 180, // a safety net; most coins wins
+  flyMs: 700,
+};
+const S = Stampede;
+const $ = (id) => document.getElementById(id);
+
+// ---------- MODE ----------
+S.run({
+  key: "n6",
+  title: "The Lost Coin",
+  how: ["Bursts uncover the grass. Find coins (golden ones are worth 3), dodge wolf traps!", "Watch for a glint. First to 8 coins wins."],
+  tune: { roundSecs: CONFIG.roundSecs },
+  setupDefaults: { n: 2, seats: ["human", "ai", "ai", "ai"] },
+  players: (s) => Array.from({ length: s.n }, (_, p) => ({ seat: p, kind: s.seats[p] })),
+  options(ui, s) {
+    ui.stepper("Players", "n", 2, 4);
+    ui.seats(s.n);
+  },
+  hero(g, t) {
+    Kit.drawLamb(g, 80, 70, 84, { t, scarf: S.COLORS[2], mood: "happy" });
+    drawCoin(g, 160, 60 - Math.abs(Math.sin(t * 3)) * 16, 16, true, t);
+    drawCoin(g, 190, 96, 11, false, t);
+  },
+  music: {
+    bpm: 112, root: 65, scale: "major", prog: [0, 3, 4, 0],
+    lead: ["4.2.0...2.4.5...", "4.2.0...1.2.0...", "5.4.2...4.5.7...", "4.2.1...0......."],
+    bass: "x...x.5.x...x.5.",
+    drums: { kick: "x.......x.......", snare: "....x.......x...", hat: "x.x.x.x.x.x.x.x." },
+  },
+  mvpScore: (p) => p.coins,
+  badges: [
+    { id: "win", icon: "🪙", name: "Rich in grace", desc: "Win a hunt", test: (c) => c.won },
+    { id: "gold", icon: "✨", name: "Golden eye", desc: "Find 2 golden coins in one game", test: (c) => c.hs.some((p) => p.goldFound >= 2) },
+    { id: "last", icon: "🎉", name: "Rejoice!", desc: "Find the last coin", test: (c) => c.hs.some((p) => p.foundLast) },
+    { id: "clean", icon: "🐾", name: "Light step", desc: "Win without stepping in a trap", test: (c) => c.won && c.hs.every((p) => !p.trapped) },
+  ],
+  hooks: {
+    setup(G) {
+      const b = G.b;
+      const items = [...Array(CONFIG.coins).fill("coin"), ...Array(CONFIG.golden).fill("gold"), ...Array(CONFIG.traps).fill("trap")];
+      const cells = [...Array(b.size).keys()].sort(() => Math.random() - 0.5);
+      const item = new Array(b.size).fill(null);
+      items.forEach((it, k) => (item[cells[k]] = it));
+      const phase = Array.from({ length: b.size }, () => [Math.random() * 10000, CONFIG.glintEveryMs[0] + Math.random() * (CONFIG.glintEveryMs[1] - CONFIG.glintEveryMs[0])]);
+      G.data = { cover: new Array(b.size).fill(true), item, phase, flying: [], last: "" };
+      for (const p of G.players) {
+        p.coins = 0;
+        p.goldFound = 0;
+      }
+    },
+    hud: (G) => hud(G),
+    noElimination: true,
+    land(G, b, from, to, who) {
+      if (G.data.cover[to]) uncover(G, to, who);
+      return false;
+    },
+    specialHit(G, k, who) {
+      if (G.data.cover[k]) uncover(G, k, who);
+      return false;
+    },
+    aiValue(G, pl, i) {
+      const b = G.b;
+      const D = G.data;
+      const covered = Engine.neighbours(b, i).filter((k) => D.cover[k]).length;
+      const glint = Engine.neighbours(b, i).some((k) => D.cover[k] && (D.item[k] === "coin" || D.item[k] === "gold")) ? 2 : 0; // sharp eyes
+      return b.count[i] + 1 >= Engine.capacity(b, i) ? covered * 1.5 + glint : 0;
+    },
+    update(G, now) {
+      const D = G.data;
+      D.flying = D.flying.filter((f) => now - f.t0 < CONFIG.flyMs);
+      hud(G);
+    },
+    shift(G, d) {
+      for (const f of G.data.flying) f.t0 += d;
+    },
+    endCheck(G, now, left) {
+      const D = G.data;
+      const win = G.players.find((p) => p.coins >= CONFIG.target);
+      if (win) return { team: win.team, sub: `${win.coins} coins!` };
+      const hidden = D.item.some((it, i) => D.cover[i] && (it === "coin" || it === "gold"));
+      if (hidden && left > 0) return null;
+      const ranked = [...G.players].sort((a, b) => b.coins - a.coins);
+      const sub = hidden ? "Time's up: most coins." : "Every coin found: most coins wins.";
+      if (ranked[0].coins === ranked[1].coins) return { team: -1, sub };
+      return { team: ranked[0].team, sub, allFound: !hidden };
+    },
+    resultsExtra(G, res, el) {
+      if (G.data.lastFound) el.innerHTML = '<p class="verse">“Rejoice with me; for I have found the piece which I had lost.”<br><small>Luke 15:9</small></p>';
+    },
+    drawCell(ctx, G, i, x, y, c) {
+      if (!G.data.cover[i]) return false;
+      // tall grass over the square (the sheep still show on top)
+      ctx.fillStyle = "rgba(30,90,40,0.55)";
+      ctx.fillRect(x + 1, y + 1, c - 2, c - 2);
+      ctx.strokeStyle = "rgba(140,210,120,0.6)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let k = 0; k < 5; k++) {
+        const gx = x + c * (0.15 + k * 0.17);
+        ctx.moveTo(gx, y + c * 0.95);
+        ctx.lineTo(gx + ((k % 2) - 0.5) * c * 0.12, y + c * (0.55 + (k % 3) * 0.08));
+      }
+      ctx.stroke();
+      return false;
+    },
+    drawOver(ctx, G, c, t, now) {
+      const D = G.data;
+      const b = G.b;
+      // a faint glint over a hidden coin, each on its own rhythm
+      {
+        for (let i = 0; i < b.size; i++) {
+          if (!D.cover[i] || (D.item[i] !== "coin" && D.item[i] !== "gold")) continue;
+          const [off, period] = D.phase[i];
+          const g = (now + off) % period;
+          if (g > CONFIG.glintMs) continue;
+          const a = 1 - g / CONFIG.glintMs;
+          const x = (Engine.colOf(b, i) + 0.75) * c;
+          const y = (Engine.rowOf(b, i) + 0.25) * c;
+          ctx.globalAlpha = a * (D.item[i] === "gold" ? 0.9 : 0.55);
+          ctx.strokeStyle = D.item[i] === "gold" ? "#ffcf4a" : "#ffffff";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(x - 5, y);
+          ctx.lineTo(x + 5, y);
+          ctx.moveTo(x, y - 5);
+          ctx.lineTo(x, y + 5);
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+      }
+      // coins flying to their finder's corner, and traps snapping
+      for (const f of D.flying) {
+        const p = Math.min(1, (now - f.t0) / CONFIG.flyMs);
+        if (f.trap) {
+          ctx.globalAlpha = 1 - p;
+          drawTrap(ctx, f.x, f.y, c * 0.35, p);
+          ctx.globalAlpha = 1;
+          continue;
+        }
+        const e = p * p;
+        drawCoin(ctx, f.x + (f.tx - f.x) * e, f.y + (f.ty - f.y) * e - Math.sin(Math.PI * p) * c, c * (f.gold ? 0.24 : 0.18), f.gold, t);
+      }
+    },
+  },
+});
+
+// ---------- COINS AND TRAPS ----------
+function uncover(G, i, who) {
+  const D = G.data;
+  const b = G.b;
+  D.cover[i] = false;
+  const it = D.item[i];
+  D.item[i] = null;
+  S.puff(i, "#7bd36b", 3);
+  const pl = G.players[who];
+  if (!it || !pl) return;
+  const c = S.geo.cell;
+  const x = (Engine.colOf(b, i) + 0.5) * c;
+  const y = (Engine.rowOf(b, i) + 0.5) * c;
+  if (it === "trap") {
+    // snap! two of their coins are hidden again
+    pl.trapped = true;
+    const lost = Math.min(CONFIG.trapSteal, pl.coins);
+    pl.coins -= lost;
+    const covered = [];
+    for (let k = 0; k < b.size; k++) if (D.cover[k] && !D.item[k]) covered.push(k);
+    for (let k = 0; k < lost && covered.length; k++) D.item[covered.splice(Math.floor(Math.random() * covered.length), 1)[0]] = "coin";
+    D.flying.push({ trap: true, x, y, t0: performance.now() });
+    S.shout(pl, "Snap!", 1.3, "#ff6b6b");
+    S.Sfx.waste();
+    S.buzz([60, 40, 60]);
+    return;
+  }
+  const value = it === "gold" ? CONFIG.goldenValue : 1;
+  pl.coins += value;
+  if (it === "gold") pl.goldFound++;
+  const W = b.cols * c;
+  const H = b.rows * c;
+  const corner = pl.seat === 0 ? [0, H] : pl.seat === 1 ? [W, 0] : pl.seat === 2 ? [0, 0] : [W, H];
+  D.flying.push({ x, y, tx: corner[0], ty: corner[1], gold: it === "gold", t0: performance.now() });
+  S.shout(pl, it === "gold" ? "+3!" : "+1", it === "gold" ? 1.3 : 1);
+  S.Sfx.chime(it === "gold" ? 12 : 7);
+  S.buzz(30);
+  const hidden = D.item.some((x2, k) => D.cover[k] && (x2 === "coin" || x2 === "gold"));
+  if (!hidden) {
+    D.lastFound = true;
+    pl.foundLast = true;
+    S.shout(null, "Rejoice!", 1.9, "#ffcf4a");
+    S.Sfx.win();
+  }
+}
+
+function drawCoin(g, x, y, r, gold, t) {
+  const squash = Math.abs(Math.cos(t * 4));
+  g.fillStyle = gold ? "#ffcf4a" : "#e8e2d0";
+  g.beginPath();
+  g.ellipse(x, y, r * (0.35 + 0.65 * squash), r, 0, 0, Math.PI * 2);
+  g.fill();
+  g.strokeStyle = gold ? "#b8860b" : "#9c9480";
+  g.lineWidth = Math.max(1, r * 0.15);
+  g.stroke();
+}
+
+function drawTrap(g, x, y, r, p) {
+  g.strokeStyle = "#5a5f66";
+  g.lineWidth = r * 0.18;
+  const open = 1 - p;
+  for (const s of [-1, 1]) {
+    g.beginPath();
+    g.arc(x, y + s * r * 0.2 * open, r, s < 0 ? Math.PI : 0, s < 0 ? Math.PI * 2 : Math.PI);
+    g.stroke();
+  }
+}
+
+function hud(G) {
+  const D = G.data;
+  const html = G.players.map((p) => `<span class="c" style="color:${p.color}">🪙 ${p.coins}</span>`).join("") + `<span class="c">🎯 ${CONFIG.target}</span>`;
+  if (html !== D.last) {
+    D.last = html;
+    $("hud").innerHTML = html;
+  }
+}
+</script>
+</body>
+</html>
