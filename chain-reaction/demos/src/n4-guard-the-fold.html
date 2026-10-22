@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#13201a" />
+<title>Guard the Fold</title>
+<meta name="description" content="Guard the Fold, a cheekyfoundlamb game: co-op Chain Reaction tower defence for 1-4 players. Burst sheep onto the path to stop the wolves." />
+<style>
+/*@KITCSS*/
+/*@STAMPEDE2CSS*/
+.hud { gap: 12px; font-size: 1.1rem; }
+</style>
+</head>
+<body>
+<!--@STAMPEDE2HTML-->
+<script>
+/*@ENGINE*/
+/*@KIT*/
+/*@STAMPEDE2*/
+
+// ======================= N4: GUARD THE FOLD =======================
+// ---------- CONFIG ----------
+const CONFIG = {
+  hearts: 5,
+  waves: 10,
+  betweenMs: 3000, // rest between waves
+  spawnGapMs: 1300, // between wolves in a wave
+  firstWaveMs: 6000, // build-up time before wave 1
+  teamPace: [1.6, 1.3, 1.15, 1], // wolves walk slower for smaller teams (x step time for 1-4 players)
+  fill: 0.6, // the pasture starts this full of the team's sheep, and regroups to it after each wave
+  regroupMs: 6000, // and tops up this often during a wave
+  types: {
+    pup: { hp: 1, stepMs: 700, size: 0.6, name: "Pup" },
+    wolf: { hp: 3, stepMs: 1000, size: 0.8, name: "Wolf" },
+    big: { hp: 8, stepMs: 1600, size: 1.05, name: "Big Wolf" },
+    sneaky: { hp: 3, stepMs: 1000, size: 0.8, name: "Sneaky Wolf" },
+  },
+  // what each wave sends, in order
+  waveList: [
+    "pup pup pup",
+    "wolf pup wolf",
+    "pup pup wolf pup wolf",
+    "wolf sneaky wolf sneaky",
+    "big pup pup pup pup",
+    "wolf wolf sneaky wolf wolf sneaky",
+    "big wolf wolf pup pup pup pup",
+    "sneaky sneaky big sneaky sneaky",
+    "big big wolf wolf wolf pup pup",
+    "big wolf sneaky big wolf sneaky big pup pup pup",
+  ],
+  // paths from the top edge down to the fold, as [row, col]
+  layouts: {
+    zigzag: { name: "Zigzag", path: [[0, 1], [1, 1], [2, 1], [2, 2], [2, 3], [2, 4], [3, 4], [4, 4], [4, 3], [4, 2], [4, 1], [5, 1], [6, 1], [6, 2], [6, 3], [6, 4], [7, 4], [8, 4]] },
+    middle: { name: "Middle", path: [[0, 2], [1, 2], [2, 2], [2, 3], [3, 3], [4, 3], [4, 2], [5, 2], [6, 2], [6, 3], [7, 3], [8, 3]] },
+    long: { name: "Long S (hard)", path: [[0, 4], [1, 4], [1, 3], [1, 2], [1, 1], [2, 1], [3, 1], [3, 2], [3, 3], [3, 4], [4, 4], [5, 4], [5, 3], [5, 2], [5, 1], [6, 1], [7, 1], [7, 2], [7, 3], [7, 4], [8, 4]] },
+  },
+};
+const S = Stampede;
+const $ = (id) => document.getElementById(id);
+
+// ---------- MODE ----------
+S.run({
+  key: "n4",
+  title: "Guard the Fold",
+  how: ["Wolves walk the dirt path to the fold. Bursts next to the path hit them.", "Survive 10 waves together. Line and Bomb sheep hit every wolf they reach!"],
+  setupDefaults: { n: 2, seats: ["human", "ai", "ai", "ai"], layout: "zigzag" },
+  solo: (s) => s.n === 1,
+  players: (s) => Array.from({ length: s.n }, (_, p) => ({ seat: p, kind: s.seats[p], team: 0 })),
+  options(ui, s) {
+    ui.stepper("Players", "n", 1, 4);
+    ui.seats(s.n);
+    ui.seg("Path", "layout", Object.entries(CONFIG.layouts).map(([k, l]) => [k, l.name]));
+  },
+  hero(g, t) {
+    const x = 30 + ((t * 40) % 160);
+    Kit.drawWolf(g, x, 70, 54, { t, mood: "happy" });
+    Kit.drawShepherd(g, 196, 118, 100, { t });
+    Kit.drawLamb(g, 190, 96, 44, { t, scarf: S.COLORS[0], mood: "happy", flip: true });
+  },
+  music: {
+    bpm: 116, root: 55, scale: "dorian", prog: [0, 0, 3, 4],
+    lead: ["0...2...3...4...", "3...2...0.......", "0...2...3...5...", "4...3...2...0..."],
+    bass: "x.x.x.x.x.x.x.x.",
+    drums: { kick: "x...x...x...x...", snare: "..x...x...x...x.", hat: "x.x.x.x.x.x.x.x." },
+    leadType: "triangle",
+  },
+  mvpScore: (p) => p.damage,
+  badges: [
+    { id: "win", icon: "🛡️", name: "Safe and sound", desc: "Survive all 10 waves", test: (c) => c.won },
+    { id: "flawless", icon: "❤️", name: "Not one lost", desc: "Win without losing a heart", test: (c) => c.won && c.G.data.hearts === CONFIG.hearts },
+    { id: "solo", icon: "🦁", name: "Lone shepherd", desc: "Win alone", test: (c) => c.won && c.setup.n === 1 },
+    { id: "big", icon: "🐺", name: "Giant slayer", desc: "Finish off a Big Wolf", test: (c) => c.hs.some((p) => p.bigKills > 0) },
+  ],
+  hooks: {
+    setup(G, s) {
+      const b = G.b;
+      const L = CONFIG.layouts[s.layout] ?? CONFIG.layouts.zigzag;
+      const path = L.path.map(([r, c]) => r * b.cols + c);
+      for (const i of path) b.kind[i] = "path";
+      G.data = { path, wolves: [], wave: 0, hearts: CONFIG.hearts, queue: [], nextSpawn: 0, restUntil: performance.now() + CONFIG.firstWaveMs, resting: true, won: false, last: "" };
+      regroup(G);
+      for (const pl of G.players) pl.bigKills = 0;
+    },
+    hud: (G) => hud(G),
+    noElimination: true,
+    roundSecs: () => Infinity,
+    timerText: (G) => `🌊 ${Math.max(1, G.data.wave)}/${CONFIG.waves}`,
+    inPath: (G, i) => G.b.kind[i] !== "path",
+    blocked: (G, i) => G.b.kind[i] === "path",
+    land(G, b, from, to, who) {
+      if (b.kind[to] !== "path") return false;
+      hitAt(G, to, who); // a sheep on the path hits a wolf there, or just vanishes
+      return true;
+    },
+    specialHit(G, k, who) {
+      if (G.b.kind[k] !== "path") return false;
+      // Line and Bomb sheep hit every wolf in their area
+      for (const w of G.data.wolves) if (G.data.path[w.idx] === k) damage(G, w, who);
+      return true;
+    },
+    aiValue(G, pl, i) {
+      const b = G.b;
+      const D = G.data;
+      const near = Engine.neighbours(b, i).filter((k) => b.kind[k] === "path");
+      if (!near.length) return 0;
+      const wolfNear = near.some((k) => D.wolves.some((w) => D.path[w.idx] === k || D.path[w.idx + 1] === k));
+      const bursts = b.count[i] + 1 >= Engine.capacity(b, i);
+      return wolfNear ? (bursts ? 8 : 2) : 1.5;
+    },
+    update(G, now) {
+      const D = G.data;
+      if (D.hearts <= 0 || D.won) return;
+      if (now >= (D.nextRegroup ??= now + CONFIG.regroupMs)) {
+        D.nextRegroup = now + CONFIG.regroupMs;
+        regroup(G);
+      }
+      // waves: when one is cleared, a short rest, then the next
+      if (!D.queue.length && !D.wolves.length) {
+        if (D.wave > 0 && !D.resting) {
+          if (D.wave >= CONFIG.waves) {
+            D.won = true;
+            return;
+          }
+          D.resting = true;
+          D.restUntil = now + CONFIG.betweenMs;
+          S.shout(null, "Wave cleared!", 1.3, "#7be0a8");
+          S.Sfx.chime(7);
+          regroup(G);
+        }
+        if (now >= D.restUntil) {
+          D.resting = false;
+          D.wave++;
+          D.queue = CONFIG.waveList[D.wave - 1].split(" ");
+          D.nextSpawn = now;
+          S.shout(null, `Wave ${D.wave}`, 1.6, "#ffcf4a");
+          S.Sfx.howl();
+          hud(G);
+        }
+      }
+      if (D.queue.length && now >= D.nextSpawn) {
+        const type = D.queue.shift();
+        const T = CONFIG.types[type];
+        D.wolves.push({ type, hp: T.hp, max: T.hp, idx: 0, from: -1, at: now, next: now + T.stepMs * pace(G), hitAt: 0 });
+        D.nextSpawn = now + CONFIG.spawnGapMs;
+      }
+      // wolves walk
+      for (let k = D.wolves.length - 1; k >= 0; k--) {
+        const w = D.wolves[k];
+        if (now < w.next) continue;
+        w.from = w.idx;
+        w.idx++;
+        w.at = now;
+        w.next = now + CONFIG.types[w.type].stepMs * pace(G);
+        if (w.type === "sneaky" && w.idx === Math.floor(D.path.length / 2)) S.shout(null, "Sneaky!", 1.2, "#c7c3d6");
+        if (w.idx >= D.path.length) {
+          // into the fold: a heart lost
+          D.wolves.splice(k, 1);
+          D.hearts--;
+          S.shout(null, "💔", 2, "#ff6b6b");
+          S.Sfx.lose();
+          S.shake(10);
+          S.buzz([100, 50, 100]);
+          hud(G);
+        }
+      }
+    },
+    shift(G, d) {
+      const D = G.data;
+      D.nextSpawn += d;
+      D.restUntil += d;
+      D.nextRegroup += d;
+      for (const w of D.wolves) {
+        w.next += d;
+        w.at += d;
+      }
+    },
+    endCheck(G) {
+      const D = G.data;
+      if (D.hearts <= 0) return { team: -1, title: "The wolves got in", sub: `Held out to wave ${D.wave} of ${CONFIG.waves}.`, color: "#ff8a8a", sad: true };
+      if (D.won) return { team: 0, title: "The fold is safe!", sub: `${D.hearts} of ${CONFIG.hearts} hearts left.`, color: "#ffcf4a" };
+      return null;
+    },
+    drawCell(ctx, G, i, x, y, c) {
+      if (G.b.kind[i] !== "path") return false;
+      ctx.fillStyle = "#8a6a45";
+      ctx.fillRect(x, y, c, c);
+      ctx.fillStyle = "#a07c52";
+      for (let k = 0; k < 4; k++) Kit.circle(ctx, x + ((i * 7 + k * 23) % 80) / 100 * c + c * 0.1, y + ((i * 13 + k * 31) % 80) / 100 * c + c * 0.1, c * 0.05, "#a07c52");
+      return true;
+    },
+    drawOver(ctx, G, c, t, now) {
+      const D = G.data;
+      const b = G.b;
+      // the fold, below the end of the path
+      const end = D.path[D.path.length - 1];
+      const fx = (Engine.colOf(b, end) + 0.5) * c;
+      const fy = b.rows * c + 2;
+      ctx.fillStyle = "#b07a40";
+      ctx.fillRect(fx - c * 0.7, fy, c * 1.4, S.PAD - 3);
+      for (let k = 0; k < D.hearts; k++) Kit.circle(ctx, fx - c * 0.5 + k * c * 0.25, fy + 3, 2.6, "#ff6b6b");
+      // wolves on the path
+      for (const w of D.wolves) {
+        const T = CONFIG.types[w.type];
+        const p = w.from < 0 ? 1 : Math.min(1, (now - w.at) / Math.min(300, T.stepMs));
+        const a = D.path[Math.max(0, w.from)];
+        const z = D.path[Math.min(w.idx, D.path.length - 1)];
+        const x = (Engine.colOf(b, a) + (Engine.colOf(b, z) - Engine.colOf(b, a)) * p + 0.5) * c;
+        const y = (Engine.rowOf(b, a) + (Engine.rowOf(b, z) - Engine.rowOf(b, a)) * p + 0.5) * c - Math.abs(Math.sin(t * 10)) * c * 0.05;
+        const hidden = w.type === "sneaky" && w.idx < Math.floor(D.path.length / 2);
+        const hit = now - w.hitAt < 140;
+        if (hidden) Kit.drawSheep(ctx, x, y, c * 0.2, hit ? "#ffffff" : "#e8e8ef");
+        else Kit.drawWolf(ctx, x, y + c * 0.05, c * T.size, { t, mood: "happy", color: hit ? "#ffffff" : w.type === "big" ? "#6a6576" : undefined });
+        if (!hidden) for (let k = 0; k < w.max; k++) Kit.circle(ctx, x - ((w.max - 1) / 2) * 6 + k * 6, y - c * T.size * 0.55, 2.4, k < w.hp ? "#ff6b6b" : "rgba(0,0,0,0.35)");
+      }
+    },
+  },
+});
+
+const pace = (G) => CONFIG.teamPace[G.players.length - 1];
+
+// ---------- FLOCK ----------
+// Empty squares fill back up with the team's sheep, shared out between the players.
+function regroup(G) {
+  const b = G.b;
+  let filled = 0;
+  for (let i = 0; i < b.size; i++) if (b.owner[i] >= 0) filled++;
+  const room = b.size - G.data.path.length;
+  for (let i = 0; i < b.size && filled < room * CONFIG.fill; i++) {
+    if (b.kind[i] || b.owner[i] >= 0 || Math.random() > CONFIG.fill) continue;
+    b.owner[i] = Math.floor(Math.random() * G.players.length);
+    b.count[i] = 1 + Math.floor(Math.random() * (Engine.capacity(b, i) - 1));
+    G.popAt[i] = performance.now();
+    filled++;
+  }
+}
+
+// ---------- WOLVES ----------
+function hitAt(G, cell, who) {
+  const w = G.data.wolves.find((x) => G.data.path[x.idx] === cell);
+  if (w) damage(G, w, who);
+}
+
+function damage(G, w, who) {
+  const D = G.data;
+  w.hp--;
+  w.hitAt = performance.now();
+  const pl = G.players[who];
+  if (pl) pl.damage++;
+  S.Sfx.hit(w.hp);
+  const cell = D.path[Math.min(w.idx, D.path.length - 1)];
+  S.puff(cell, "#c7cad1", 2);
+  if (w.hp > 0) return;
+  D.wolves.splice(D.wolves.indexOf(w), 1);
+  if (w.type === "big" && pl) pl.bigKills++;
+  S.puff(cell, "#8b8f9c", 8);
+  S.Audio.tone(220, 0.25, "triangle", 0.08, 90);
+}
+
+function hud(G) {
+  const D = G.data;
+  const html = `<span>${"❤️".repeat(Math.max(0, D.hearts))}${"🖤".repeat(CONFIG.hearts - Math.max(0, D.hearts))}</span>`;
+  if (html !== D.last) {
+    D.last = html;
+    $("hud").innerHTML = html;
+  }
+}
+</script>
+</body>
+</html>
