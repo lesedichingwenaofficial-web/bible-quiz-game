@@ -48,6 +48,7 @@ The five favourite Stampede versions, rebuilt to a finished-game standard on the
 | `s2-sheep-saga-v2.html` | Sheep Saga | 30 levels in 3 worlds with bosses, Ice and Crates, one-time blocker hints, scrolling map, boosters |
 | `s4-big-bad-wolf-v2.html` | Big Bad Wolf | 3 unlockable bosses with 2 phases each (Big Bad Wolf, Alpha of the Pack, Wolf in Sheep's Clothing), Normal and Hard, damage per player |
 | `s6-lost-lamb-v2.html` | Lost Lamb | Open, Rocky and Ring arenas, a lamb that yawns into naps and wiggles into zoomies, golden moments, best of 3 |
+| `s7-sheep-rush-v2.html` | Sheep Rush | Daily Rush (same board for everyone, seeded by date) and Free Play, medals, clock / golden sheep / mystery box pickups, share line |
 
 Balance numbers sit in a `CONFIG` object at the top of each file.
 

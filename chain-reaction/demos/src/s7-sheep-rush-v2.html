@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#13201a" />
+<title>Sheep Rush</title>
+<meta name="description" content="Sheep Rush, a cheekyfoundlamb game: a 60-second solo Chain Reaction score attack with a Daily Rush, medals, combos and pickups." />
+<style>
+/*@KITCSS*/
+/*@STAMPEDE2CSS*/
+.hud { gap: 8px; }
+.score { font-size: 1.5rem; font-weight: 900; color: var(--sun); font-variant-numeric: tabular-nums; min-width: 96px; text-align: right; }
+.combo { position: relative; width: 84px; height: 30px; border-radius: 10px; background: var(--meadow-2); overflow: hidden; display: grid; place-items: center; font-weight: 900; }
+.combo i { position: absolute; inset: 0 auto 0 0; background: #ff9a5c; }
+.combo b { position: relative; }
+.goldtag { font-size: 1.2rem; animation: beat 0.5s ease-in-out infinite; }
+.medal { font-size: 3.2rem; line-height: 1; margin: 4px 0; }
+.medals { display: flex; justify-content: center; gap: 10px; font-size: 0.75rem; color: var(--muted); }
+.medals span.got { color: var(--cream); font-weight: 900; }
+.share { font-size: 0.85rem; color: var(--muted); margin-top: 6px; }
+</style>
+</head>
+<body>
+<!--@STAMPEDE2HTML-->
+<script>
+/*@ENGINE*/
+/*@KIT*/
+/*@STAMPEDE2*/
+
+// ======================= S7: SHEEP RUSH v2 =======================
+// ---------- CONFIG ----------
+const CONFIG = {
+  seconds: 60,
+  comboMs: 2000, // chains closer than this raise the multiplier; this long without one resets it
+  bonusSecs: 3, // for breaking a rock, a 20-chain or a clock
+  bonusChain: 20,
+  maxBonusSecs: 30, // at most this much extra time per round
+  start: { own: 0.3, neutral: 0.4, rocks: 3 },
+  neutralEveryMs: 3500, // new grey sheep drop in this often (2 at a time)
+  rockEveryMs: 12000,
+  pickupEveryMs: 8000, // a pickup drops in this often
+  pickups: ["clock", "gold", "box"],
+  goldenMs: 5000, // golden sheep: double points this long
+  pointsPerBurst: 10,
+  chainCap: 20, // chain size counts up to this in the points
+  homePoints: 5, // per square cleared when a chain ends
+  refill: { upTo: 0.5, own: 0.4 }, // after a chain clears, sheep drop in until half the board is full
+  medals: [["🥉", "Bronze", 100000], ["🥈", "Silver", 250000], ["🥇", "Gold", 500000], ["💎", "Platinum", 900000]],
+  firstDaily: "2026-10-22", // Daily Rush #1
+};
+const S = Stampede;
+const $ = (id) => document.getElementById(id);
+const N = S.NEUTRAL;
+
+// ---------- SEEDED RANDOM (the Daily Rush is the same board for everyone) ----------
+const today = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+const dailyNumber = () => Math.round((new Date(`${today()}T12:00:00`) - new Date(`${CONFIG.firstDaily}T12:00:00`)) / 86400000) + 1;
+function seeded(seed) {
+  let a = 0;
+  for (const ch of seed) a = (Math.imul(a ^ ch.charCodeAt(0), 2654435761) + 1) >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+let rng = Math.random;
+const best = (k) => S.stats.records?.[k] || 0;
+const medalFor = (score) => CONFIG.medals.filter(([, , at]) => score >= at).pop();
+
+// ---------- MODE ----------
+S.run({
+  key: "s7",
+  title: "Sheep Rush",
+  how: ["Tap to drop a sheep. Bursts claim grey sheep and smash rocks.", "Chain fast for a bigger multiplier. Grab clocks, gold and gifts!"],
+  solo: true,
+  maxRun: 14, // a cascade settles after 14 waves (about 2 s), then its squares clear
+  tune: { roundSecs: CONFIG.seconds },
+  setupDefaults: { mode: "daily" },
+  players: () => [{ seat: 0, kind: "human" }],
+  options(ui, s) {
+    ui.seg("Mode", "mode", [["daily", `Daily #${dailyNumber()}`], ["free", "Free play"]]);
+    const b = s.mode === "daily" ? best(`daily-${today()}`) : best("score");
+    if (b) ui.row(s.mode === "daily" ? "Today's best" : "Best", Object.assign(document.createElement("b"), { textContent: `${b.toLocaleString()} ${medalFor(b)?.[0] ?? ""}` }));
+  },
+  playLabel: (s) => (s.mode === "daily" ? `Play Daily #${dailyNumber()}` : "Play"),
+  music: {
+    bpm: 140, root: 62, scale: "major", prog: [0, 5, 3, 4],
+    lead: ["0.2.4.2.5.4.2.0.", "2.4.5.4.7.5.4.2.", "4.2.0.2.4.5.7...", "5.4.2.1.0.2.4..."],
+    bass: "x.x.x.x.x.x.x.x.",
+    drums: { kick: "x...x...x...x...", snare: "....x.......x..x", hat: "xxxxxxxxxxxxxxxx" },
+  },
+  statRows: () => [["Best score", best("score").toLocaleString()], ["Today's daily", best(`daily-${today()}`).toLocaleString()]],
+  records: (G) => [
+    { label: "Score", value: G.data.score, key: G.data.daily ? `daily-${today()}` : "score" },
+    { label: "Medal", value: medalFor(G.data.score)?.[1] ?? "—" },
+  ],
+  badges: [
+    { id: "bronze", icon: "🥉", name: "Bronze", desc: `Score ${CONFIG.medals[0][2].toLocaleString()}`, test: (c) => c.G.data.score >= CONFIG.medals[0][2] },
+    { id: "silver", icon: "🥈", name: "Silver", desc: `Score ${CONFIG.medals[1][2].toLocaleString()}`, test: (c) => c.G.data.score >= CONFIG.medals[1][2] },
+    { id: "gold", icon: "🥇", name: "Gold", desc: `Score ${CONFIG.medals[2][2].toLocaleString()}`, test: (c) => c.G.data.score >= CONFIG.medals[2][2] },
+    { id: "plat", icon: "💎", name: "Platinum", desc: `Score ${CONFIG.medals[3][2].toLocaleString()}`, test: (c) => c.G.data.score >= CONFIG.medals[3][2] },
+    { id: "daily", icon: "📅", name: "Daily rusher", desc: "Play a Daily Rush", test: (c) => c.G.data.daily },
+    { id: "x5", icon: "🔥", name: "On fire", desc: "Reach a x5 multiplier", test: (c) => c.G.data.topMult >= 5 },
+    { id: "rocks", icon: "🪨", name: "Quarry", desc: "Smash 8 rocks in one rush", test: (c) => c.G.data.rocksBroken >= 8 },
+    { id: "time", icon: "⏰", name: "Overtime", desc: "Earn the full +30 seconds", test: (c) => c.G.data.bonus >= CONFIG.maxBonusSecs },
+    { id: "golden", icon: "✨", name: "Midas", desc: "Grab 3 golden sheep in one rush", test: (c) => c.G.data.goldGrabs >= 3 },
+  ],
+  hooks: {
+    setup(G, s) {
+      const daily = s.mode === "daily";
+      rng = daily ? seeded(`sheep-rush-${today()}`) : Math.random;
+      const b = G.b;
+      const now = performance.now();
+      G.data = {
+        daily, burst: new Set(), score: 0, mult: 1, topMult: 1, lastBurst: 0, bonus: 0, best: 0, rocksBroken: 0, goldGrabs: 0, goldUntil: 0,
+        nextNeutral: now + CONFIG.neutralEveryMs, nextRock: now + CONFIG.rockEveryMs, nextPickup: now + CONFIG.pickupEveryMs / 2, pick: 0, last: "",
+      };
+      const cells = [...Array(b.size).keys()];
+      for (let k = cells.length - 1; k > 0; k--) {
+        const j = Math.floor(rng() * (k + 1));
+        [cells[k], cells[j]] = [cells[j], cells[k]];
+      }
+      cells.slice(0, CONFIG.start.rocks).forEach((i) => addRock(G, i));
+      for (const i of cells.slice(CONFIG.start.rocks)) {
+        const r = rng();
+        if (r < CONFIG.start.own) fill(b, i, 0);
+        else if (r < CONFIG.start.own + CONFIG.start.neutral) fill(b, i, N);
+      }
+    },
+    noElimination: true,
+    roundSecs: (G) => S.tune.roundSecs + G.data.bonus,
+    land(G, b, from, to, who) {
+      const kind = b.kind[to];
+      if (kind === "rock") G.data.score += 25 * G.data.mult; // the core takes the hit
+      if (kind === "clock" || kind === "gold") {
+        grab(G, to, kind);
+        return true;
+      }
+      return false;
+    },
+    specialHit(G, k) {
+      const kind = G.b.kind[k];
+      if (kind === "clock" || kind === "gold") {
+        grab(G, k, kind);
+        return true;
+      }
+      return false;
+    },
+    onRockBreak(G) {
+      const D = G.data;
+      D.rocksBroken++;
+      D.score += 100 * D.mult;
+      bonus(G);
+    },
+    targets(G, b, i, t) {
+      if (b.owner[i] === 0) G.data.burst.add(i);
+      return t;
+    },
+    afterWave(G, now, bursts) {
+      const D = G.data;
+      const pl = G.players[0];
+      if (!bursts[0]) return;
+      if (pl.chain === bursts[0]) {
+        // a new chain: close to the last one raises the multiplier
+        D.mult = now - D.lastBurst < CONFIG.comboMs ? D.mult + 1 : 1;
+        D.topMult = Math.max(D.topMult, D.mult);
+        if (D.mult > 1) S.Audio.tone(400 + D.mult * 80, 0.12, "triangle", 0.07, 700 + D.mult * 80);
+        if (D.mult === 3 || D.mult === 5 || D.mult === 8) S.shout(pl, `x${D.mult}!`, 1.2 + D.mult * 0.05, "#ff9a5c");
+      }
+      D.lastBurst = now;
+      D.score += bursts[0] * CONFIG.pointsPerBurst * Math.min(pl.chain, CONFIG.chainCap) * D.mult * (now < D.goldUntil ? 2 : 1);
+    },
+    onChain(G, pl, prev, now) {
+      if (prev < CONFIG.bonusChain && now >= CONFIG.bonusChain) bonus(G);
+    },
+    chainEnd(G, pl, chain, now) {
+      const D = G.data;
+      const b = G.b;
+      D.best = Math.max(D.best, chain);
+      // the sheep that burst find their way home: their squares clear, so the board never clogs
+      const fx = S.effect("overflow", -1, "#ffe680", now);
+      let cleared = 0;
+      for (const i of D.burst) {
+        if (b.owner[i] !== 0) continue;
+        b.owner[i] = -1;
+        b.count[i] = 0;
+        b.tag[i] = null;
+        if (fx.n < fx.cells.length) fx.cells[fx.n++] = i;
+        cleared++;
+      }
+      D.burst.clear();
+      D.score += cleared * CONFIG.homePoints * D.mult;
+      if (cleared >= 8) S.Audio.tone(1046, 0.2, "sine", 0.05, 1568);
+      // like Candy Crush, fresh sheep drop into the gaps
+      const empty = [];
+      for (let i = 0; i < b.size; i++) if (b.owner[i] === -1 && !b.kind[i]) empty.push(i);
+      let room = Math.floor(b.size * CONFIG.refill.upTo) - (b.size - empty.length);
+      while (room-- > 0 && empty.length) {
+        const i = empty.splice(Math.floor(rng() * empty.length), 1)[0];
+        fill(b, i, rng() < CONFIG.refill.own ? 0 : N);
+        S.puff(i, "#fffaf0", 2);
+      }
+    },
+    update(G, now) {
+      const D = G.data;
+      if (D.mult > 1 && now - D.lastBurst > CONFIG.comboMs) {
+        D.mult = 1;
+        S.Audio.tone(300, 0.15, "sine", 0.04, 180);
+      }
+      if (now >= D.nextNeutral) {
+        D.nextNeutral = now + CONFIG.neutralEveryMs;
+        for (let k = 0; k < 2; k++) {
+          const i = randomEmpty(G);
+          if (i >= 0) {
+            fill(G.b, i, N);
+            S.puff(i, "#c9c9d4", 4);
+          }
+        }
+      }
+      if (now >= D.nextRock) {
+        D.nextRock = now + CONFIG.rockEveryMs;
+        const i = randomEmpty(G);
+        if (i >= 0) addRock(G, i);
+      }
+      if (now >= D.nextPickup) {
+        D.nextPickup = now + CONFIG.pickupEveryMs;
+        const i = randomEmpty(G);
+        if (i >= 0) {
+          G.b.kind[i] = CONFIG.pickups[D.pick++ % CONFIG.pickups.length];
+          S.puff(i, "#ffcf4a", 6);
+          S.Sfx.chime(2);
+        }
+      }
+      const left = Math.max(0, 1 - (now - D.lastBurst) / CONFIG.comboMs);
+      const gold = now < D.goldUntil;
+      const html = `${gold ? '<span class="goldtag">✨x2</span>' : ""}<div class="combo"><i style="width:${D.mult > 1 ? left * 100 : 0}%"></i><b>x${D.mult}</b></div><span class="score">${D.score.toLocaleString()}</span>`;
+      if (html !== D.last) {
+        D.last = html;
+        $("hud").innerHTML = html;
+      }
+    },
+    shift(G, d) {
+      const D = G.data;
+      D.nextNeutral += d;
+      D.nextRock += d;
+      D.nextPickup += d;
+      D.lastBurst += d;
+      D.goldUntil += d;
+    },
+    endCheck(G, now, left) {
+      if (left > 0) return null;
+      const D = G.data;
+      D.best = Math.max(D.best, G.players[0].chain);
+      const medal = medalFor(D.score);
+      return { team: 0, title: medal ? `${medal[1]} medal!` : "Time!", sub: `${D.score.toLocaleString()} points`, color: "#ffcf4a" };
+    },
+    resultsExtra(G, res, el) {
+      const D = G.data;
+      const medal = medalFor(D.score);
+      const line = `🐑 Sheep Rush${D.daily ? ` Daily #${dailyNumber()}` : ""}: ${D.score.toLocaleString()} ${medal?.[0] ?? ""} · chain ${D.best} · x${D.topMult} (cheekyfoundlamb)`;
+      el.innerHTML = `<div class="medal">${medal?.[0] ?? "🐑"}</div><div class="medals">${CONFIG.medals.map(([icon, , at]) => `<span class="${D.score >= at ? "got" : ""}">${icon} ${at / 1000}k</span>`).join("")}</div><p><b>Best: ${best(D.daily ? `daily-${today()}` : "score").toLocaleString()}</b></p><p class="share"></p><button class="big alt copy">Copy</button>`;
+      el.querySelector(".share").textContent = line;
+      const btn = el.querySelector(".copy");
+      btn.addEventListener("click", () => copy(line, btn));
+    },
+    aiValue: (G, pl, i) => Engine.neighbours(G.b, i).filter((k) => G.b.kind[k] || G.b.owner[k] === N).length,
+    drawCell(ctx, G, i, x, y, c, t) {
+      const kind = G.b.kind[i];
+      if (kind !== "clock" && kind !== "gold") return false;
+      const cx = x + c / 2;
+      const cy = y + c / 2 + Math.sin(t * 4 + i) * c * 0.03;
+      if (kind === "clock") {
+        Kit.circle(ctx, cx, cy, c * 0.3, "#fffaf0");
+        ctx.strokeStyle = "#ff6b6b";
+        ctx.lineWidth = c * 0.06;
+        ctx.beginPath();
+        ctx.arc(cx, cy, c * 0.3, 0, Math.PI * 2);
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx, cy - c * 0.18);
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + Math.cos(t * 3) * c * 0.14, cy + Math.sin(t * 3) * c * 0.14);
+        ctx.stroke();
+      } else {
+        ctx.globalAlpha = 0.4 + 0.25 * Math.sin(t * 6);
+        Kit.circle(ctx, cx, cy, c * 0.42, "#ffe680");
+        ctx.globalAlpha = 1;
+        Kit.drawSheep(ctx, cx, cy, c * 0.2, "#ffcf4a");
+      }
+      return true;
+    },
+  },
+});
+
+// ---------- PICKUPS AND BOARD ----------
+function grab(G, i, kind) {
+  const D = G.data;
+  G.b.kind[i] = null;
+  S.puff(i, "#ffcf4a", 8);
+  if (kind === "clock") bonus(G);
+  else {
+    D.goldUntil = performance.now() + CONFIG.goldenMs;
+    D.goldGrabs++;
+    S.shout(G.players[0], "Golden!", 1.4, "#ffcf4a");
+    S.Sfx.chime(12);
+  }
+}
+
+function fill(b, i, who) {
+  b.owner[i] = who;
+  b.count[i] = 1 + Math.floor(rng() * (Engine.capacity(b, i) - 1));
+}
+
+function randomEmpty(G) {
+  const b = G.b;
+  const free = [];
+  for (let i = 0; i < b.size; i++) if (b.owner[i] === -1 && !b.kind[i]) free.push(i);
+  return free.length ? free[Math.floor(rng() * free.length)] : -1;
+}
+
+function addRock(G, i) {
+  const b = G.b;
+  b.owner[i] = -1;
+  b.count[i] = 0;
+  b.kind[i] = "rock";
+  b.hp[i] = b.mhp[i] = 1 + Math.floor(rng() * 3);
+  if (G.path.length) S.rebuildPath();
+}
+
+function bonus(G) {
+  if (G.data.bonus >= CONFIG.maxBonusSecs) return;
+  G.data.bonus += CONFIG.bonusSecs;
+  S.shout(G.players[0], `+${CONFIG.bonusSecs}s`, 1.3, "#7be0a8");
+  S.Audio.tone(880, 0.12, "sine", 0.06, 1320);
+}
+
+function copy(text, btn) {
+  const done = () => (btn.textContent = "Copied!");
+  const fallback = () => {
+    const t = document.createElement("textarea");
+    t.value = text;
+    document.body.append(t);
+    t.select();
+    try {
+      document.execCommand("copy");
+      done();
+    } catch {}
+    t.remove();
+  };
+  if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text).then(done, fallback);
+  else fallback();
+}
+</script>
+</body>
+</html>
