@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#13201a" />
+<title>Bridge</title>
+<meta name="description" content="Bridge, a cheekyfoundlamb game: a real-time Chain Reaction connect race. Light links left to right, Dark links top to bottom." />
+<style>
+/*@KITCSS*/
+/*@STAMPEDE2CSS*/
+.hud { gap: 14px; font-size: 1.05rem; }
+.hud .bar { width: 90px; height: 10px; border-radius: 5px; background: var(--meadow-2); overflow: hidden; display: inline-block; vertical-align: middle; }
+.hud .bar i { display: block; height: 100%; }
+</style>
+</head>
+<body>
+<!--@STAMPEDE2HTML-->
+<script>
+/*@ENGINE*/
+/*@KIT*/
+/*@STAMPEDE2*/
+
+// ======================= N8: BRIDGE =======================
+// ---------- CONFIG ----------
+const CONFIG = {
+  size: 7,
+  roundSecs: 180, // then the side whose bridge reaches furthest wins
+  runMs: 1600, // the lamb running across the winning bridge
+  light: { name: "Light", colors: ["#ffcf4a", "#ff9a5c"], names: ["Gold", "Amber"] }, // links left to right
+  dark: { name: "Dark", colors: ["#7b6cf0", "#3fa7ff"], names: ["Violet", "Blue"] }, // links top to bottom
+};
+const S = Stampede;
+const $ = (id) => document.getElementById(id);
+const N = CONFIG.size;
+
+// team 0 = Light (left to right), team 1 = Dark (top to bottom)
+const starts = (t) => Array.from({ length: N }, (_, k) => (t === 0 ? k * N : k));
+const isGoal = (t, i) => (t === 0 ? i % N === N - 1 : Math.floor(i / N) === N - 1);
+const reach = (t, i) => (t === 0 ? i % N : Math.floor(i / N)); // how far along this square is
+
+// The side's connected squares from its starting edge: returns the furthest reach and, if it got across, the path.
+function bridge(G, t) {
+  const b = G.b;
+  const ours = (i) => S.isPlayer(b.owner[i]) && G.players[b.owner[i]].team === t;
+  const parent = new Map();
+  const queue = [];
+  for (const i of starts(t))
+    if (ours(i)) {
+      parent.set(i, -1);
+      queue.push(i);
+    }
+  let best = -1;
+  while (queue.length) {
+    const i = queue.shift();
+    best = Math.max(best, reach(t, i));
+    if (isGoal(t, i)) {
+      const path = [];
+      for (let k = i; k !== -1; k = parent.get(k)) path.unshift(k);
+      return { best: N - 1, path, group: [...parent.keys()] };
+    }
+    for (const k of Engine.neighbours(b, i))
+      if (!parent.has(k) && ours(k)) {
+        parent.set(k, i);
+        queue.push(k);
+      }
+  }
+  return { best, path: null, group: [...parent.keys()] };
+}
+
+// ---------- MODE ----------
+S.run({
+  key: "n8",
+  title: "Bridge",
+  how: ["Light links the left edge to the right. Dark links the top to the bottom.", "Side-by-side squares only, no diagonals. First across wins the round!"],
+  rows: N,
+  cols: N,
+  match: true,
+  tune: { roundSecs: CONFIG.roundSecs },
+  setupDefaults: { size: 1, seats: ["human", "ai", "ai", "ai"], bestOf: 3 },
+  players: (s) =>
+    (s.size === 2 ? [0, 1, 2, 3] : [0, 1]).map((seat) => {
+      const team = seat === 0 || seat === 3 ? 0 : 1;
+      const side = team === 0 ? CONFIG.light : CONFIG.dark;
+      const k = seat === 0 || seat === 1 ? 0 : 1;
+      return { seat, kind: s.seats[seat], team, color: side.colors[k], name: side.names[k] };
+    }),
+  options(ui, s) {
+    ui.seg("Teams", "size", [[1, "1 v 1"], [2, "2 v 2"]]);
+    ui.seats(s.size === 2 ? 4 : 2);
+    ui.seg("Match", "bestOf", [[1, "1 round"], [3, "Best of 3"]]);
+  },
+  hero(g, t) {
+    g.fillStyle = CONFIG.light.colors[0];
+    g.fillRect(10, 70, 200, 12);
+    g.fillStyle = CONFIG.dark.colors[0];
+    g.fillRect(104, 10, 12, 110);
+    Kit.drawLamb(g, 20 + ((t * 50) % 180), 56, 50, { t, scarf: CONFIG.light.colors[0], mood: "happy" });
+  },
+  music: {
+    bpm: 118, root: 62, scale: "dorian", prog: [0, 6, 3, 4],
+    lead: ["0.2.3.4...3.2...", "4.5.4.3...2.0...", "3.4.5.7...5.4...", "2.3.2.1...0....."],
+    bass: "x...x...x...x...",
+    drums: { kick: "x.......x..x....", snare: "....x.......x...", hat: "x.x.x.x.x.x.x.x." },
+  },
+  badges: [
+    { id: "win", icon: "🌉", name: "Bridge builder", desc: "Win a match", test: (c) => c.won },
+    { id: "sweep", icon: "🧹", name: "Clean sweep", desc: "Win a best of 3 two rounds to none", test: (c) => c.won && c.match && Object.values(c.match.wins).reduce((a, b) => a + b, 0) === 2 },
+    { id: "dark", icon: "🌙", name: "Night crossing", desc: "Win on the Dark side", test: (c) => c.won && c.res.team === 1 },
+  ],
+  hooks: {
+    setup(G) {
+      G.data = { won: null, wonAt: 0, best: [-1, -1], groups: [[], []], last: "" };
+    },
+    hud: (G) => hud(G),
+    noElimination: true,
+    afterWave(G, now) {
+      if (G.data.won) return;
+      check(G, now);
+    },
+    afterDrop(G) {
+      if (!G.data.won) check(G, performance.now());
+    },
+    aiValue(G, pl, i) {
+      const b = G.b;
+      const D = G.data;
+      const t = pl.team;
+      const mine = new Set(D.groups[t]);
+      const theirs = new Set(D.groups[1 - t]);
+      const touch = Engine.neighbours(b, i).some((k) => mine.has(k)) || starts(t).includes(i);
+      const block = Engine.neighbours(b, i).some((k) => theirs.has(k));
+      const ahead = reach(t, i) - Math.max(0, D.best[t]);
+      return (touch ? 2 + Math.max(0, ahead) * 2 : 0) + (block ? 1.5 : 0);
+    },
+    update(G, now) {
+      hud(G);
+    },
+    shift(G, d) {
+      if (G.data.wonAt) G.data.wonAt += d;
+    },
+    endCheck(G, now, left) {
+      const D = G.data;
+      if (D.won) return now - D.wonAt > CONFIG.runMs ? { team: D.won.team, sub: "Across the bridge!" } : null;
+      if (left > 0) return null;
+      if (D.best[0] === D.best[1]) return { team: -1, sub: "Time's up: both bridges reach as far." };
+      const t = D.best[0] > D.best[1] ? 0 : 1;
+      return { team: t, sub: "Time's up: the longest bridge wins." };
+    },
+    drawOver(ctx, G, c, t, now) {
+      const D = G.data;
+      const b = G.b;
+      const W = N * c;
+      // each side's edges
+      ctx.fillStyle = CONFIG.light.colors[0];
+      ctx.fillRect(-S.PAD + 1, 0, S.PAD - 3, W);
+      ctx.fillRect(W + 2, 0, S.PAD - 3, W);
+      ctx.fillStyle = CONFIG.dark.colors[0];
+      ctx.fillRect(0, -S.PAD + 1, W, S.PAD - 3);
+      ctx.fillRect(0, W + 2, W, S.PAD - 3);
+      // each side's best bridge so far, outlined
+      for (let tm = 0; tm < 2; tm++) {
+        ctx.strokeStyle = tm === 0 ? CONFIG.light.colors[0] : CONFIG.dark.colors[0];
+        ctx.globalAlpha = 0.55;
+        ctx.lineWidth = 2;
+        for (const i of D.groups[tm]) ctx.strokeRect(Engine.colOf(b, i) * c + 3, Engine.rowOf(b, i) * c + 3, c - 6, c - 6);
+        ctx.globalAlpha = 1;
+      }
+      if (!D.won) return;
+      // the winning bridge glows and the lamb runs across it
+      const path = D.won.path;
+      ctx.globalAlpha = 0.5 + 0.3 * Math.sin(t * 8);
+      for (const i of path) Kit.circle(ctx, (Engine.colOf(b, i) + 0.5) * c, (Engine.rowOf(b, i) + 0.5) * c, c * 0.45, "#fff4c2");
+      ctx.globalAlpha = 1;
+      const p = Math.min(0.999, (now - D.wonAt) / CONFIG.runMs) * (path.length - 1);
+      const a = path[Math.floor(p)];
+      const z = path[Math.min(path.length - 1, Math.floor(p) + 1)];
+      const f = p - Math.floor(p);
+      const x = (Engine.colOf(b, a) + (Engine.colOf(b, z) - Engine.colOf(b, a)) * f + 0.5) * c;
+      const y = (Engine.rowOf(b, a) + (Engine.rowOf(b, z) - Engine.rowOf(b, a)) * f + 0.5) * c - Math.abs(Math.sin(t * 14)) * c * 0.15;
+      Kit.drawLamb(ctx, x, y, c * 0.9, { t, scarf: G.players.find((q) => q.team === D.won.team).color, mood: "happy", flip: Engine.colOf(b, z) < Engine.colOf(b, a) });
+    },
+  },
+});
+
+function check(G, now) {
+  const D = G.data;
+  for (let t = 0; t < 2; t++) {
+    const r = bridge(G, t);
+    D.best[t] = r.best;
+    D.groups[t] = r.group;
+    if (r.path && !D.won) {
+      D.won = { team: t, path: r.path };
+      D.wonAt = now;
+      for (const p of G.players) {
+        p.observer = true;
+        if (p.team === t) S.mood(p, "cheer", 2500);
+      }
+      S.shout(null, "Bridge!", 1.8, G.players.find((q) => q.team === t).color);
+      S.Sfx.win();
+      S.buzz([60, 40, 120]);
+    }
+  }
+}
+
+function hud(G) {
+  const D = G.data;
+  const bar = (t) => `<span class="bar"><i style="width:${(100 * (D.best[t] + 1)) / N}%;background:${t === 0 ? CONFIG.light.colors[0] : CONFIG.dark.colors[0]}"></i></span>`;
+  const html = `<span>☀️ ${bar(0)}</span><span>🌙 ${bar(1)}</span>`;
+  if (html !== D.last) {
+    D.last = html;
+    $("hud").innerHTML = html;
+  }
+}
+</script>
+</body>
+</html>

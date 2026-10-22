@@ -1682,8 +1682,9 @@ const Stampede = (() => {
     return null;
   }
 
+  const counted = (p) => p.seat >= 0 || !p.observer; // seated players always count, even when frozen at the end
   const teamName = (t) => {
-    const list = G.players.filter((p) => p.team === t && !p.observer);
+    const list = G.players.filter((p) => p.team === t && counted(p));
     return list.map((p) => p.name).join(" & ");
   };
   const teamColor = (t) => G.players.find((p) => p.team === t)?.color ?? "#ffcf4a";
@@ -2658,7 +2659,7 @@ const Stampede = (() => {
   // between rounds of a match: a quick scoreboard, then the next round by itself
   function between(res) {
     mode = "between";
-    const teams = [...new Set(G.players.filter((p) => !p.observer).map((p) => p.team))];
+    const teams = [...new Set(G.players.filter(counted).map((p) => p.team))];
     $("between-title").textContent = res.team >= 0 ? `${teamName(res.team)} take${teamName(res.team).includes("&") ? "" : "s"} the round!` : "Tied round!";
     $("between-title").style.color = res.team >= 0 ? teamColor(res.team) : "";
     $("between-score").innerHTML = teams
@@ -2710,7 +2711,7 @@ const Stampede = (() => {
       rec("Accuracy", `${drops + wastes ? Math.round((100 * drops) / (drops + wastes)) : 100}%`);
       rec("Specials used", hs.reduce((s, p) => s + p.specials, 0));
     }
-    const live = G.players.filter((p) => !p.observer);
+    const live = G.players.filter(counted);
     if (live.length > 1) {
       const mvp = live.reduce((a, b) => ((V.mvpScore?.(b) ?? b.bursts) > (V.mvpScore?.(a) ?? a.bursts) ? b : a));
       rows.push(`<div class="stat"><b style="color:${mvp.color}">${mvp.name}</b><span>MVP lamb</span></div>`);
