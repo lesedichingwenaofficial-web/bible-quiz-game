@@ -525,3 +525,18 @@ html.reduced .hud .goldtag { animation: none; }
 .ff-side.danger { animation: beat 0.5s ease-in-out infinite; }
 html.reduced .ff-side.danger { animation: none; text-decoration: underline; }
 .ff-side .incoming { color: #ff9a9a; display: inline-flex; align-items: center; gap: 2px; }
+
+/* Guard the Fold */
+.gf-hud { display: flex; align-items: center; gap: 10px; min-height: 30px; }
+.gf-hearts { display: flex; gap: 2px; }
+.gf-hearts i { display: flex; color: rgba(255,255,255,0.22); }
+.gf-hearts i.on { color: #ff6b6b; }
+.gf-hearts .ico { width: 18px; height: 18px; }
+.gf-next { display: flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
+.gf-next b { display: flex; align-items: center; gap: 1px; font-size: 0.85rem; }
+.gf-next .ico { width: 18px; height: 18px; }
+.gf-next .gf-big .ico { width: 22px; height: 22px; }
+.gf-next .gf-grand { color: #ffcf4a; }
+.gf-go { border: 0; border-radius: 999px; padding: 4px 12px; font: inherit; font-size: 0.9rem; background: var(--gold); color: #2b2010; box-shadow: 0 2px 0 var(--gold-d); cursor: pointer; font-variant-numeric: tabular-nums; }
+.gf-go:active { transform: translateY(2px); box-shadow: none; }
+.gf-next .gf-pup .ico { width: 13px; height: 13px; }

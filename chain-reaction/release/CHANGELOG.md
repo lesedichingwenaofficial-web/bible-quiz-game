@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.0: the full release (in progress, step 6 of 11)
+## 1.0.0: the full release (in progress, step 7 of 11)
 
 ### New
 - **One app for every game.** A home pasture that follows the time of day, a Play screen grouped into Play Together, Team Up and Solo, a Daily hub, Wardrobe, Shepherd's Journal, Stats, Settings and About.
@@ -10,6 +10,7 @@
 - **Sheep Rush, finished.** A one-minute score attack with a Daily Rush (the same board and the same falling sheep for everyone, each day) and Free Play. Bronze, Silver, Gold and Platinum medals, your personal best, and a ghost bar that shows second by second whether you're ahead of or behind your best run. Clocks, golden sheep and gift boxes, the combo meter, a share card and the Daily Rush share line.
 - **Lost Lamb, finished.** Open, Rocky and Ring arenas; single, best of 3 or best of 5. The lamb wears your Wardrobe outfit and shows what he's about to do: a yawn before a nap, a wiggle before zoomies, and a golden glow when points double. Every flock's bar carries its shape as well as its colour. AI flocks read his moods and race for the square he'll hop to next, and never startle him off their own square.
 - **Flock Fall, finished.** Head-to-head against an AI (Easy to Expert), against a friend on one screen, or Endless alone. Your chains drop rocks onto the other side's pasture; both sides get the same rocks in the same order, so it's fair. Incoming rocks wait in a queue you can see, and a chain of your own clears them before they land. When your pasture fills past the danger line the music quickens and the edges glow red. Endless speeds up gently, keeps a score and remembers your best.
+- **Guard the Fold, finished.** Three folds (Zigzag, Middle Road, Hillside), 10 waves each, opening one after another, then Endless on any fold you've cleared. Between waves the HUD shows what's coming (pups, wolves, Big Wolves, Sneaky Wolves dressed as sheep) and a Go button calls the next wave early for wool. Wave 10 brings the Grandfather Wolf. Bigger teams meet more wolves, and smaller teams meet slower ones. A wolf whose pips run out turns tail and runs; one who reaches the fold only startles the lambs and costs a heart. Stars come from hearts kept. Clear a fold and the sun sets with the lambs asleep inside.
 - **First Steps.** The very first match is an easy one: a ghost thumb shows the button, your cursor waits on a ready square, and your first tap sets off a chain.
 - **Smart hints.** After 3 lockouts in a row the squares you may use glow. After 5 seconds without a tap your button pulses. Both retire once learned and can be switched off.
 - **Tips per mode.** One animated icon and up to 6 words, once ever, never pausing play.
@@ -38,5 +39,7 @@
 - **Hymns:** only melodies I can reproduce note for note are used: *Jesus Loves Me* (verse), *Amazing Grace* and *Joy to the World* (Christmas). *Savior, Like a Shepherd Lead Us*, *The King of Love My Shepherd Is*, *All Things Bright and Beautiful* and *Christ the Lord Is Risen Today* are replaced by original tunes in the same spirit (*Green Pastures*, *The Shepherd's March*, *Still Waters*, *Meadow Dash*, *Rocky Ridge*, and *Sunrise Garden* at Easter), rather than risk a wrong note in a hymn.
 - **Bible text:** King James Version.
 - **Join the Flock** defaults to Netlify Forms, since it needs no set-up there.
+- **Guard the Fold's third map** is a Hillside path running along the edge, not the demo's long S. The S left so little meadow that even Expert AI flocks couldn't hold it.
+- **Calling a wave early** is logged like a button press, so replays stay exact.
 - **Teams** share a colour so a glance tells you who's with whom; each player keeps their own shape.
 - **Default AI level** is Auto.

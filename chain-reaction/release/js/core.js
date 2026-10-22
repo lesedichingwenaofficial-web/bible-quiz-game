@@ -257,6 +257,12 @@ const Core = (() => {
     G.log.push(G.tick, pl.id);
     drop(pl);
   }
+  // A mode's own button (e.g. "call the next wave"), logged so replays stay exact.
+  function act(code) {
+    if (!G || phase !== "play" || G.over || G.replay) return;
+    G.log.push(G.tick, -1 - code);
+    H.onAction?.(G, code);
+  }
 
   // The one action: drop a sheep (or the loaded special) where the cursor is.
   function drop(pl) {
@@ -1008,7 +1014,9 @@ const Core = (() => {
   function applyReplayInputs() {
     const R = G.replay;
     while (R.at < R.log.length && R.log[R.at] === G.tick) {
-      const pl = G.players[R.log[R.at + 1]];
+      const id = R.log[R.at + 1];
+      if (id < 0) H.onAction?.(G, -1 - id);
+      const pl = G.players[id];
       if (pl) {
         pl.pressAt = G.time;
         drop(pl);
@@ -1966,7 +1974,7 @@ const Core = (() => {
   }
 
   return {
-    mount, start, nextRound, pause, resume, quit, replay, press, layout, drop, shout, mood, shake, puff, spray, effect, loadSpecial, landOn, hitKind,
+    mount, start, nextRound, pause, resume, quit, replay, press, act, layout, drop, shout, mood, shake, puff, spray, effect, loadSpecial, landOn, hitKind,
     buildPath, rebuildPath, cursorCell, cellsOf, orbsOf, sameTeam, isPlayer, refillMs, endRound, canDropAt, valueAt,
     drawRock, drawSpecial, sprite, penCap, now, setHud, firstHumanSeat, banner, tip: (event, pl) => showTip(event, pl),
     NEUTRAL, RANK, BOTTOM, PAD, AI, PERSONAS, PERSONA_ORDER, KEYS, ARENAS, STEP_MS,
