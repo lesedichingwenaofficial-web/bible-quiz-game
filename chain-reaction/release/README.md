@@ -6,6 +6,25 @@ Made to glorify Jesus, the Good Shepherd (John 10:11). Soli Deo Gloria.
 
 ---
 
+## The games
+
+| Game | Players | In one line |
+| --- | --- | --- |
+| Stampede+ | 1–4 | Fill the pasture with your flock; chains, specials, arenas and twists. |
+| Lost Lamb | 1–4 | Stand with the wandering lamb to fill your bar. |
+| Bridge | 2 or 4 | Link your two edges before the other side does. |
+| Flock Fall | 1–2 | Drop sheep down columns; chains of 4 send rocks to your rival. |
+| Big Bad Wolf | 1–4 together | Burst next to the boss until he runs off. |
+| Guard the Fold | 1–4 together | Frighten the wolves on the path before they reach the lambs. |
+| Sheep Saga | 1 | 45 puzzle levels in three worlds, plus a Daily Pasture. |
+| Sheep Rush | 1 | A one-minute score attack, with a Daily Rush. |
+| Lead Him Home | 1–2 | Build the lost lamb a road home: 30 levels in three worlds. |
+| Party Night | 2–4 | A playlist of the party games with a scoreboard and a podium. |
+
+Everyone plays with one button: your cursor sweeps the pasture and you tap to drop a sheep.
+
+---
+
 ## Putting the game online
 
 The game is a plain static website: just files, no server code. Upload the **contents** of this folder (the one with `index.html` in it) to any of these free hosts.

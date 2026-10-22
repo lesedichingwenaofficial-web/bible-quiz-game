@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.0: the full release (in progress, step 10 of 11)
+## 1.0.0: the full release
 
 ### New
 - **One app for every game.** A home pasture that follows the time of day, a Play screen grouped into Play Together, Team Up and Solo, a Daily hub, Wardrobe, Shepherd's Journal, Stats, Settings and About.

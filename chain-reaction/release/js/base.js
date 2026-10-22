@@ -346,3 +346,23 @@ const Modes = (() => {
   }
   return { register, load, get: (k) => defs.get(k), has: (k) => defs.has(k) };
 })();
+
+// ---------- Ads and Purchases: kept for later, switched off ----------
+// The game has no adverts and nothing to buy. These do nothing unless CONFIG turns them on,
+// and no screen anywhere calls them. They exist so a future version has one obvious place to start.
+const Ads = {
+  get enabled() {
+    return !!CONFIG.ads?.enabled;
+  },
+  // would show an advert between games; always resolves without showing anything while off
+  between: () => Promise.resolve(false),
+};
+const Purchases = {
+  get enabled() {
+    return !!CONFIG.purchases?.enabled;
+  },
+  products: () => [],
+  // would start a purchase; refuses while off
+  buy: () => Promise.reject(new Error("Purchases are switched off")),
+  owned: () => false,
+};
