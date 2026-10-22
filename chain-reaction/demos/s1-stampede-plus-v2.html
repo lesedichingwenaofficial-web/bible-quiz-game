@@ -1291,7 +1291,7 @@ const Stampede = (() => {
     const len = G.path.length;
     return G.path[((pl.pos % len) + len) % len];
   };
-  const humans = () => G.players.filter((p) => p.kind === "human");
+  const humans = () => G.players.filter((p) => p.human);
 
   function buildPath() {
     const b = G.b;
@@ -1323,6 +1323,7 @@ const Stampede = (() => {
       alive: true, placed: false, chain: 0, best: 0, mood: null, moodUntil: 0, aiPlan: null, score: 0, nextStep: now, pos: null,
       observer: false, pressAt: -1e9, taps: 0, drops: 0, wastes: 0, empties: 0, bursts: 0, specials: 0, damage: 0,
       ...p,
+      human: (p.kind ?? "human") === "human", // stays true even while a game borrows the seat (a finale, a test bot)
     };
   }
 
@@ -1660,7 +1661,7 @@ const Stampede = (() => {
     return list.map((p) => p.name).join(" & ");
   };
   const teamColor = (t) => G.players.find((p) => p.team === t)?.color ?? "#ffcf4a";
-  const humanWon = (res) => res.team >= 0 && G.players.some((p) => p.kind === "human" && p.team === res.team);
+  const humanWon = (res) => res.team >= 0 && G.players.some((p) => p.human && p.team === res.team);
 
   // A round has ended: next round of a match, or the results.
   function endRound(res) {
@@ -1814,13 +1815,19 @@ const Stampede = (() => {
       for (const [k, v] of shoutOwner) if (v === el) shoutOwner.delete(k);
       shoutOwner.set(id, el);
     }
-    el.className = "shout" + (pl && pl.seat >= 0 && !BOTTOM[pl.seat] ? " flip" : "");
+    const now = performance.now();
     el.textContent = text;
     el.style.color = color ?? pl?.color ?? "#ffcf4a";
     el.style.fontSize = `${2 * scale}rem`;
-    el.style.top = slot === "chain" ? "40%" : pl && pl.seat >= 0 ? (BOTTOM[pl.seat] ? "64%" : "36%") : "50%";
-    void el.offsetWidth;
-    el.classList.add("go");
+    // a shout that is still popping just changes its words; restarting the animation costs a layout
+    if (el.owner !== id || now - el.startedAt > 450) {
+      el.owner = id;
+      el.startedAt = now;
+      el.className = "shout" + (pl && pl.seat >= 0 && !BOTTOM[pl.seat] ? " flip" : "");
+      el.style.top = slot === "chain" ? "40%" : pl && pl.seat >= 0 ? (BOTTOM[pl.seat] ? "64%" : "36%") : "50%";
+      void el.offsetWidth;
+      el.classList.add("go");
+    }
     clearTimeout(el.done);
     el.done = setTimeout(() => {
       if (shoutOwner.get(id) === el) shoutOwner.delete(id);

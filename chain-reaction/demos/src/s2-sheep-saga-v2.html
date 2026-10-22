@@ -1,0 +1,747 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#13201a" />
+<title>Sheep Saga</title>
+<meta name="description" content="Sheep Saga, a cheekyfoundlamb game: 30 real-time Chain Reaction levels across three worlds, with rocks, thorns, gates, ice, crates, lost sheep, night, the wolf and three bosses." />
+<style>
+/*@KITCSS*/
+/*@STAMPEDE2CSS*/
+.hud .obj { display: flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 12px; background: var(--meadow-2); font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+.hud .obj.ok { background: #2fd38a; color: #10291a; }
+.stars { font-size: 2.6rem; color: var(--sun); letter-spacing: 4px; }
+.stars .off { color: #50605a; }
+/* level map */
+.map-wrap { position: fixed; inset: 0; z-index: 31; display: flex; flex-direction: column; background: var(--night); padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px); }
+.map-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; font-weight: 900; }
+.map-scroll { flex: 1; overflow-y: auto; touch-action: pan-y; position: relative; }
+.map-inner { position: relative; margin: 0 auto; max-width: 420px; }
+.map-inner canvas { position: absolute; left: 0; top: 0; width: 100%; }
+.node {
+  position: absolute; width: 50px; height: 50px; margin: -25px 0 0 -25px; border-radius: 50%; padding: 0;
+  background: var(--sun); color: #2a2010; font-weight: 900; font-size: 1.1rem; box-shadow: 0 4px 0 rgba(0,0,0,0.35);
+}
+.node.locked { background: #50605a; color: #9fb0a6; box-shadow: none; }
+.node.done { background: #fffaf0; }
+.node.boss { width: 60px; height: 60px; margin: -30px 0 0 -30px; background: #ff8a5c; }
+.node.sel { outline: 4px solid #fff; outline-offset: 3px; }
+.node .st { position: absolute; left: 50%; top: calc(100% + 1px); transform: translateX(-50%); font-size: 0.72rem; letter-spacing: -1px; color: var(--sun); white-space: nowrap; }
+.node .st .off { color: #50605a; }
+.world-label { position: absolute; left: 0; right: 0; text-align: center; font-weight: 900; font-size: 1.1rem; color: rgba(255,255,255,0.85); text-shadow: 0 2px 0 rgba(0,0,0,0.4); pointer-events: none; }
+#map-lamb { position: absolute; width: 64px; height: 56px; margin: -62px 0 0 -32px; transition: left 1s ease-in-out, top 1s ease-in-out; pointer-events: none; }
+.map-panel { background: var(--meadow); border-radius: 22px 22px 0 0; padding: 14px 16px calc(14px + env(safe-area-inset-bottom, 0px)); box-shadow: 0 -10px 30px rgba(0,0,0,0.4); }
+.map-panel h2 { margin: 0 0 6px; text-align: center; }
+.goals { display: flex; justify-content: center; gap: 6px; flex-wrap: wrap; }
+.boosters { display: flex; gap: 8px; justify-content: center; margin-top: 10px; }
+.boosters button { flex: 1; max-width: 110px; padding: 8px 4px; border-radius: 14px; background: var(--meadow-2); font-weight: 900; }
+.boosters button.on { background: var(--sun); color: #2a2010; }
+.boosters button:disabled { opacity: 0.35; }
+.boosters small { display: block; font-size: 0.7rem; opacity: 0.8; }
+.hint {
+  position: absolute; left: 50%; top: 8px; transform: translateX(-50%); z-index: 3; padding: 8px 14px; border-radius: 14px;
+  background: rgba(10, 18, 14, 0.88); font-weight: 900; white-space: nowrap; pointer-events: none; animation: hintin 0.4s ease-out;
+}
+@keyframes hintin { from { transform: translate(-50%, -20px); opacity: 0; } }
+</style>
+</head>
+<body>
+<!--@STAMPEDE2HTML-->
+<section class="map-wrap" id="map" hidden>
+  <div class="map-head"><button class="ib" id="map-back">‹ Home</button><span id="map-stars"></span></div>
+  <div class="map-scroll" id="map-scroll"><div class="map-inner" id="map-inner"><canvas id="map-cv"></canvas><canvas id="map-lamb"></canvas></div></div>
+  <div class="map-panel">
+    <h2 id="lv-title"></h2>
+    <div class="goals hud" id="lv-goals"></div>
+    <div class="boosters" id="lv-boosters"></div>
+    <button class="big" id="lv-play">Play</button>
+  </div>
+</section>
+<script>
+/*@ENGINE*/
+/*@KIT*/
+/*@STAMPEDE2*/
+
+// ======================= S2: SHEEP SAGA v2 =======================
+// ---------- CONFIG ----------
+const CONFIG = {
+  wolfRefill: 1.9, // seconds per sheep for the wolf's pen
+  thornSpreadSecs: 6, // a thorn spreads if none is cleared for this long
+  rockSpecialChance: 0.35, // a broken rock loads a special this often
+  finaleGap: 260, // ms between leftover sheep in the finale
+  finaleMax: 16, // leftover sheep that fly in; the rest just score
+  points: { burst: 10, hit: 20, rock: 60, thorn: 30, gate: 30, wake: 50, ice: 40, crate: 40, leftover: 500 },
+  stars: [0.15, 0.35], // 2 and 3 stars: share of the sheep budget left over
+  fill: 0.5, // default share of empty squares that start with your sheep
+  boosterPlus: 5, // sheep added by the +5 booster
+  hintMs: 4500,
+};
+
+// Level maps, 9 rows of 6. Key: . empty  R rock (2 hits)  1-5 rock with that many hits  T thorn  G gate
+// Z sleeping sheep  I ice (1 hit)  J ice (2 hits)  C crate  B boss rock (2x2; set boss: hits).
+// Goals: rocks, thorns, ice, crates (clear them all), wake: N, chain: N, own: percent, boss.
+// teach: the blocker this level introduces (shows a one-time hint).
+const WORLDS = [
+  {
+    name: "Green Pastures",
+    theme: { grass: ["#3d7a45", "#46874e"], edge: "#24402c", sky: "#2e5a36" },
+    music: { bpm: 118, root: 62, scale: "major", prog: [0, 3, 4, 0], lead: ["0.2.4.....4.2...", "3.2.1.....0.....", "4.5.4.2...4.....", "2...1...0......."], bass: "x.....x.x.....x.", drums: { kick: "x.......x.......", snare: "....x.......x...", hat: "..x...x...x...x." } },
+  },
+  {
+    name: "Rocky Hills",
+    theme: { grass: ["#6b7a45", "#76854d"], edge: "#3c4128", sky: "#5a5a3a" },
+    music: { bpm: 128, root: 57, scale: "dorian", prog: [0, 6, 3, 4], lead: ["0..2..4.2..0....", "4..5..4.2..1....", "2..4..5.4..2....", "4..2..1.0..1...."], bass: "x..x..x.x..x..x.", drums: { kick: "x..x....x..x....", snare: "....x.......x...", hat: "x.x.x.x.x.x.x.x." } },
+  },
+  {
+    name: "Night Valley",
+    theme: { grass: ["#2b4f4a", "#325a54"], edge: "#16282a", sky: "#1b2f3c" },
+    music: { bpm: 112, root: 57, scale: "minor", prog: [0, 5, 2, 6], lead: ["4...2...0...2...", "4...5...7...5...", "2...4...2...0...", "1...0...1...4..."], bass: "x.......x...x...", drums: { kick: "x.......x.......", snare: "........x.......", hat: "x...x...x...x..." }, leadType: "triangle" },
+  },
+];
+const LEVELS = [
+  // Green Pastures
+  { budget: 30, goals: { chain: 5 }, map: "...... ...... ...... ...... ...... ...... ...... ...... ......" },
+  { budget: 26, goals: { own: 70 }, fill: 0.3, map: "...... ...... ...... ...... ...... ...... ...... ...... ......" },
+  { budget: 34, goals: { rocks: 1 }, teach: "rock", map: "...... ...... .1..1. ...... ...... ...... .1..1. ...... ......" },
+  { budget: 50, goals: { rocks: 1 }, map: "...... ..22.. ...... .2..2. ...... .2..2. ...... ..22.. ......" },
+  { budget: 30, goals: { wake: 4 }, teach: "sleep", map: "Z....Z ...... ...... ...... ...... ...... ...... ...... Z....Z" },
+  { budget: 44, goals: { wake: 4 }, teach: "gate", map: "...... .GGGG. .GZZG. .GGGG. ...... ...... Z....Z ...... ......" },
+  { budget: 44, goals: { crates: 1 }, teach: "crate", map: "...... .C..C. ...... ..CC.. ...... ..CC.. ...... .C..C. ......" },
+  { budget: 30, goals: { ice: 1 }, teach: "ice", map: "...... ...... .I..I. ...... ..II.. ...... .I..I. ...... ......" },
+  { budget: 40, goals: { rocks: 1, chain: 10 }, map: "C....C ...... .2..2. ...... ..33.. ...... .2..2. ...... C....C" },
+  { budget: 40, goals: { boss: 1 }, boss: 12, teach: "boss", map: "...... .C..C. ...... ..BB.. ..BB.. ...... .1..1. ...... ......" },
+  // Rocky Hills
+  { budget: 40, goals: { thorns: 1 }, teach: "thorn", map: "...... ...... ..TT.. ...... T....T ...... ..TT.. ...... ......" },
+  { budget: 48, goals: { rocks: 1 }, map: "...... .3..3. ...... 3....3 ...... 3....3 ...... .3..3. ......" },
+  { budget: 44, goals: { thorns: 1, wake: 3 }, map: "T....T ...... ..Z... ...... ...Z.. ...... ..Z... ...... T....T" },
+  { budget: 46, goals: { ice: 1, rocks: 1 }, map: "...... .J..J. ...... ..22.. ...... ..22.. ...... .J..J. ......" },
+  { budget: 30, goals: { own: 60 }, fill: 0.3, wolf: "easy", teach: "wolf", map: "...... ...... ...... ...... ...... ...... ...... ...... ......" },
+  { budget: 46, goals: { rocks: 1 }, wolf: "easy", map: "...... .2..2. ...... ..33.. ...... ..33.. ...... .2..2. ......" },
+  { budget: 46, goals: { wake: 2 }, map: "GZG... GGG... ...... ..CC.. ...... ..CC.. ...... ...GGG ...GZG" },
+  { budget: 50, goals: { thorns: 1, ice: 1 }, wolf: "easy", map: "..TT.. ...... .J..J. ...... T....T ...... .J..J. ...... ..TT.." },
+  { budget: 50, goals: { rocks: 1, chain: 10 }, map: "2....2 ...... ..33.. ...... ...... ...... ..33.. ...... 2....2" },
+  { budget: 52, goals: { boss: 1 }, boss: 16, wolf: "easy", map: "T....T .2..2. ...... ..BB.. ..BB.. ...... .2..2. ...... T....T" },
+  // Night Valley
+  { budget: 38, goals: { wake: 5 }, night: true, teach: "night", map: "Z..... ....Z. ...... .Z.... ...... ....Z. ...... .Z.... ......" },
+  { budget: 48, goals: { rocks: 1 }, night: true, map: "...... .2..2. ...... ...... ..22.. ...... ...... .2..2. ......" },
+  { budget: 44, goals: { ice: 1 }, night: true, map: "...... I....I ...... ..JJ.. ...... ..JJ.. ...... I....I ......" },
+  { budget: 40, goals: { wake: 6 }, wolf: "normal", night: true, map: "...... Z....Z ...... ..R... Z....Z ...R.. ...... Z....Z ......" },
+  { budget: 40, goals: { thorns: 1 }, map: "T.CC.T ...... ...... ..TT.. ...... ...... ..TT.. ...... T.CC.T" },
+  { budget: 38, goals: { wake: 2 }, night: true, map: "GGG... GZG... ...... ...... ..CC.. ...... ...... ...GZG ...GGG" },
+  { budget: 44, goals: { rocks: 1, chain: 12 }, wolf: "normal", map: "...... .4..4. ...... ...... ..CC.. ...... ...... .4..4. ......" },
+  { budget: 50, goals: { thorns: 1, ice: 1 }, wolf: "normal", night: true, map: "T....T ...... .J..J. ...... ..TT.. ...... .J..J. ...... T....T" },
+  { budget: 60, goals: { rocks: 1, wake: 4, ice: 1 }, night: true, map: "T.CC.T .G..G. ..33.. Z....Z ..II.. Z....Z ..33.. .G..G. T....T" },
+  { budget: 54, goals: { boss: 1 }, boss: 20, wolf: "normal", night: true, map: "T....T .3..3. ...... ..BB.. ..BB.. ...... .3..3. .C..C. T....T" },
+];
+const worldOf = (n) => Math.floor((n - 1) / 10);
+const ROCK_DEFAULT = 2;
+const WOLF = "#8b8f9c";
+const SLEEP = "#c9c9d4";
+const ICONS = { rocks: "🪨", thorns: "🌵", ice: "🧊", crates: "📦", wake: "💤", chain: "⚡", own: "🟩", boss: "🗿" };
+const HINTS = {
+  rock: ["🪨", "Burst next to rocks"], sleep: ["💤", "Reach lost sheep with a burst"], gate: ["🚧", "Bursts knock gates down"],
+  crate: ["📦", "Crates hold a special"], ice: ["🧊", "Crack the ice with bursts"], boss: ["🗿", "Hit the big rock!"],
+  thorn: ["🌵", "Clear thorns before they spread"], wolf: ["🐺", "The wolf wants your pasture"], night: ["🏮", "Your lantern lights the way"],
+};
+const BOOSTERS = [["line", "🟰", "Line"], ["bomb", "💣", "Bomb"], ["plus", "🐑", `+${CONFIG.boosterPlus}`]];
+
+// ---------- PROGRESS ----------
+const S = Stampede;
+let progress = S.Store.get("cfl2-s2-progress", { stars: [], hints: {}, boosters: { line: 1, bomb: 1, plus: 1 }, award: 0, best: [] });
+const saveProgress = () => S.Store.set("cfl2-s2-progress", progress);
+const unlocked = () => (S.setup.unlockAll ? LEVELS.length : Math.min(LEVELS.length, progress.stars.filter((x) => x > 0).length + 1));
+const totalStars = () => progress.stars.reduce((a, b) => a + (b || 0), 0);
+let chosenBooster = null;
+let walkFrom = 0; // after a win, the lamb walks on the map from this level
+
+// ---------- LEVEL SETUP ----------
+function buildLevel(G, n) {
+  const L = LEVELS[n - 1];
+  const b = G.b;
+  const rows = L.map.split(" ");
+  const D = (G.data = { lvl: n, L, budget: L.budget, score: 0, maxChain: 0, woke: 0, quiet: 0, thornAt: 0, finale: null, won: false, bossHp: L.boss || 0, bossCells: [], ice: new Array(b.size).fill(0), iceMax: [], hintUntil: 0, emptyAt: 0, spread: 0, hudHtml: "" });
+  for (let r = 0; r < b.rows; r++)
+    for (let c = 0; c < b.cols; c++) {
+      const i = r * b.cols + c;
+      const ch = rows[r][c];
+      if (ch === "R" || (ch >= "1" && ch <= "5")) {
+        b.kind[i] = "rock";
+        b.hp[i] = b.mhp[i] = ch === "R" ? ROCK_DEFAULT : Number(ch);
+      } else if (ch === "T") b.kind[i] = "thorn";
+      else if (ch === "G") b.kind[i] = "gate";
+      else if (ch === "Z") b.kind[i] = "sleep";
+      else if (ch === "C") b.kind[i] = "crate";
+      else if (ch === "B") {
+        b.kind[i] = "boss";
+        D.bossCells.push(i);
+      } else if (ch === "I" || ch === "J") {
+        // frozen: some of your sheep under ice
+        D.ice[i] = D.iceMax[i] = ch === "I" ? 1 : 2;
+        b.owner[i] = 0;
+        b.count[i] = 1 + Math.floor(Math.random() * (Engine.capacity(b, i) - 1));
+      } else if (Math.random() < (L.fill ?? CONFIG.fill)) {
+        b.owner[i] = 0;
+        b.count[i] = 1 + Math.floor(Math.random() * (Engine.capacity(b, i) - 1));
+      }
+    }
+  D.thornAt = performance.now() + CONFIG.thornSpreadSecs * 1000;
+  // a booster chosen before the level
+  if (chosenBooster) {
+    if (chosenBooster === "plus") D.budget += CONFIG.boosterPlus;
+    else G.players[0].special = chosenBooster;
+    progress.boosters[chosenBooster]--;
+    D.usedBooster = true;
+    chosenBooster = null;
+    saveProgress();
+  }
+  D.startBudget = D.budget;
+  document.querySelectorAll(".hint").forEach((e) => e.remove());
+  // a new blocker gets a one-time hint
+  if (L.teach && !progress.hints[L.teach]) {
+    D.hint = L.teach;
+    D.hintUntil = performance.now() + CONFIG.hintMs;
+    progress.hints[L.teach] = true;
+    saveProgress();
+    const el = document.createElement("div");
+    el.className = "hint";
+    el.textContent = HINTS[L.teach].join(" ");
+    document.getElementById("stage").append(el);
+    setTimeout(() => el.remove(), CONFIG.hintMs);
+  }
+}
+
+const count = (G, kind) => G.b.kind.filter((k) => k === kind).length;
+const iceLeft = (G) => G.data.ice.filter((x) => x > 0).length;
+const playable = (G) => G.b.kind.filter((k) => !k).length;
+const ownPct = (G) => Math.floor((100 * S.cellsOf(0)) / Math.max(1, playable(G)));
+
+function goalState(G) {
+  const D = G.data;
+  const out = [];
+  for (const [g, v] of Object.entries(D.L.goals)) {
+    if (g === "rocks") out.push([g, count(G, "rock"), count(G, "rock") === 0]);
+    if (g === "thorns") out.push([g, count(G, "thorn"), count(G, "thorn") === 0]);
+    if (g === "crates") out.push([g, count(G, "crate"), count(G, "crate") === 0]);
+    if (g === "ice") out.push([g, iceLeft(G), iceLeft(G) === 0]);
+    if (g === "wake") out.push([g, `${Math.min(D.woke, v)}/${v}`, D.woke >= v]);
+    if (g === "chain") out.push([g, `${Math.min(D.maxChain, v)}/${v}`, D.maxChain >= v]);
+    if (g === "own") out.push([g, `${Math.min(ownPct(G), v)}/${v}%`, ownPct(G) >= v]);
+    if (g === "boss") out.push([g, D.bossHp, D.bossHp <= 0]);
+  }
+  return out;
+}
+const goalPills = (goals) => goals.map(([g, v, ok]) => `<span class="obj${ok ? " ok" : ""}">${ICONS[g]} ${ok ? "✓" : v}</span>`).join("");
+
+// ---------- BLOCKERS ----------
+// A sheep (from a burst or a special) reaching one of this game's blockers. True when it took the sheep.
+function hitBlocker(G, i, who) {
+  const b = G.b;
+  const D = G.data;
+  const mine = who === 0;
+  const now = performance.now();
+  if (D.ice[i] > 0) {
+    D.ice[i]--;
+    if (mine) D.score += CONFIG.points.ice;
+    S.effect("hit", i, "#bfe9ff", now);
+    S.puff(i, "#bfe9ff", 5);
+    S.Sfx.chime(D.ice[i] ? 9 : 14);
+    return true;
+  }
+  const kind = b.kind[i];
+  if (!kind || kind === "rock") {
+    // rocks are the core's: just count the points
+    if (kind === "rock" && mine) D.score += CONFIG.points.hit;
+    return false;
+  }
+  if (kind === "boss") {
+    D.bossHp--;
+    if (mine) D.score += CONFIG.points.hit;
+    S.Sfx.hit(Math.min(8, D.bossHp));
+    for (const k of D.bossCells) S.effect("hit", k, "#ffffff", now);
+    S.shake(3);
+    if (D.bossHp <= 0) {
+      for (const k of D.bossCells) {
+        b.kind[k] = null;
+        S.puff(k, "#9aa0aa", 10);
+      }
+      D.score += CONFIG.points.rock * 5;
+      S.shout(G.players[0], "Crumbled!", 1.6);
+      S.Sfx.crack();
+      S.shake(12);
+      S.rebuildPath();
+    }
+    return true;
+  }
+  b.kind[i] = null;
+  if (kind === "thorn") {
+    if (mine) D.score += CONFIG.points.thorn;
+    D.thornAt = now + CONFIG.thornSpreadSecs * 1000;
+    S.Audio.tone(700, 0.08, "triangle", 0.06, 300);
+    S.puff(i, "#7bd36b", 6);
+  } else if (kind === "gate") {
+    if (mine) D.score += CONFIG.points.gate;
+    S.Audio.tone(220, 0.12, "square", 0.06, 120);
+    S.puff(i, "#c08a4a", 6);
+  } else if (kind === "crate") {
+    if (mine) D.score += CONFIG.points.crate;
+    if (S.isPlayer(who)) S.loadSpecial(G.players[who], ["line", "bomb", "line", "bomb", "overflow"][Math.floor(Math.random() * 5)]);
+    S.Sfx.crack();
+    S.puff(i, "#b07a40", 8);
+  } else if (kind === "sleep") {
+    // he wakes up and joins whoever reached him
+    b.owner[i] = who;
+    b.count[i] = 1;
+    if (mine) {
+      D.woke++;
+      D.score += CONFIG.points.wake;
+      S.Sfx.bleat(1.3);
+    }
+    S.puff(i, G.players[who]?.color ?? "#fff", 6);
+  }
+  return true;
+}
+
+function spreadThorn(G) {
+  const b = G.b;
+  const thorns = [];
+  for (let i = 0; i < b.size; i++) if (b.kind[i] === "thorn") thorns.push(i);
+  for (const t of thorns.sort(() => Math.random() - 0.5)) {
+    const free = Engine.neighbours(b, t).filter((k) => !b.kind[k] && b.owner[k] === -1);
+    if (free.length) {
+      b.kind[free[Math.floor(Math.random() * free.length)]] = "thorn";
+      G.data.spread++;
+      S.Audio.tone(160, 0.15, "sawtooth", 0.05, 110);
+      return;
+    }
+  }
+}
+
+// The Sugar-Crush moment: leftover sheep fly in as Line and Bomb sheep and go off one by one.
+function finaleStep(G, now) {
+  const D = G.data;
+  const b = G.b;
+  if (now < D.finale.next || D.budget <= 0) return;
+  D.finale.next = now + CONFIG.finaleGap;
+  D.budget--;
+  D.score += CONFIG.points.leftover;
+  if (D.finale.flown >= CONFIG.finaleMax) return;
+  D.finale.flown++;
+  const spots = [];
+  for (let i = 0; i < b.size; i++) if (!b.kind[i] && !b.tag[i] && !D.ice[i] && (b.owner[i] === 0 || b.owner[i] === -1)) spots.push(i);
+  if (!spots.length) return;
+  const i = spots[Math.floor(Math.random() * spots.length)];
+  b.owner[i] = 0;
+  b.count[i] = Engine.capacity(b, i);
+  b.tag[i] = Math.random() < 0.5 ? { type: "line", dir: Math.random() < 0.5 ? "row" : "col" } : { type: "bomb", dir: null };
+  S.puff(i, "#ffcf4a", 6);
+  S.Audio.tone(500 + D.finale.flown * 40, 0.12, "triangle", 0.07, 900 + D.finale.flown * 40);
+}
+
+function starsFor(D) {
+  const left = D.finale.left / D.startBudget;
+  return left >= CONFIG.stars[1] ? 3 : left >= CONFIG.stars[0] ? 2 : 1;
+}
+
+// ---------- DRAWING ----------
+function drawThorn(g, cx, cy, r, t) {
+  g.strokeStyle = "#2c5a2a";
+  g.lineWidth = r * 0.12;
+  g.beginPath();
+  for (let k = 0; k < 9; k++) {
+    const a = (k / 9) * Math.PI * 2 + Math.sin(t * 2) * 0.05;
+    g.moveTo(cx, cy);
+    g.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+  }
+  g.stroke();
+  Kit.circle(g, cx, cy, r * 0.55, "#3f7a35");
+  for (let k = 0; k < 5; k++) {
+    const a = (k / 5) * Math.PI * 2 + 0.3;
+    Kit.circle(g, cx + Math.cos(a) * r * 0.35, cy + Math.sin(a) * r * 0.35, r * 0.08, "#c94a6a");
+  }
+}
+function drawGate(g, x, y, c) {
+  g.fillStyle = "#8a5a2b";
+  for (const px of [0.18, 0.5, 0.82]) g.fillRect(x + c * px - c * 0.05, y + c * 0.15, c * 0.1, c * 0.75);
+  g.fillStyle = "#b07a40";
+  for (const py of [0.3, 0.62]) g.fillRect(x + c * 0.08, y + c * py, c * 0.84, c * 0.1);
+}
+function drawCrate(g, x, y, c) {
+  const s = c * 0.7;
+  const x0 = x + (c - s) / 2;
+  const y0 = y + (c - s) / 2;
+  g.fillStyle = "#b07a40";
+  g.fillRect(x0, y0, s, s);
+  g.strokeStyle = "#6e4720";
+  g.lineWidth = c * 0.06;
+  g.strokeRect(x0, y0, s, s);
+  g.beginPath();
+  g.moveTo(x0, y0);
+  g.lineTo(x0 + s, y0 + s);
+  g.moveTo(x0 + s, y0);
+  g.lineTo(x0, y0 + s);
+  g.stroke();
+  g.fillStyle = "#ffcf4a";
+  g.font = `900 ${Math.round(c * 0.3)}px system-ui`;
+  g.textAlign = "center";
+  g.fillText("?", x + c / 2, y + c * 0.62);
+  g.textAlign = "start";
+}
+function drawSleeper(g, cx, cy, r, t) {
+  Kit.drawSheep(g, cx, cy, r, SLEEP);
+  g.fillStyle = "#e8f0ff";
+  g.font = `900 ${Math.round(r * 0.9)}px system-ui`;
+  g.fillText("z", cx + r * 0.8, cy - r * 0.9 - Math.sin(t * 2) * r * 0.2);
+}
+function drawIce(g, x, y, c, hp, max, t) {
+  g.fillStyle = hp > 1 ? "rgba(170,225,255,0.62)" : "rgba(190,235,255,0.45)";
+  g.beginPath();
+  g.roundRect(x + 3, y + 3, c - 6, c - 6, 6);
+  g.fill();
+  g.strokeStyle = "rgba(255,255,255,0.85)";
+  g.lineWidth = 1.5;
+  g.stroke();
+  g.beginPath();
+  g.moveTo(x + c * 0.2, y + c * 0.3);
+  g.lineTo(x + c * 0.35, y + c * 0.18);
+  g.moveTo(x + c * 0.72, y + c * 0.75);
+  g.lineTo(x + c * 0.82, y + c * 0.62);
+  if (hp < max) {
+    g.moveTo(x + c * 0.5, y + c * 0.1);
+    g.lineTo(x + c * 0.42, y + c * 0.45);
+    g.lineTo(x + c * 0.6, y + c * 0.62);
+    g.lineTo(x + c * 0.5, y + c * 0.9);
+  }
+  g.stroke();
+  g.globalAlpha = 0.25 + 0.2 * Math.sin(t * 3 + x);
+  g.fillStyle = "#fff";
+  g.fillRect(x + c * 0.15, y + c * 0.12, c * 0.08, c * 0.3);
+  g.globalAlpha = 1;
+}
+
+// ---------- LEVEL MAP ----------
+const $ = (id) => document.getElementById(id);
+const MAP = { gap: 92, top: 70, bottom: 60 };
+const nodeY = (k) => MAP.top + (LEVELS.length - 1 - k) * MAP.gap;
+const nodeX = (k, w) => w / 2 + Math.sin(k * 0.9) * w * 0.3;
+let mapSel = 1;
+
+function openMap(walk) {
+  progress = S.Store.get("cfl2-s2-progress", progress);
+  $("title").hidden = true;
+  $("results").hidden = true;
+  $("map").hidden = false;
+  const inner = $("map-inner");
+  const w = Math.min(420, $("map-scroll").clientWidth);
+  const h = MAP.top + MAP.bottom + (LEVELS.length - 1) * MAP.gap;
+  inner.style.height = `${h}px`;
+  const g = Kit.sharp($("map-cv"), w, h);
+  // the three worlds as bands of colour, with a winding path through them
+  for (let wd = 0; wd < 3; wd++) {
+    const yTop = nodeY(wd * 10 + 9) - MAP.gap / 2;
+    const yBot = wd === 0 ? h : nodeY(wd * 10) + MAP.gap / 2;
+    g.fillStyle = WORLDS[wd].theme.sky;
+    g.fillRect(0, wd === 2 ? 0 : yTop, w, yBot - (wd === 2 ? 0 : yTop));
+    for (let k = 0; k < 14; k++) {
+      const tx = ((k * 73) % 100) / 100 * w;
+      const ty = (wd === 2 ? 0 : yTop) + ((k * 37) % 100) / 100 * (yBot - (wd === 2 ? 0 : yTop));
+      if (wd === 1) Kit.ellipse(g, tx, ty, 14, 9, 0, "rgba(0,0,0,0.12)");
+      else if (wd === 2) Kit.circle(g, tx, ty, 1.6, "rgba(255,255,230,0.6)");
+      else Kit.circle(g, tx, ty, 6, "rgba(255,255,255,0.05)");
+    }
+  }
+  g.strokeStyle = "#c8a46a";
+  g.lineWidth = 14;
+  g.lineCap = "round";
+  g.lineJoin = "round";
+  g.beginPath();
+  for (let k = 0; k < LEVELS.length; k++) (k ? g.lineTo : g.moveTo).call(g, nodeX(k, w), nodeY(k));
+  g.stroke();
+  g.setLineDash([6, 10]);
+  g.strokeStyle = "#f3e2b8";
+  g.lineWidth = 3;
+  g.stroke();
+  g.setLineDash([]);
+  inner.querySelectorAll(".node, .world-label").forEach((e) => e.remove());
+  WORLDS.forEach((wd, k) => {
+    const el = document.createElement("div");
+    el.className = "world-label";
+    el.style.top = `${nodeY(k * 10) + 34}px`;
+    el.textContent = wd.name;
+    inner.append(el);
+  });
+  const open = unlocked();
+  mapSel = Math.min(open, Math.max(1, S.setup.lvl || open));
+  LEVELS.forEach((L, k) => {
+    const n = k + 1;
+    const btn = document.createElement("button");
+    const stars = progress.stars[k] || 0;
+    btn.className = "node" + (L.boss ? " boss" : "") + (n > open ? " locked" : stars ? " done" : "") + (n === mapSel ? " sel" : "");
+    btn.style.left = `${(nodeX(k, w) / w) * 100}%`;
+    btn.style.top = `${nodeY(k)}px`;
+    btn.innerHTML = `${n > open ? "🔒" : L.boss ? "🗿" : n}<span class="st">${n <= open ? "★".repeat(stars) + `<span class="off">${"★".repeat(3 - stars)}</span>` : ""}</span>`;
+    btn.setAttribute("aria-label", `Level ${n}`);
+    btn.addEventListener("click", () => {
+      if (n > open) return;
+      selectLevel(n, w);
+      inner.querySelectorAll(".node.sel").forEach((e) => e.classList.remove("sel"));
+      btn.classList.add("sel");
+    });
+    inner.append(btn);
+  });
+  $("map-stars").textContent = `★ ${totalStars()} / ${LEVELS.length * 3}`;
+  // the lamb: walks to the next level after a win
+  const lamb = $("map-lamb");
+  const lg = Kit.sharp(lamb, 64, 56);
+  Kit.drawLamb(lg, 32, 30, 50, { scarf: Stampede.COLORS[0], mood: "happy" });
+  const place = (n) => {
+    lamb.style.left = `${(nodeX(n - 1, w) / w) * 100}%`;
+    lamb.style.top = `${nodeY(n - 1)}px`;
+  };
+  lamb.style.transition = "none";
+  place(walk ? walkFrom : mapSel);
+  void lamb.offsetWidth;
+  lamb.style.transition = "";
+  if (walk) setTimeout(() => {
+    place(mapSel);
+    S.Sfx.bleat(1.2);
+  }, 250);
+  $("map-scroll").scrollTop = nodeY(mapSel - 1) - $("map-scroll").clientHeight * 0.55;
+  selectLevel(mapSel, w);
+}
+
+function selectLevel(n) {
+  mapSel = n;
+  S.setup.lvl = n;
+  S.Store.set("cfl2-s2-setup", S.setup);
+  const L = LEVELS[n - 1];
+  $("lv-title").textContent = `${L.boss ? "Boss · " : ""}Level ${n}`;
+  $("lv-goals").innerHTML = goalPills(Object.entries(L.goals).map(([g, v]) => [g, g === "boss" ? L.boss : g === "own" ? `${v}%` : g === "wake" || g === "chain" ? v : "all", false])) + `<span class="obj">🐑 ${L.budget}</span>`;
+  chosenBooster = null;
+  renderBoosters();
+}
+
+function renderBoosters() {
+  const box = $("lv-boosters");
+  box.replaceChildren();
+  for (const [k, icon, label] of BOOSTERS) {
+    const btn = document.createElement("button");
+    const have = progress.boosters[k] || 0;
+    btn.innerHTML = `${icon} ${label}<small>×${have}</small>`;
+    btn.disabled = !have;
+    btn.className = chosenBooster === k ? "on" : "";
+    btn.addEventListener("click", () => {
+      chosenBooster = chosenBooster === k ? null : k;
+      renderBoosters();
+    });
+    box.append(btn);
+  }
+}
+
+// ---------- MODE ----------
+S.run({
+  key: "s2",
+  title: "Sheep Saga",
+  how: ["Tap to drop a sheep. Clear the goals at the top before your sheep run out.", "Break rocks, crack ice, wake lost sheep, beat the bosses!"],
+  solo: true,
+  setupDefaults: { lvl: 1, unlockAll: false },
+  get theme() { return WORLDS[worldOf(S.setup.lvl || 1)].theme; },
+  get music() { return WORLDS[worldOf(S.setup.lvl || 1)].music; },
+  players(s) {
+    const L = LEVELS[s.lvl - 1];
+    const list = [{ seat: 0, kind: "human" }];
+    if (L.wolf) list.push({ seat: -1, kind: "ai", level: L.wolf, color: WOLF, name: "Wolf", team: 1, pos: 27 });
+    return list;
+  },
+  playLabel: () => `Play level ${Math.min(unlocked(), Stampede.setup.lvl || 1)}`,
+  options(ui, s) {
+    s.lvl = Math.min(Math.max(1, s.lvl || 1), unlocked());
+    const b = document.createElement("button");
+    b.className = "big alt";
+    b.textContent = `🗺 Levels  ·  ★ ${totalStars()}`;
+    b.addEventListener("click", () => openMap(false));
+    document.getElementById("opts").append(b);
+    ui.seg("Unlock all (testing)", "unlockAll", [[false, "Off"], [true, "On"]]);
+  },
+  onPlay(start) {
+    progress = S.Store.get("cfl2-s2-progress", progress);
+    $("map").hidden = true;
+    start();
+  },
+  onAgain(start) {
+    const D = S.G?.data;
+    if (D?.won) {
+      walkFrom = D.lvl;
+      if (D.lvl < LEVELS.length) S.setup.lvl = D.lvl + 1;
+      openMap(D.lvl < LEVELS.length);
+    } else start();
+  },
+  againLabel: (G) => (G.data.won ? (G.data.lvl < LEVELS.length ? "Next level" : "Level map") : "Retry"),
+  onHome() {
+    $("map").hidden = true;
+  },
+  statRows: () => [["Stars", `${totalStars()} / ${LEVELS.length * 3}`], ["Levels cleared", progress.stars.filter((x) => x > 0).length], ["Boosters", Object.values(progress.boosters).reduce((a, b) => a + b, 0)]],
+  records: (G, res) => (G.data.won ? [{ label: "Score", value: G.data.score, key: `lvl${G.data.lvl}` }] : []),
+  badges: [
+    { id: "first", icon: "🌱", name: "First steps", desc: "Clear level 1", test: (c) => c.won && c.G.data.lvl === 1 },
+    { id: "w1", icon: "🌿", name: "Green Pastures", desc: "Beat the level 10 boss", test: (c) => c.won && c.G.data.lvl === 10 },
+    { id: "w2", icon: "⛰️", name: "Rocky Hills", desc: "Beat the level 20 boss", test: (c) => c.won && c.G.data.lvl === 20 },
+    { id: "w3", icon: "🌙", name: "Night Valley", desc: "Beat the final boss", test: (c) => c.won && c.G.data.lvl === 30 },
+    { id: "three", icon: "⭐", name: "Shining", desc: "3 stars on any level", test: (c) => c.res.stars === 3 },
+    { id: "ten", icon: "🌟", name: "Star flock", desc: "3 stars on 10 levels", test: () => progress.stars.filter((x) => x === 3).length >= 10 },
+    { id: "chain15", icon: "⚡", name: "Chain 15", desc: "Make a 15-chain", test: (c) => c.hs.some((p) => Math.max(p.best, p.chain) >= 15) },
+    { id: "thorn", icon: "🌵", name: "Neat gardener", desc: "Clear a thorn level before any spread", test: (c) => c.won && c.G.data.L.goals.thorns && c.G.data.spread === 0 },
+    { id: "boost", icon: "🎒", name: "Well packed", desc: "Win with a booster", test: (c) => c.won && c.G.data.usedBooster },
+  ],
+  hooks: {
+    setup(G, s) {
+      buildLevel(G, s.lvl);
+    },
+    hud(G) {
+      G.data.hudHtml = "";
+    },
+    noElimination: true,
+    roundSecs: () => Infinity,
+    timerText: (G) => `🐑 ${G.data.budget}`,
+    inPath: (G, i) => G.b.kind[i] !== "rock" && G.b.kind[i] !== "boss",
+    refillMs: (G, pl) => (pl.id === 1 ? CONFIG.wolfRefill * 1000 : undefined),
+    blocked: (G, i) => !!G.b.kind[i] || G.data.ice[i] > 0,
+    canBurst: (G, b, i) => !(G.data.ice[i] > 0),
+    afterDrop(G, pl) {
+      if (pl.id === 0) G.data.budget--;
+    },
+    onWaste(G, pl) {
+      if (pl.id === 0) G.data.budget--;
+    },
+    land: (G, b, from, to, who) => hitBlocker(G, to, who),
+    specialHit: (G, k, who) => hitBlocker(G, k, who),
+    onRockBreak(G, i, who) {
+      if (who !== 0) return;
+      G.data.score += CONFIG.points.rock;
+      if (Math.random() < CONFIG.rockSpecialChance) S.loadSpecial(G.players[0], G.b.mhp[i] >= 3 ? "bomb" : "line");
+    },
+    onChain(G, pl, prev, now) {
+      if (pl.id === 0) G.data.maxChain = Math.max(G.data.maxChain, now);
+    },
+    afterWave(G, now, bursts) {
+      const D = G.data;
+      // the finale's fireworks are for show: leftover sheep score a flat bonus instead
+      if (!D.finale) D.score += bursts[0] * CONFIG.points.burst * Math.min(10, Math.max(1, G.players[0].chain));
+      D.quiet = bursts[0] ? 0 : D.quiet + 1; // only your own chains hold the ending back
+      if (D.budget <= 0 && !D.emptyAt) D.emptyAt = now;
+    },
+    aiValue(G, pl, i) {
+      if (pl.id !== 0) return 0;
+      const b = G.b;
+      const near = Engine.neighbours(b, i).filter((k) => b.kind[k] || G.data.ice[k]).length;
+      const bursts = b.count[i] + 1 >= Engine.capacity(b, i) && (b.owner[i] === -1 || b.owner[i] === 0);
+      return near * (bursts ? 4 : 0.6);
+    },
+    update(G, now) {
+      const D = G.data;
+      const p0 = G.players[0];
+      if (D.budget <= 0 && !D.finale) p0.pen = 0;
+      if (now >= D.thornAt) {
+        D.thornAt = now + CONFIG.thornSpreadSecs * 1000;
+        if (!D.finale) spreadThorn(G);
+      }
+      if (D.finale) finaleStep(G, now);
+      const goals = goalState(G);
+      const html = goalPills(goals);
+      if (html !== D.hudHtml) {
+        D.hudHtml = html;
+        $("hud").innerHTML = html;
+      }
+      if (!D.finale && goals.every(([, , ok]) => ok)) {
+        // win: the leftover sheep celebrate
+        D.finale = { next: now + 500, flown: 0, left: D.budget };
+        p0.kind = "finale";
+        for (const pl of G.players) if (pl.id !== 0) pl.observer = true;
+        S.shout(p0, "Hallelujah!", 1.85);
+        S.Sfx.win();
+        S.buzz([60, 40, 120]);
+      }
+    },
+    shift(G, d) {
+      const D = G.data;
+      D.thornAt += d;
+      D.hintUntil += d;
+      if (D.emptyAt) D.emptyAt += d;
+      if (D.finale) D.finale.next += d;
+    },
+    endCheck(G) {
+      const D = G.data;
+      if (D.finale) {
+        if (D.budget > 0 || D.quiet < 5) return null;
+        D.won = true;
+        const stars = starsFor(D);
+        const k = D.lvl - 1;
+        const prev = progress.stars[k] || 0;
+        progress.stars[k] = Math.max(prev, stars);
+        if (stars === 3) {
+          // every 3-star finish earns a booster, in turn
+          const kind = BOOSTERS[progress.award % 3][0];
+          progress.boosters[kind] = (progress.boosters[kind] || 0) + 1;
+          progress.award++;
+          D.earned = kind;
+        }
+        saveProgress();
+        return { team: 0, title: `${D.L.boss ? "Boss beaten" : `Level ${D.lvl}`}!`, sub: `Score ${D.score.toLocaleString()}`, color: "#ffcf4a", stars };
+      }
+      if (D.budget <= 0 && (D.quiet >= 7 || performance.now() - D.emptyAt > 4000)) return { team: -1, title: "Out of sheep!", sub: "So close. One more go?", color: "#ff8a8a", sad: true };
+      return null;
+    },
+    resultsExtra(G, res, el) {
+      const D = G.data;
+      const s = res.stars || 0;
+      el.innerHTML = `<div class="stars">${"★".repeat(s)}<span class="off">${"★".repeat(3 - s)}</span></div>${D.earned ? `<p>Booster earned: ${BOOSTERS.find((x) => x[0] === D.earned).slice(1).join(" ")}</p>` : ""}`;
+    },
+    drawCell(ctx, G, i, x, y, c, t) {
+      const kind = G.b.kind[i];
+      if (!kind || kind === "rock") return false;
+      if (kind === "thorn") drawThorn(ctx, x + c / 2, y + c / 2, c * 0.38, t);
+      else if (kind === "gate") drawGate(ctx, x, y, c);
+      else if (kind === "crate") drawCrate(ctx, x, y, c);
+      else if (kind === "sleep") drawSleeper(ctx, x + c / 2, y + c / 2 + c * 0.05, c * 0.2, t);
+      return true; // boss cells are drawn as one big rock over the top
+    },
+    drawOver(ctx, G, c, t, now) {
+      const D = G.data;
+      const b = G.b;
+      for (let i = 0; i < b.size; i++) if (D.ice[i] > 0) drawIce(ctx, Engine.colOf(b, i) * c, Engine.rowOf(b, i) * c, c, D.ice[i], D.iceMax[i], t);
+      const k = S.cursorCell(G.players[0]);
+      const lx = (Engine.colOf(b, k) + 0.5) * c;
+      const ly = (Engine.rowOf(b, k) + 0.5) * c;
+      if (D.bossHp > 0 && D.bossCells.length) {
+        const r0 = Math.min(...D.bossCells.map((q) => Engine.rowOf(b, q)));
+        const c0 = Math.min(...D.bossCells.map((q) => Engine.colOf(b, q)));
+        S.drawRock(ctx, (c0 + 1) * c, (r0 + 1) * c + Math.sin(t * 3) * 1.5, c * 0.85, D.bossHp, D.L.boss, lx, ly);
+      }
+      // the one-time hint: the new blocker pulses
+      if (D.hint && now < D.hintUntil) {
+        ctx.strokeStyle = `rgba(255,207,74,${0.5 + 0.5 * Math.sin(t * 8)})`;
+        ctx.lineWidth = 3;
+        for (let i = 0; i < b.size; i++) {
+          const hit = D.hint === "ice" ? D.ice[i] > 0 : D.hint === "wolf" ? b.owner[i] === 1 : b.kind[i] === D.hint;
+          if (hit) ctx.strokeRect(Engine.colOf(b, i) * c + 2, Engine.rowOf(b, i) * c + 2, c - 4, c - 4);
+        }
+      }
+      if (D.L.night && !D.finale) {
+        const grad = ctx.createRadialGradient(lx, ly, c * 1.1, lx, ly, c * 2.4);
+        grad.addColorStop(0, "rgba(6,10,24,0)");
+        grad.addColorStop(1, "rgba(6,10,24,0.93)");
+        ctx.fillStyle = grad;
+        ctx.fillRect(-2, -2, b.cols * c + 4, b.rows * c + 4);
+      }
+    },
+  },
+});
+
+$("map-back").addEventListener("click", () => Stampede.home());
+$("lv-play").addEventListener("click", () => {
+  $("map").hidden = true;
+  Stampede.startGame();
+});
+</script>
+</body>
+</html>

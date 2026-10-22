@@ -45,6 +45,7 @@ The five favourite Stampede versions, rebuilt to a finished-game standard on the
 | File | Game | New |
 |---|---|---|
 | `s1-stampede-plus-v2.html` | Stampede+ | Best-of-3/5 matches, 3 arenas (Open, Rocky, Quick), teams, mystery boxes |
+| `s2-sheep-saga-v2.html` | Sheep Saga | 30 levels in 3 worlds with bosses, Ice and Crates, one-time blocker hints, scrolling map, boosters |
 
 Balance numbers sit in a `CONFIG` object at the top of each file.
 
