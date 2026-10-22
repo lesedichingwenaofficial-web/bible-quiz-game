@@ -15,7 +15,7 @@ const App = (() => {
     { key: "rush", file: "rush", title: "Sheep Rush", group: "solo", players: "1", icon: "timer" },
     { key: "leadhome", file: "leadhome", title: "Lead Him Home", group: "solo", players: "1", icon: "crook" },
   ];
-  const BUILT = new Set(["stampede", "saga"]); // modes finished in this build
+  const BUILT = new Set(["stampede", "saga", "wolf"]); // modes finished in this build
   const meta = (key) => MODES.find((m) => m.key === key);
   let hasKeyboard = false;
   const lowEnd = (navigator.hardwareConcurrency || 8) <= 4 && (navigator.deviceMemory || 4) <= 2;

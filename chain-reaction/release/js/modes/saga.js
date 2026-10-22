@@ -76,8 +76,8 @@
     { budget: 36, goals: { own: 70 }, fill: 0.35, wolf: "normal", map: "...... ...... ...... ..CC.. ...... ..CC.. ...... ...... ......" },
     { budget: 60, goals: { rocks: 1, wake: 4, ice: 1 }, night: true, map: "T.CC.T .G..G. ..33.. Z....Z ..II.. Z....Z ..33.. .G..G. T....T" },
     { budget: 34, goals: { wake: 4, chain: 10 }, fill: 0.55, map: "Z....Z ...... ...... ...... ...... ...... ...... ...... Z....Z" },
-    { budget: 60, goals: { rocks: 1, thorns: 1, ice: 1 }, wolf: "normal", night: true, map: "T.33.T ...... .J..J. ...... ..CC.. ...... .J..J. ...... T.33.T" },
-    { budget: 60, goals: { boss: 1 }, boss: 22, wolf: "normal", night: true, map: "T....T .3..3. ...... ..BB.. ..BB.. ...... .3..3. .C..C. T....T" },
+    { budget: 52, goals: { rocks: 1, thorns: 1, ice: 1 }, wolf: "normal", night: true, map: "T.33.T ...... .J..J. ...... ..CC.. ...... .J..J. ...... T.33.T" },
+    { budget: 56, goals: { boss: 1 }, boss: 26, wolf: "normal", night: true, map: "T....T .3..3. ...... ..BB.. ..BB.. ...... .3..3. .C..C. T....T" },
   ];
   const PER_WORLD = 15;
   const worldOf = (n) => (n === "daily" ? Dates.dailyNumber() % 3 : Math.min(2, Math.floor((n - 1) / PER_WORLD)));

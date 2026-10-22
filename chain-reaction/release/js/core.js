@@ -166,7 +166,7 @@ const Core = (() => {
       seed: seed >>> 0, rng: RNG(seed), log: [], replay: null,
       flights: EMPTY, flightAt: 0, popAt: new Float64Array(b.size), incoming: new Int16Array(b.size), lastTimer: "",
       shakeAmp: 0, shakeAt: 0, bgDirty: true, bob: 0, lastHud: "", bestChain: null, fs: null, tipsShown: 0, rankAt: 0,
-      t0: 0, startedAt: Date.now(), scratch: Engine.createBoard(dims.rows, dims.cols),
+      t0: 0, holdUntil: 0, startedAt: Date.now(), scratch: Engine.createBoard(dims.rows, dims.cols),
     };
     G.players = V.players(setup).map((p, id) => newPlayer(p, id));
     // two AI lambs with the same personality get told apart
@@ -262,6 +262,7 @@ const Core = (() => {
   function drop(pl) {
     if (!G || G.over || !pl.alive || pl.observer) return;
     const t = G.time;
+    if (t < G.holdUntil) return;
     if (pl.kind === "human") pl.taps++;
     if (t < pl.lockUntil) return;
     if (pl.pen <= 0) {
@@ -639,7 +640,8 @@ const Core = (() => {
       const ch = top("best");
       if (ch.best >= 3) awards.push({ id: "chain", who: ch, value: `x${ch.best}` });
       const winners = res.team >= 0 ? players.filter((p) => p.team === res.team) : [];
-      const back = winners.filter((p) => p.worstRank === live.length && live.length > 1);
+      const teams = new Set(players.map((p) => p.team)).size;
+      const back = teams > 1 ? winners.filter((p) => p.worstRank === live.length && live.length > 1) : [];
       if (back.length) awards.push({ id: "comeback", who: back[0], value: "" });
       const shooters = players.filter((p) => p.drops >= 5);
       if (shooters.length) {
@@ -770,6 +772,14 @@ const Core = (() => {
     G.time += STEP_MS;
     G.tick++;
     const t = G.time;
+    // a mode can hold play for a moment (an intro card); the clock starts after it
+    if (t < G.holdUntil) {
+      G.t0 = G.holdUntil;
+      G.waveAt = t;
+      for (const pl of G.players) pl.nextStep = Math.max(pl.nextStep, G.holdUntil);
+      H.update?.(G, t, Infinity);
+      return;
+    }
     const secs = H.roundSecs ? H.roundSecs(G) : tune.roundSecs;
     const left = secs - (t - G.t0) / 1000;
     if (Number.isFinite(secs) && left <= tune.stampedeSecs && left > 0 && !G.rush && !G.fs) {
@@ -946,6 +956,7 @@ const Core = (() => {
     hideHint();
     hideTip();
     $("ghost").hidden = true;
+    $("banner").hidden = true;
     for (const cv of [topCv, botCv, boardCv]) cv && cv.getContext("2d").clearRect(0, 0, cv.width, cv.height);
     $("timer").textContent = "";
     $("timer-top").textContent = "";
@@ -1918,6 +1929,20 @@ const Core = (() => {
   }
 
   let gameScreen = null;
+  // a card in the middle of the field (a boss's name, a round's start); not during fast-forward
+  let bannerTimer = 0;
+  function banner(html, ms = 2000, cls = "") {
+    if (quiet) return;
+    const el = $("banner");
+    el.className = `banner ${cls}`;
+    el.innerHTML = html;
+    el.hidden = false;
+    void el.offsetWidth;
+    el.classList.add("go");
+    clearTimeout(bannerTimer);
+    bannerTimer = setTimeout(() => (el.hidden = true), ms);
+  }
+
   function mount() {
     gameScreen = $("scr-game");
     boardCv = $("board");
@@ -1943,7 +1968,7 @@ const Core = (() => {
   return {
     mount, start, nextRound, pause, resume, quit, replay, press, layout, drop, shout, mood, shake, puff, spray, effect, loadSpecial, landOn, hitKind,
     buildPath, rebuildPath, cursorCell, cellsOf, orbsOf, sameTeam, isPlayer, refillMs, endRound, canDropAt, valueAt,
-    drawRock, drawSpecial, sprite, penCap, now, setHud, firstHumanSeat, tip: (event, pl) => showTip(event, pl),
+    drawRock, drawSpecial, sprite, penCap, now, setHud, firstHumanSeat, banner, tip: (event, pl) => showTip(event, pl),
     NEUTRAL, RANK, BOTTOM, PAD, AI, PERSONAS, PERSONA_ORDER, KEYS, ARENAS, STEP_MS,
     get G() { return G; }, get tune() { return tune; }, get setup() { return setup; }, get geo() { return geo; }, get phase() { return phase; },
     get match() { return match; }, get mode() { return V; }, get quiet() { return quiet; }, get fps() { return Perf.fps; }, get rng() { return G.rng; },
