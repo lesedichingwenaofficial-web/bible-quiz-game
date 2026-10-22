@@ -24,6 +24,9 @@ PARTS = {
     "/*@STAMPEDE*/": (SRC / "_stampede.js").read_text(),
     "/*@STAMPEDECSS*/": (SRC / "_stampede.css").read_text(),
     "<!--@STAMPEDEHTML-->": (SRC / "_stampede.html").read_text(),
+    "/*@STAMPEDE2*/": (SRC / "_stampede2.js").read_text(),
+    "/*@STAMPEDE2CSS*/": (SRC / "_stampede2.css").read_text(),
+    "<!--@STAMPEDE2HTML-->": (SRC / "_stampede2.html").read_text(),
 }
 SKELETON = re.compile(
     r"<!doctype html>\s*|<html[^>]*>\s*|</html>\s*|<head>\s*|</head>\s*|<body>\s*|</body>\s*"
@@ -35,7 +38,7 @@ artifact_dir = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else None
 if artifact_dir:
     artifact_dir.mkdir(parents=True, exist_ok=True)
 
-for src in sorted([*SRC.glob("[0-9]*.html"), *SRC.glob("s[0-9]*.html")]):
+for src in sorted([*SRC.glob("[0-9]*.html"), *SRC.glob("s[0-9]*.html"), *SRC.glob("n[0-9]*.html")]):
     html = src.read_text()
     for marker, text in PARTS.items():
         html = html.replace(marker, text)

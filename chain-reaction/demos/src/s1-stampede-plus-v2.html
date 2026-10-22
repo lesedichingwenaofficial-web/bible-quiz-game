@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#13201a" />
+<title>Stampede+</title>
+<meta name="description" content="Stampede+, a cheekyfoundlamb game: real-time Chain Reaction for 2-4 players on one phone, with matches, arenas, teams and mystery boxes." />
+<style>
+/*@KITCSS*/
+/*@STAMPEDE2CSS*/
+</style>
+</head>
+<body>
+<!--@STAMPEDE2HTML-->
+<script>
+/*@ENGINE*/
+/*@KIT*/
+/*@STAMPEDE2*/
+
+// ======================= S1: STAMPEDE+ v2 =======================
+// ---------- CONFIG ----------
+const CONFIG = {
+  boxEverySecs: 15, // a mystery box drops in this often
+  arenas: {
+    open: { name: "Open Field", rows: 9, cols: 6, rocks: [] },
+    rocky: { name: "Rocky Field", rows: 9, cols: 6, rocks: [[2, 1, 2], [2, 4, 2], [6, 1, 2], [6, 4, 2], [4, 2, 3], [4, 3, 3]] }, // [row, col, hits]
+    quick: { name: "Quick Pasture", rows: 7, cols: 5, rocks: [] },
+  },
+  teamColors: ["#ff4d4d", "#3f7bff", "#7fd0ff", "#ff9a5c"], // seats 0 & 3 against 1 & 2
+  teamNames: ["Red", "Blue", "Sky", "Orange"],
+};
+
+// ---------- MODE ----------
+Stampede.run({
+  key: "s1",
+  title: "Stampede+",
+  how: ["Tap your button to drop a sheep where your cursor is.", "Big chains load special sheep. Last flock, or most squares, wins."],
+  match: true,
+  setupDefaults: { n: 2, seats: ["human", "ai", "ai", "ai"], arena: "open", bestOf: 3, teams: false, boxes: true },
+  board: (s) => CONFIG.arenas[s.arena] ?? CONFIG.arenas.open,
+  players: (s) =>
+    Array.from({ length: s.n }, (_, p) => ({
+      seat: p,
+      kind: s.seats[p],
+      team: s.teams && s.n === 4 ? (p === 0 || p === 3 ? 0 : 1) : p,
+      ...(s.teams && s.n === 4 ? { color: CONFIG.teamColors[p], name: CONFIG.teamNames[p] } : {}),
+    })),
+  options(ui, s) {
+    ui.stepper("Players", "n", 2, 4);
+    ui.seats(s.n);
+    ui.seg("Arena", "arena", [["open", "Open"], ["rocky", "Rocky"], ["quick", "Quick"]]);
+    ui.seg("Match", "bestOf", [[1, "1 round"], [3, "Best of 3"], [5, "Best of 5"]]);
+    if (s.n === 4) ui.seg("Teams", "teams", [[false, "Off"], [true, "2 v 2"]]);
+    ui.seg("Mystery boxes", "boxes", [[true, "On"], [false, "Off"]]);
+  },
+  music: {
+    bpm: 124, root: 60, scale: "major", prog: [0, 4, 5, 3],
+    lead: ["0.2.4...2.4.5.4.", "4...2.0.2...4.2.", "5.4.2...4.5.7...", "4.2.0...2.1.0..."],
+    bass: "x...x.5.x...x.5.",
+    drums: { kick: "x...x...x...x...", snare: "....x.......x...", hat: "x.x.x.x.x.x.x.x." },
+  },
+  badges: [
+    { id: "win", icon: "🏆", name: "First win", desc: "Win a game", test: (c) => c.won },
+    { id: "chain10", icon: "🔗", name: "Chain 10", desc: "Make a 10-chain", test: (c) => c.hs.some((p) => Math.max(p.best, p.chain) >= 10) },
+    { id: "chain20", icon: "⚡", name: "Chain 20", desc: "Make a 20-chain", test: (c) => c.hs.some((p) => Math.max(p.best, p.chain) >= 20) },
+    { id: "clean", icon: "🧼", name: "Clean hooves", desc: "Win without a lockout", test: (c) => c.won && c.hs.every((p) => p.wastes === 0) },
+    { id: "overflow", icon: "🌟", name: "Overflowing cup", desc: "Drop an Overflow sheep", test: (c) => c.hs.some((p) => p.overflows > 0) },
+    { id: "gifts", icon: "🎁", name: "Gift finder", desc: "Open 3 boxes in one game", test: (c) => c.hs.some((p) => p.gifts >= 3) },
+    { id: "rocks", icon: "🪨", name: "Rock breaker", desc: "Break 3 rocks in one game", test: (c) => c.hs.some((p) => p.rocks >= 3) },
+    { id: "champ", icon: "👑", name: "Champion", desc: "Win a best-of-5 match", test: (c) => c.won && c.match?.need === 3 },
+    { id: "team", icon: "🤝", name: "Better together", desc: "Win a 2 v 2 game", test: (c) => c.won && c.setup.teams && c.setup.n === 4 },
+    { id: "four", icon: "🎉", name: "Full house", desc: "Win a 4-player game", test: (c) => c.won && c.setup.n === 4 && !c.setup.teams },
+  ],
+  hooks: {
+    setup(G, s) {
+      const arena = CONFIG.arenas[s.arena] ?? CONFIG.arenas.open;
+      for (const [r, c, hp] of arena.rocks) {
+        const i = r * G.b.cols + c;
+        G.b.kind[i] = "rock";
+        G.b.hp[i] = G.b.mhp[i] = hp;
+      }
+      G.data.nextBox = s.boxes ? performance.now() + CONFIG.boxEverySecs * 1000 : Infinity;
+      for (const pl of G.players) pl.gifts = pl.rocks = pl.overflows = 0;
+    },
+    hud() {
+      const m = Stampede.match;
+      if (m) document.getElementById("hud").textContent = `Round ${m.round}`;
+    },
+    update(G, now) {
+      if (now < G.data.nextBox) return;
+      G.data.nextBox = now + CONFIG.boxEverySecs * 1000;
+      const b = G.b;
+      const free = [];
+      for (let i = 0; i < b.size; i++) if (b.owner[i] === -1 && !b.kind[i] && !b.rock[i]) free.push(i);
+      if (!free.length) return;
+      const i = free[Math.floor(Math.random() * free.length)];
+      b.kind[i] = "box";
+      Stampede.puff(i, "#e050ad", 6);
+      Stampede.Sfx.chime(2);
+    },
+    shift(G, d) {
+      G.data.nextBox += d;
+    },
+    afterDrop(G, pl, i, special) {
+      if (special === "overflow") pl.overflows++;
+    },
+    onBox: (G, i, who) => G.players[who] && G.players[who].gifts++,
+    onRockBreak: (G, i, who) => G.players[who] && G.players[who].rocks++,
+    aiValue(G, pl, i) {
+      const b = G.b;
+      const bursts = b.count[i] + 1 >= Engine.capacity(b, i);
+      return Engine.neighbours(b, i).filter((k) => b.kind[k]).length * (bursts ? 3 : 0.5);
+    },
+  },
+});
+</script>
+</body>
+</html>

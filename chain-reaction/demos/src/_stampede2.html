@@ -1,0 +1,103 @@
+<div class="app" id="app">
+  <div class="band top" id="band-top-wrap">
+    <canvas id="band-top" aria-label="Top players' buttons"></canvas>
+    <div class="mid flip"><span class="timer" id="timer-top"></span></div>
+  </div>
+  <div class="hud" id="hud"></div>
+  <main class="stage" id="stage">
+    <canvas id="board" aria-label="Board"></canvas>
+    <div class="shouts" id="shouts"></div>
+  </main>
+  <div class="band bottom" id="band-bottom-wrap">
+    <canvas id="band-bottom" aria-label="Bottom players' buttons"></canvas>
+    <div class="mid" id="mid-bottom">
+      <span class="timer" id="timer"></span>
+      <button class="ib round" id="pause" aria-label="Pause">❚❚</button>
+    </div>
+  </div>
+</div>
+
+<div class="tut" id="tut" hidden>
+  <div class="hand" id="tut-hand">👆</div>
+  <div class="tut-label" id="tut-label"></div>
+  <button class="ib skip" id="tut-skip">Skip ›</button>
+</div>
+
+<section class="overlay title-screen" id="title">
+  <div class="card">
+    <canvas class="hero" id="title-lamb"></canvas>
+    <h1 id="title-name"></h1>
+    <p class="brand">a cheekyfoundlamb game</p>
+    <p class="howto2" id="title-how"></p>
+    <div class="opts" id="opts"></div>
+    <button class="big" id="play">Play</button>
+    <div class="row3">
+      <button class="big alt" id="open-stats">🏆 Stats</button>
+      <button class="big alt" id="open-settings">⚙ Settings</button>
+    </div>
+  </div>
+</section>
+
+<section class="overlay" id="pausemenu" hidden>
+  <div class="card">
+    <h2>Paused</h2>
+    <button class="big" id="resume">Resume</button>
+    <button class="big alt" id="restart">Restart</button>
+    <button class="big alt" id="pause-settings">Settings</button>
+    <button class="big alt" id="home">Home</button>
+  </div>
+</section>
+
+<section class="overlay" id="settings" hidden>
+  <div class="card">
+    <h2>Settings</h2>
+    <div class="opts" id="settings-list"></div>
+    <button class="big alt" id="open-advanced">Advanced…</button>
+    <button class="big" id="settings-back">Done</button>
+  </div>
+</section>
+
+<section class="overlay" id="tune" hidden>
+  <div class="card">
+    <h2>Advanced</h2>
+    <p>Changes apply straight away and are remembered.</p>
+    <div class="sliders" id="sliders"></div>
+    <button class="big alt" id="tune-reset">Reset to defaults</button>
+    <button class="big" id="tune-back">Done</button>
+  </div>
+</section>
+
+<section class="overlay" id="between" hidden>
+  <div class="card">
+    <h2 id="between-title"></h2>
+    <div class="score-dots" id="between-score"></div>
+    <div class="bar-timer"><i id="between-bar"></i></div>
+  </div>
+</section>
+
+<section class="overlay" id="results" hidden>
+  <div class="card">
+    <canvas class="hero" id="results-lamb"></canvas>
+    <h2 id="results-title"></h2>
+    <p id="results-sub"></p>
+    <div id="results-extra"></div>
+    <div class="statgrid" id="results-stats"></div>
+    <div class="badges-new" id="results-badges"></div>
+    <button class="big" id="again">Play again</button>
+    <button class="big alt" id="results-home">Home</button>
+  </div>
+</section>
+
+<section class="overlay" id="stats" hidden>
+  <div class="card">
+    <h2>Stats</h2>
+    <div class="statgrid" id="stats-list"></div>
+    <h3>Badges</h3>
+    <div class="badges" id="badge-list"></div>
+    <button class="big" id="stats-back">Done</button>
+  </div>
+</section>
+
+<section class="rotate" id="rotate">
+  <div>📱↻<p>Turn your phone upright to play</p></div>
+</section>

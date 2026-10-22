@@ -38,6 +38,14 @@ Eight takes on demo 8, all on one shared real-time core (`src/_stampede.js`) so 
 | S7 | Sheep Rush | 60-second solo score attack: claim grey sheep, smash rocks, keep the combo multiplier going, copy a share line |
 | S8 | Rhythm Stampede | 1v1 against AI or a friend to a Web Audio beat: tap on the step for a PERFECT double sheep |
 
+## Finished games (v2)
+
+The five favourite Stampede versions, rebuilt to a finished-game standard on the v2 core (`src/_stampede2.*`): title screen, first-play tutorial, pause menu with auto-pause, results with records, settings (music, sound, vibration, reduced motion, pen display, tap zone, AI), stats and badges, Web Audio music, haptics, pooled particles and sprite caching.
+
+| File | Game | New |
+|---|---|---|
+| `s1-stampede-plus-v2.html` | Stampede+ | Best-of-3/5 matches, 3 arenas (Open, Rocky, Quick), teams, mystery boxes |
+
 Balance numbers sit in a `CONFIG` object at the top of each file.
 
 ## Editing
@@ -55,6 +63,7 @@ python3 build.py
 - `src/_kit.css`: the shared screen layout
 - `src/_cards.js`, `src/_cards.css`: the card pool, card effects, targeting, reveal scenes, board effects and card AI (demos 11–18)
 - `src/_table.js`: board, player chips, hand and tap-to-target UI for the card demos
-- `src/_stampede.js`, `src/_stampede.css`, `src/_stampede.html`: the real-time Stampede core (cursors, sheep pens, special sheep, shouts, lambs, AI seats, Stampede Time, tuning panel)
+- `src/_stampede2.js`, `src/_stampede2.css`, `src/_stampede2.html`: the v2 Stampede core used by the finished games and the new demos
+- `src/_stampede.js`, `src/_stampede.css`, `src/_stampede.html`: the original real-time Stampede core (cursors, sheep pens, special sheep, shouts, lambs, AI seats, Stampede Time, tuning panel)
 
 Demos change the engine's behaviour only through the rule hooks passed to `Engine.resolve`.
