@@ -58,6 +58,7 @@ The five favourite Stampede versions, rebuilt to a finished-game standard on the
 | `n2-flock-fall.html` | Flock Fall | Puyo-style versus on two 6x10 boards: drop down columns, everything falls, 4+ chains pop and send rocks |
 | `n3-wolf-tag.html` | Wolf Tag | Infection party for 3–4: caught lambs join the wolves; a last lamb who holds out wins alone |
 | `n4-guard-the-fold.html` | Guard the Fold | Co-op tower defence for 1–4: bursts beside a dirt path hit walking wolves; 10 waves, 5 hearts, 3 paths |
+| `n5-lead-him-home.html` | Lead Him Home | Escort, solo or 2 co-op: the lamb walks home over your squares while wolves scare him back; 10 levels |
 
 Balance numbers sit in a `CONFIG` object at the top of each file.
 

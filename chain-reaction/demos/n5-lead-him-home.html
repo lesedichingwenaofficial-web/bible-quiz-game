@@ -1,0 +1,3232 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#13201a" />
+<title>Lead Him Home</title>
+<meta name="description" content="Lead Him Home, a cheekyfoundlamb game: real-time Chain Reaction escort. Build a path of your sheep so the lost lamb can walk home to the Shepherd." />
+<style>
+/* ===== shared shell styles ===== */
+:root {
+  --night: #13201a;
+  --meadow: #1d3327;
+  --meadow-2: #274232;
+  --cream: #fbf4e6;
+  --muted: #b5c4b4;
+  --sun: #ffcf4a;
+  --wool: #ffffff;
+  --danger: #ff6b6b;
+  --round: ui-rounded, "SF Pro Rounded", "Nunito", "Segoe UI", system-ui, sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--night);
+  color: var(--cream);
+  font-family: var(--round);
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+}
+[hidden] { display: none !important; }
+button { font: inherit; color: inherit; border: 0; cursor: pointer; touch-action: manipulation; }
+button:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
+.app {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: env(safe-area-inset-top, 0px) max(10px, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px) max(10px, env(safe-area-inset-left, 0px));
+}
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 2px 6px;
+  min-height: 52px;
+}
+.status { display: flex; align-items: center; gap: 8px; min-width: 0; font-weight: 800; font-size: 1.02rem; }
+.status .dot { width: 18px; height: 18px; border-radius: 50%; flex: none; box-shadow: 0 0 10px currentColor; background: currentColor; }
+.status .txt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.btns { display: flex; gap: 6px; flex: none; }
+.ib {
+  min-width: 44px; height: 44px; padding: 0 10px; border-radius: 14px;
+  background: var(--meadow); font-size: 1.05rem; font-weight: 800;
+}
+.ib:disabled { opacity: 0.35; cursor: default; }
+.ib.on { background: var(--sun); color: #2a2010; }
+.stage { flex: 1; min-height: 0; position: relative; display: flex; align-items: center; justify-content: center; padding: 4px 0 10px; }
+.stage canvas { display: block; touch-action: manipulation; border-radius: 10px; }
+.chain {
+  position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%);
+  width: 92%; text-align: center; text-wrap: balance; line-height: 1.1;
+  font-size: clamp(1.5rem, 8vw, 2.4rem); font-weight: 900; color: var(--sun); pointer-events: none;
+  text-shadow: 0 3px 0 #6b4a00, 0 0 24px rgba(255, 207, 74, 0.6); opacity: 0;
+}
+.chain.pop { animation: pop 0.9s ease-out; }
+@keyframes pop {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+  15% { opacity: 1; transform: translate(-50%, -50%) scale(1.15); }
+  70% { opacity: 1; transform: translate(-50%, -60%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -75%) scale(0.95); }
+}
+.shake { animation: shake 0.25s linear; }
+.shake-big { animation: shake 0.45s linear; }
+@keyframes shake {
+  0%, 100% { transform: translate(0, 0); }
+  20% { transform: translate(-5px, 3px); }
+  40% { transform: translate(5px, -3px); }
+  60% { transform: translate(-4px, -2px); }
+  80% { transform: translate(3px, 2px); }
+}
+.overlay {
+  position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+  padding: max(16px, env(safe-area-inset-top, 0px)) 16px max(16px, env(safe-area-inset-bottom, 0px));
+  background: rgba(8, 14, 11, 0.86); backdrop-filter: blur(4px); overflow-y: auto;
+}
+.card {
+  width: 100%; max-width: 400px; margin: auto; padding: 22px 18px; border-radius: 24px;
+  background: var(--meadow); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45); text-align: center;
+}
+.card h1, .card h2 { margin: 4px 0 6px; line-height: 1.1; text-wrap: balance; }
+.card h1 { font-size: 2rem; color: var(--sun); letter-spacing: -0.01em; }
+.card h2 { font-size: 1.7rem; }
+.card p { margin: 6px 0; color: var(--muted); line-height: 1.4; }
+.card .how { text-align: left; font-size: 0.95rem; }
+.card canvas.hero { display: block; margin: 0 auto 4px; }
+.big {
+  display: block; width: 100%; margin-top: 14px; padding: 15px; border-radius: 16px;
+  background: var(--sun); color: #2a2010; font-weight: 900; font-size: 1.15rem;
+}
+.big.alt { background: var(--meadow-2); color: var(--cream); margin-top: 8px; }
+.opts { display: grid; gap: 8px; margin-top: 12px; text-align: left; }
+.optrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.optrow label, .optrow .lbl { font-weight: 800; }
+.seg { display: flex; flex-wrap: wrap; gap: 4px; background: var(--meadow-2); padding: 4px; border-radius: 12px; }
+.seg button { padding: 8px 10px; border-radius: 9px; background: transparent; color: var(--muted); font-weight: 800; font-size: 0.9rem; }
+.seg button.on { background: var(--sun); color: #2a2010; }
+.verse { font-style: italic; color: var(--cream) !important; }
+.verse small { display: block; margin-top: 4px; font-style: normal; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) {
+  .shake, .shake-big, .chain.pop { animation-duration: 0.01s; }
+}
+/* ===== end shared shell styles ===== */
+
+/* ===== shared Stampede v2 styles ===== */
+html, body { position: fixed; inset: 0; touch-action: none; -webkit-touch-callout: none; }
+* { -webkit-tap-highlight-color: transparent; }
+canvas { touch-action: none; }
+.app { gap: 0; }
+.band { position: relative; flex: none; height: clamp(98px, 15.5vh, 132px); }
+.band canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.band .mid {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  display: flex; flex-direction: column; align-items: center; gap: 4px; pointer-events: none;
+}
+.band .mid.flip { transform: translate(-50%, -50%) rotate(180deg); }
+.band .mid button { pointer-events: auto; }
+.timer { font-size: 1.55rem; font-weight: 900; font-variant-numeric: tabular-nums; text-shadow: 0 2px 0 rgba(0,0,0,0.35); }
+.ib.round { min-width: 44px; height: 40px; border-radius: 12px; font-size: 0.85rem; letter-spacing: -2px; }
+.rush .timer { color: #ff6b6b; animation: beat 0.5s ease-in-out infinite; }
+@keyframes beat { 50% { transform: scale(1.15); } }
+.solo .band.top { display: none; }
+.solo .band .mid { left: 16px; transform: translate(0, -50%); align-items: flex-start; }
+.hud { display: flex; justify-content: center; align-items: center; gap: 8px; padding: 4px 0; min-height: 0; font-weight: 900; flex: none; }
+.hud:empty { display: none; }
+.stage { padding: 2px 0; }
+.stage canvas { border-radius: 0; }
+.shouts { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.shout {
+  position: absolute; left: 50%; top: 50%; font-weight: 900; white-space: nowrap; opacity: 0;
+  transform: translate(-50%, -50%); text-shadow: 0 3px 0 rgba(0,0,0,0.45), 0 0 20px currentColor;
+}
+.shout.go { animation: shout 0.95s ease-out forwards; }
+.shout.flip { rotate: 180deg; }
+@keyframes shout {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.4); }
+  18% { opacity: 1; transform: translate(-50%, -50%) scale(1.18); }
+  75% { opacity: 1; transform: translate(-50%, -62%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -80%) scale(0.95); }
+}
+.reduced .shout.go { animation: fade 0.9s ease-out forwards; }
+@keyframes fade { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
+.rush .stage { animation: rushglow 0.5s ease-in-out infinite alternate; }
+.reduced.rush .stage { animation: none; box-shadow: inset 0 0 24px rgba(255,80,80,0.35); }
+@keyframes rushglow { from { box-shadow: inset 0 0 0 rgba(255,80,80,0); } to { box-shadow: inset 0 0 30px rgba(255,80,80,0.45); } }
+
+/* screens */
+.overlay { z-index: 30; }
+.card { position: relative; }
+.title-screen .card { padding-top: 14px; }
+.brand { margin-top: -2px !important; font-size: 0.8rem; letter-spacing: 0.08em; text-transform: lowercase; }
+.howto2 { color: var(--cream) !important; font-weight: 700; line-height: 1.35; font-size: 0.95rem; }
+.row3 { display: flex; gap: 8px; }
+.row3 .big { margin-top: 8px; font-size: 1rem; padding: 12px 8px; }
+.card h3 { margin: 14px 0 6px; font-size: 1.05rem; color: var(--sun); }
+.opts { max-height: 46vh; overflow-y: auto; touch-action: pan-y; }
+#settings-list { max-height: none; }
+.seats { display: grid; gap: 6px; }
+.seat { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 12px; background: var(--meadow-2); }
+.seat .sym { width: 22px; height: 22px; flex: none; }
+.seat .nm { flex: 1; font-weight: 800; text-align: left; }
+.stepper { display: flex; align-items: center; gap: 4px; background: var(--meadow-2); border-radius: 12px; padding: 4px; }
+.stepper button { width: 40px; height: 40px; border-radius: 9px; background: transparent; font-size: 1.3rem; font-weight: 900; }
+.stepper output { min-width: 22px; text-align: center; font-weight: 900; }
+.sliders { display: grid; gap: 10px; margin-top: 10px; text-align: left; max-height: 52vh; overflow-y: auto; touch-action: pan-y; }
+.sliders label { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; font-weight: 800; font-size: 0.9rem; }
+.sliders input { grid-column: 1 / -1; width: 100%; accent-color: var(--sun); touch-action: pan-x; }
+.sliders output { color: var(--sun); font-variant-numeric: tabular-nums; }
+.optrow input[type=range] { width: 120px; accent-color: var(--sun); touch-action: pan-x; }
+.statgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 10px; }
+.stat { background: var(--meadow-2); border-radius: 12px; padding: 8px 6px; }
+.stat b { display: block; font-size: 1.25rem; color: var(--cream); font-variant-numeric: tabular-nums; }
+.stat span { font-size: 0.75rem; color: var(--muted); }
+.stat.best b { color: var(--sun); }
+.stat.best span::after { content: " ★ new best"; color: var(--sun); }
+.badges { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; }
+.badge { background: var(--meadow-2); border-radius: 12px; padding: 8px 4px; font-size: 0.72rem; color: var(--muted); }
+.badge i { display: block; font-style: normal; font-size: 1.6rem; filter: grayscale(1); opacity: 0.35; }
+.badge.got { color: var(--cream); }
+.badge.got i { filter: none; opacity: 1; }
+.badges-new:empty { display: none; }
+.badges-new { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.badges-new .badge { animation: badgepop 0.6s ease-out; border: 2px solid var(--sun); }
+@keyframes badgepop { from { transform: scale(0.3); } 60% { transform: scale(1.1); } }
+.score-dots { display: grid; gap: 8px; margin: 12px 0; }
+.score-dots .team { display: flex; align-items: center; gap: 8px; justify-content: center; font-weight: 900; }
+.score-dots .team i { width: 18px; height: 18px; border-radius: 50%; background: var(--meadow-2); }
+.score-dots .team i.won { background: currentColor; box-shadow: 0 0 10px currentColor; }
+.bar-timer { height: 6px; border-radius: 3px; background: var(--meadow-2); overflow: hidden; margin-top: 10px; }
+.bar-timer i { display: block; height: 100%; width: 0; background: var(--sun); }
+.bar-timer.go i { animation: fillbar 3s linear forwards; }
+@keyframes fillbar { to { width: 100%; } }
+
+/* tutorial */
+.tut { position: fixed; inset: 0; z-index: 25; pointer-events: none; }
+.tut .hand {
+  position: absolute; left: 0; top: 0; font-size: 46px; transform: translate(-30%, -10%);
+  filter: drop-shadow(0 4px 6px rgba(0,0,0,0.5)); transition: left 0.6s ease, top 0.6s ease; animation: tap 0.9s ease-in-out infinite;
+}
+@keyframes tap { 50% { margin-top: 12px; scale: 0.9; } }
+.tut-label {
+  position: absolute; left: 50%; top: 42%; transform: translateX(-50%); padding: 8px 14px; border-radius: 14px;
+  background: rgba(10, 18, 14, 0.85); font-weight: 900; font-size: 1.1rem; white-space: nowrap;
+}
+.tut-label:empty { display: none; }
+.tut .skip { position: absolute; left: 50%; top: calc(42% + 56px); transform: translateX(-50%); pointer-events: auto; background: rgba(10, 18, 14, 0.85); }
+
+/* rotate */
+.rotate { display: none; }
+@media (orientation: landscape) and (max-height: 520px) {
+  .rotate {
+    display: grid; place-items: center; position: fixed; inset: 0; z-index: 99; background: var(--night);
+    font-size: 3rem; text-align: center; font-weight: 900;
+  }
+  .rotate p { font-size: 1.1rem; color: var(--cream); }
+}
+/* ===== end shared Stampede v2 styles ===== */
+
+.hud { gap: 10px; font-size: 1.05rem; }
+.verse { font-style: italic; color: var(--cream) !important; }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <div class="band top" id="band-top-wrap">
+    <canvas id="band-top" aria-label="Top players' buttons"></canvas>
+    <div class="mid flip"><span class="timer" id="timer-top"></span></div>
+  </div>
+  <div class="hud" id="hud"></div>
+  <main class="stage" id="stage">
+    <canvas id="board" aria-label="Board"></canvas>
+    <div class="shouts" id="shouts"></div>
+  </main>
+  <div class="band bottom" id="band-bottom-wrap">
+    <canvas id="band-bottom" aria-label="Bottom players' buttons"></canvas>
+    <div class="mid" id="mid-bottom">
+      <span class="timer" id="timer"></span>
+      <button class="ib round" id="pause" aria-label="Pause">❚❚</button>
+    </div>
+  </div>
+</div>
+
+<div class="tut" id="tut" hidden>
+  <div class="hand" id="tut-hand">👆</div>
+  <div class="tut-label" id="tut-label"></div>
+  <button class="ib skip" id="tut-skip">Skip ›</button>
+</div>
+
+<section class="overlay title-screen" id="title">
+  <div class="card">
+    <canvas class="hero" id="title-lamb"></canvas>
+    <h1 id="title-name"></h1>
+    <p class="brand">a cheekyfoundlamb game</p>
+    <p class="howto2" id="title-how"></p>
+    <div class="opts" id="opts"></div>
+    <button class="big" id="play">Play</button>
+    <div class="row3">
+      <button class="big alt" id="open-stats">🏆 Stats</button>
+      <button class="big alt" id="open-settings">⚙ Settings</button>
+    </div>
+  </div>
+</section>
+
+<section class="overlay" id="pausemenu" hidden>
+  <div class="card">
+    <h2>Paused</h2>
+    <button class="big" id="resume">Resume</button>
+    <button class="big alt" id="restart">Restart</button>
+    <button class="big alt" id="pause-settings">Settings</button>
+    <button class="big alt" id="home">Home</button>
+  </div>
+</section>
+
+<section class="overlay" id="settings" hidden>
+  <div class="card">
+    <h2>Settings</h2>
+    <div class="opts" id="settings-list"></div>
+    <button class="big alt" id="open-advanced">Advanced…</button>
+    <button class="big" id="settings-back">Done</button>
+  </div>
+</section>
+
+<section class="overlay" id="tune" hidden>
+  <div class="card">
+    <h2>Advanced</h2>
+    <p>Changes apply straight away and are remembered.</p>
+    <div class="sliders" id="sliders"></div>
+    <button class="big alt" id="tune-reset">Reset to defaults</button>
+    <button class="big" id="tune-back">Done</button>
+  </div>
+</section>
+
+<section class="overlay" id="between" hidden>
+  <div class="card">
+    <h2 id="between-title"></h2>
+    <div class="score-dots" id="between-score"></div>
+    <div class="bar-timer"><i id="between-bar"></i></div>
+  </div>
+</section>
+
+<section class="overlay" id="results" hidden>
+  <div class="card">
+    <canvas class="hero" id="results-lamb"></canvas>
+    <h2 id="results-title"></h2>
+    <p id="results-sub"></p>
+    <div id="results-extra"></div>
+    <div class="statgrid" id="results-stats"></div>
+    <div class="badges-new" id="results-badges"></div>
+    <button class="big" id="again">Play again</button>
+    <button class="big alt" id="results-home">Home</button>
+  </div>
+</section>
+
+<section class="overlay" id="stats" hidden>
+  <div class="card">
+    <h2>Stats</h2>
+    <div class="statgrid" id="stats-list"></div>
+    <h3>Badges</h3>
+    <div class="badges" id="badge-list"></div>
+    <button class="big" id="stats-back">Done</button>
+  </div>
+</section>
+
+<section class="rotate" id="rotate">
+  <div>📱↻<p>Turn your phone upright to play</p></div>
+</section>
+
+<script>
+// ===================== CHAIN REACTION ENGINE =====================
+// Shared by every cheekyfoundlamb demo. Keep this block identical across files;
+// demo-specific rules plug in through the `rules` hooks of Engine.resolve.
+//
+// Written for the Chain Burst project after studying these MIT-licensed
+// open-source Chain Reaction games:
+//   LironCareto/ChainReaction          Copyright (c) 2026 LironCareto
+//   tahmidnafees619/ChainReaction-game Copyright (c) 2026 tahmidnafees619
+//
+// MIT License
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+const Engine = (() => {
+  const ORTHO = [[-1, 0], [0, 1], [1, 0], [0, -1]];
+  const DIAG = [[-1, -1], [-1, 1], [1, 1], [1, -1]];
+  const ALL8 = ORTHO.concat(DIAG);
+
+  // A board is a set of flat arrays indexed by row * cols + col.
+  // owner: player index (>= 0), or -1 for empty. count: orbs in the cell.
+  // rock: blocked cells. `extra` adds more per-cell arrays, e.g. { water: false }.
+  function createBoard(rows, cols, extra = {}) {
+    const size = rows * cols;
+    const b = {
+      rows,
+      cols,
+      size,
+      owner: new Array(size).fill(-1),
+      count: new Array(size).fill(0),
+      rock: new Array(size).fill(false),
+    };
+    for (const [key, value] of Object.entries(extra)) b[key] = new Array(size).fill(value);
+    return b;
+  }
+
+  function clone(b) {
+    const c = {};
+    for (const key in b) c[key] = Array.isArray(b[key]) ? b[key].slice() : b[key];
+    return c;
+  }
+
+  const rowOf = (b, i) => Math.floor(i / b.cols);
+  const colOf = (b, i) => i % b.cols;
+  const inside = (b, r, c) => r >= 0 && c >= 0 && r < b.rows && c < b.cols;
+
+  function neighbours(b, i, dirs = ORTHO) {
+    const r = rowOf(b, i);
+    const c = colOf(b, i);
+    const out = [];
+    for (const [dr, dc] of dirs) {
+      const nr = r + dr;
+      const nc = c + dc;
+      if (!inside(b, nr, nc)) continue;
+      const n = nr * b.cols + nc;
+      if (!b.rock[n]) out.push(n);
+    }
+    return out;
+  }
+
+  // Critical mass: the number of open orthogonal neighbours (corner 2, edge 3, middle 4).
+  const capacity = (b, i) => neighbours(b, i).length;
+
+  const DEFAULT_RULES = {
+    cap: (b, i) => capacity(b, i), // orbs needed to burst
+    canBurst: (b, i) => b.owner[i] >= 0,
+    targets: (b, i) => neighbours(b, i), // one orb lands per entry (repeat an entry for 2 orbs)
+    spend: (b, i) => DEFAULT_RULES.cap(b, i), // orbs the bursting cell loses
+    emptied: (b, i) => {
+      b.owner[i] = -1;
+    },
+    land: (b, from, to, who) => {
+      b.owner[to] = who;
+      b.count[to]++;
+    },
+    done: () => false, // return true to stop resolving (e.g. only one side left)
+    maxWaves: 200,
+  };
+
+  function place(b, i, who, n = 1) {
+    b.owner[i] = who;
+    b.count[i] += n;
+  }
+
+  // Resolves every burst in waves: all full cells in a wave burst together.
+  // Mutates `b`. Returns { waves, capped }, where each wave is
+  // { bursts: [{ from, to, who }], board } and board is a snapshot after the wave.
+  function resolve(b, rules = {}, record = true) {
+    const R = { ...DEFAULT_RULES, ...rules };
+    if (!rules.spend) R.spend = (bb, i) => R.cap(bb, i);
+    const waves = [];
+    let capped = false;
+    for (;;) {
+      if (R.done(b)) break;
+      if (waves.length >= R.maxWaves) {
+        capped = true;
+        break;
+      }
+      const ready = [];
+      for (let i = 0; i < b.size; i++) if (b.count[i] >= R.cap(b, i) && R.canBurst(b, i)) ready.push(i);
+      if (!ready.length) break;
+      const bursts = [];
+      for (const from of ready) {
+        const who = b.owner[from];
+        const to = R.targets(b, from);
+        b.count[from] = Math.max(0, b.count[from] - R.spend(b, from));
+        if (b.count[from] === 0) R.emptied(b, from);
+        bursts.push({ from, to, who });
+      }
+      for (const { from, to, who } of bursts) for (const t of to) R.land(b, from, t, who);
+      waves.push({ bursts, board: record ? clone(b) : null });
+    }
+    return { waves, capped };
+  }
+
+  function tally(b, players) {
+    const cells = new Array(players).fill(0);
+    const orbs = new Array(players).fill(0);
+    for (let i = 0; i < b.size; i++) {
+      const o = b.owner[i];
+      if (o >= 0 && o < players) {
+        cells[o]++;
+        orbs[o] += b.count[i];
+      }
+    }
+    return { cells, orbs };
+  }
+
+  return { ORTHO, DIAG, ALL8, createBoard, clone, rowOf, colOf, inside, neighbours, capacity, place, resolve, tally };
+})();
+// =================== END CHAIN REACTION ENGINE ===================
+
+// ========================= SHARED KIT =========================
+// Sound, character art, wave animation, AI and screen helpers used by every demo.
+const Kit = (() => {
+  // ---------- sound (Web Audio, no files) ----------
+  let actx = null;
+  let muted = false;
+  try {
+    muted = localStorage.getItem("cfl-muted") === "1";
+  } catch {}
+
+  function ac() {
+    if (muted) return null;
+    try {
+      actx ??= new (window.AudioContext || window.webkitAudioContext)();
+      if (actx.state === "suspended") actx.resume();
+      return actx;
+    } catch {
+      return null;
+    }
+  }
+
+  function tone(freq, dur = 0.12, type = "sine", vol = 0.12, slideTo = 0, delay = 0) {
+    const a = ac();
+    if (!a) return;
+    const t = a.currentTime + delay;
+    const o = a.createOscillator();
+    const g = a.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t);
+    if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + dur);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(a.destination);
+    o.start(t);
+    o.stop(t + dur + 0.02);
+  }
+
+  function bleat(pitch = 1, delay = 0) {
+    const a = ac();
+    if (!a) return;
+    const t = a.currentTime + delay;
+    const o = a.createOscillator();
+    const lfo = a.createOscillator();
+    const lg = a.createGain();
+    const f = a.createBiquadFilter();
+    const g = a.createGain();
+    o.type = "sawtooth";
+    o.frequency.setValueAtTime(560 * pitch, t);
+    o.frequency.linearRampToValueAtTime(480 * pitch, t + 0.38);
+    lfo.frequency.value = 22;
+    lg.gain.value = 40 * pitch;
+    lfo.connect(lg).connect(o.frequency);
+    f.type = "lowpass";
+    f.frequency.value = 1700;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.09, t + 0.03);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
+    o.connect(f).connect(g).connect(a.destination);
+    o.start(t);
+    lfo.start(t);
+    o.stop(t + 0.42);
+    lfo.stop(t + 0.42);
+  }
+
+  const sfx = {
+    place: () => tone(660, 0.07, "triangle", 0.1),
+    // Pitch climbs a semitone per wave so long chains feel like they're building.
+    burst: (k) => tone(Math.min(240 * Math.pow(2, k / 12), 2200), 0.13, "sine", 0.13, Math.min(240 * Math.pow(2, k / 12), 2200) * 0.6),
+    bad: () => tone(140, 0.15, "square", 0.06, 100),
+    win: () => [523, 659, 784, 1047].forEach((f, k) => tone(f, 0.22, "triangle", 0.12, 0, k * 0.11)),
+    lose: () => [392, 330, 262, 196].forEach((f, k) => tone(f, 0.26, "sine", 0.12, 0, k * 0.14)),
+    howl: () => tone(300, 0.6, "sawtooth", 0.05, 520),
+    chime: (k = 0) => tone(880 * Math.pow(2, k / 12), 0.3, "sine", 0.08),
+    bleat,
+  };
+
+  function setMuted(m) {
+    muted = m;
+    try {
+      localStorage.setItem("cfl-muted", m ? "1" : "0");
+    } catch {}
+  }
+
+  // ---------- art (all drawn with code) ----------
+  function circle(ctx, x, y, r, fill) {
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = fill;
+    ctx.fill();
+  }
+
+  function ellipse(ctx, x, y, rx, ry, rot, fill) {
+    ctx.beginPath();
+    ctx.ellipse(x, y, rx, ry, rot, 0, Math.PI * 2);
+    ctx.fillStyle = fill;
+    ctx.fill();
+  }
+
+  function shade(hex, amt) {
+    const n = parseInt(hex.slice(1), 16);
+    const t = amt < 0 ? 0 : 255;
+    const p = Math.abs(amt);
+    const ch = (s) => Math.round(((n >> s) & 255) * (1 - p) + t * p);
+    return `rgb(${ch(16)},${ch(8)},${ch(0)})`;
+  }
+
+  // cheekyfoundlamb: white wool, cream face, and two same-size eyes on one level
+  // that each look a different way. s is roughly his full height in pixels.
+  // o: { t (seconds, for idle bob), mood: "happy" | "shock" | "sad" | "sleep", scarf: colour, glow }
+  function drawLamb(ctx, x, y, s, o = {}) {
+    const t = o.t ?? 0;
+    const bob = Math.sin(t * 3) * s * 0.015;
+    ctx.save();
+    ctx.translate(x, y + bob);
+    if (o.flip) ctx.scale(-1, 1);
+    if (o.glow) {
+      const g = ctx.createRadialGradient(0, 0, s * 0.1, 0, 0, s * 0.85);
+      g.addColorStop(0, o.glow);
+      g.addColorStop(1, "rgba(255,220,120,0)");
+      circle(ctx, 0, 0, s * 0.85, g);
+    }
+    // legs
+    ctx.fillStyle = "#3b3340";
+    for (const lx of [-0.2, -0.07, 0.08, 0.21]) {
+      ctx.beginPath();
+      ctx.roundRect(lx * s - s * 0.035, s * 0.12, s * 0.07, s * 0.2, s * 0.03);
+      ctx.fill();
+    }
+    // wool body: a ring of puffs around a core
+    const body = [[-0.24, 0], [-0.14, -0.13], [0.02, -0.17], [0.18, -0.12], [0.27, 0.01], [0.18, 0.13], [0, 0.16], [-0.16, 0.13]];
+    for (const [bx, by] of body) circle(ctx, bx * s, by * s, s * 0.15, "#d9d5de");
+    for (const [bx, by] of body) circle(ctx, bx * s, by * s - s * 0.012, s * 0.14, "#ffffff");
+    circle(ctx, 0, 0, s * 0.24, "#ffffff");
+    // tail puff
+    circle(ctx, -0.36 * s, -0.05 * s, s * 0.07, "#ffffff");
+    // head
+    const hx = 0.22 * s;
+    const hy = -0.2 * s;
+    // ears
+    ellipse(ctx, hx - s * 0.17, hy - s * 0.02, s * 0.1, s * 0.045, -0.5, "#f1d9cc");
+    ellipse(ctx, hx + s * 0.17, hy - s * 0.02, s * 0.1, s * 0.045, 0.5, "#f1d9cc");
+    ellipse(ctx, hx - s * 0.17, hy - s * 0.02, s * 0.06, s * 0.022, -0.5, "#f4a7b4");
+    ellipse(ctx, hx + s * 0.17, hy - s * 0.02, s * 0.06, s * 0.022, 0.5, "#f4a7b4");
+    ellipse(ctx, hx, hy + s * 0.02, s * 0.14, s * 0.16, 0, "#f6e6da");
+    // wool tuft on top
+    for (const [tx, ty] of [[-0.07, -0.13], [0, -0.16], [0.07, -0.13]]) circle(ctx, hx + tx * s, hy + ty * s, s * 0.06, "#ffffff");
+    // scarf in the owner's colour
+    if (o.scarf) {
+      ctx.fillStyle = o.scarf;
+      ctx.beginPath();
+      ctx.roundRect(hx - s * 0.13, hy + s * 0.13, s * 0.26, s * 0.06, s * 0.03);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.roundRect(hx + s * 0.04, hy + s * 0.15, s * 0.06, s * 0.12, s * 0.02);
+      ctx.fill();
+    }
+    // the eyes: equal size, equal height, pupils pointing different ways
+    const er = s * 0.045;
+    const ey = hy - s * 0.005;
+    for (const [side, px, py] of [[-1, -0.55, -0.35], [1, 0.5, 0.4]]) {
+      const ex = hx + side * s * 0.058;
+      circle(ctx, ex, ey, er, "#ffffff");
+      ctx.lineWidth = s * 0.008;
+      ctx.strokeStyle = "#3b3340";
+      ctx.stroke();
+      if (o.mood === "sleep") continue;
+      circle(ctx, ex + px * er * 0.9, ey + py * er * 0.9, er * 0.5, "#241d2a");
+      circle(ctx, ex + px * er * 0.9 - er * 0.15, ey + py * er * 0.9 - er * 0.18, er * 0.15, "#ffffff");
+    }
+    if (o.mood === "sleep") {
+      ctx.strokeStyle = "#3b3340";
+      ctx.lineWidth = s * 0.012;
+      for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.arc(hx + side * s * 0.058, ey, er * 0.7, 0.2, Math.PI - 0.2);
+        ctx.stroke();
+      }
+    }
+    // nose and mouth
+    ellipse(ctx, hx, hy + s * 0.08, s * 0.025, s * 0.016, 0, "#c9788a");
+    ctx.strokeStyle = "#3b3340";
+    ctx.lineWidth = s * 0.012;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    if (o.mood === "shock") {
+      ctx.arc(hx, hy + s * 0.125, s * 0.022, 0, Math.PI * 2);
+    } else if (o.mood === "sad") {
+      ctx.arc(hx, hy + s * 0.15, s * 0.035, Math.PI + 0.4, -0.4);
+    } else {
+      // lopsided cheeky smirk
+      ctx.moveTo(hx - s * 0.04, hy + s * 0.11);
+      ctx.quadraticCurveTo(hx + s * 0.005, hy + s * 0.15, hx + s * 0.055, hy + s * 0.1);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Cheeky grey wolf head. s is the head width.
+  function drawWolf(ctx, x, y, s, o = {}) {
+    const t = o.t ?? 0;
+    ctx.save();
+    ctx.translate(x, y + Math.sin(t * 2.4) * s * 0.012);
+    const fur = o.color ?? "#8b8f9c";
+    const dark = shade(fur.startsWith("#") ? fur : "#8b8f9c", -0.35);
+    // ears
+    for (const side of [-1, 1]) {
+      ctx.fillStyle = fur;
+      ctx.beginPath();
+      ctx.moveTo(side * s * 0.12, -s * 0.22);
+      ctx.lineTo(side * s * 0.38, -s * 0.52);
+      ctx.lineTo(side * s * 0.4, -s * 0.12);
+      ctx.fill();
+      ctx.fillStyle = "#d9a3ab";
+      ctx.beginPath();
+      ctx.moveTo(side * s * 0.18, -s * 0.22);
+      ctx.lineTo(side * s * 0.35, -s * 0.42);
+      ctx.lineTo(side * s * 0.36, -s * 0.18);
+      ctx.fill();
+    }
+    // head with cheek tufts
+    ctx.fillStyle = fur;
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.42, -s * 0.05);
+    ctx.quadraticCurveTo(-s * 0.4, -s * 0.38, 0, -s * 0.36);
+    ctx.quadraticCurveTo(s * 0.4, -s * 0.38, s * 0.42, -s * 0.05);
+    ctx.lineTo(s * 0.5, s * 0.08);
+    ctx.lineTo(s * 0.34, s * 0.1);
+    ctx.quadraticCurveTo(s * 0.2, s * 0.32, 0, s * 0.33);
+    ctx.quadraticCurveTo(-s * 0.2, s * 0.32, -s * 0.34, s * 0.1);
+    ctx.lineTo(-s * 0.5, s * 0.08);
+    ctx.closePath();
+    ctx.fill();
+    // muzzle
+    ellipse(ctx, 0, s * 0.12, s * 0.2, s * 0.15, 0, "#e3e1e6");
+    ellipse(ctx, 0, s * 0.03, s * 0.07, s * 0.045, 0, "#2a2530");
+    // half-lidded, sly eyes
+    for (const side of [-1, 1]) {
+      const ex = side * s * 0.16;
+      const ey = -s * 0.13;
+      ellipse(ctx, ex, ey, s * 0.075, s * 0.06, 0, "#ffe680");
+      circle(ctx, ex + s * 0.02, ey + s * 0.01, s * 0.03, "#2a2530");
+      ctx.fillStyle = fur;
+      ctx.beginPath();
+      ctx.ellipse(ex, ey - s * 0.03, s * 0.085, s * 0.05, side * -0.25, Math.PI, 0);
+      ctx.fill();
+      ctx.strokeStyle = dark;
+      ctx.lineWidth = s * 0.02;
+      ctx.beginPath();
+      ctx.moveTo(ex - s * 0.08, ey - s * 0.03 - side * s * 0.02);
+      ctx.lineTo(ex + s * 0.08, ey - s * 0.03 + side * s * 0.02);
+      ctx.stroke();
+    }
+    // grin with one tooth
+    ctx.strokeStyle = "#2a2530";
+    ctx.lineWidth = s * 0.022;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.11, s * 0.15);
+    ctx.quadraticCurveTo(0, o.mood === "sad" ? s * 0.12 : s * 0.24, s * 0.13, s * 0.13);
+    ctx.stroke();
+    if (o.mood !== "sad") {
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.moveTo(s * 0.03, s * 0.2);
+      ctx.lineTo(s * 0.07, s * 0.19);
+      ctx.lineTo(s * 0.05, s * 0.25);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // The Shepherd: a warm silhouette with a staff and a soft glow. h is the height.
+  function drawShepherd(ctx, x, y, h, o = {}) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.globalAlpha = o.alpha ?? 1;
+    const g = ctx.createRadialGradient(0, -h * 0.5, h * 0.05, 0, -h * 0.5, h * 0.52);
+    g.addColorStop(0, "rgba(255,214,140,0.55)");
+    g.addColorStop(1, "rgba(255,214,140,0)");
+    circle(ctx, 0, -h * 0.5, h * 0.52, g);
+    ctx.fillStyle = o.color ?? "#7a4f33";
+    // robe
+    ctx.beginPath();
+    ctx.moveTo(-h * 0.12, -h * 0.72);
+    ctx.quadraticCurveTo(-h * 0.2, -h * 0.3, -h * 0.24, 0);
+    ctx.lineTo(h * 0.24, 0);
+    ctx.quadraticCurveTo(h * 0.2, -h * 0.3, h * 0.12, -h * 0.72);
+    ctx.closePath();
+    ctx.fill();
+    // hooded head
+    circle(ctx, 0, -h * 0.8, h * 0.11, o.color ?? "#7a4f33");
+    ctx.fillStyle = "rgba(255,230,190,0.25)";
+    ctx.beginPath();
+    ctx.ellipse(h * 0.02, -h * 0.79, h * 0.06, h * 0.08, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // staff with crook
+    ctx.strokeStyle = "#c9a26b";
+    ctx.lineWidth = h * 0.025;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(h * 0.3, 0);
+    ctx.lineTo(h * 0.3, -h * 0.95);
+    ctx.arc(h * 0.38, -h * 0.95, h * 0.08, Math.PI, 0);
+    ctx.lineTo(h * 0.46, -h * 0.9);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // A small sheep in a player's colour (used as an "orb"). r is about its radius.
+  function drawSheep(ctx, x, y, r, color, o = {}) {
+    ctx.save();
+    ctx.translate(x, y);
+    if (o.flip) ctx.scale(-1, 1);
+    ctx.fillStyle = "#2b2430";
+    ctx.fillRect(-r * 0.45, r * 0.45, r * 0.18, r * 0.45);
+    ctx.fillRect(r * 0.25, r * 0.45, r * 0.18, r * 0.45);
+    const light = shade(color, 0.45);
+    for (const [bx, by] of [[-0.45, 0], [0, -0.35], [0.4, -0.05], [0.05, 0.3], [-0.3, 0.3], [0.35, 0.3]]) circle(ctx, bx * r, by * r, r * 0.48, color);
+    for (const [bx, by] of [[-0.35, -0.1], [0.05, -0.38], [0.3, -0.12]]) circle(ctx, bx * r, by * r, r * 0.26, light);
+    ellipse(ctx, r * 0.78, -r * 0.15, r * 0.3, r * 0.36, 0.3, "#2b2430");
+    circle(ctx, r * 0.84, -r * 0.24, r * 0.07, "#ffffff");
+    ctx.restore();
+  }
+
+  // ---------- wave animation ----------
+  // Plays the waves returned by Engine.resolve, one per `ms`, calling onWave(k)
+  // as each starts. Read Kit.anim.cur in the draw loop to animate.
+  const anim = {
+    cur: null,
+    play(waves, ms, onWave, pre) {
+      return new Promise((done) => {
+        if (!waves.length) return done();
+        this.cur = { waves, i: 0, start: null, ms, onWave, done, pre };
+      });
+    },
+    step(now) {
+      const c = this.cur;
+      if (!c) return;
+      if (c.start === null) {
+        c.start = now;
+        c.onWave?.(0, c.waves[0]);
+        return;
+      }
+      if (now - c.start < c.ms) return;
+      c.i++;
+      c.start = now;
+      if (c.i >= c.waves.length) {
+        this.cur = null;
+        c.done();
+      } else c.onWave?.(c.i, c.waves[c.i]);
+    },
+    // 0..1 progress of the current wave
+    t(now) {
+      const c = this.cur;
+      if (!c || c.start === null) return 0;
+      return Math.min(1, (now - c.start) / c.ms);
+    },
+    // Board to draw under the flying orbs for the current wave.
+    base() {
+      const c = this.cur;
+      if (!c) return null;
+      return c.i === 0 ? c.pre : c.waves[c.i - 1].board;
+    },
+  };
+
+  // ---------- AI helpers ----------
+  // Generic board score for `me`: orbs, safe corners/edges, near-full cells,
+  // and danger from enemy cells about to burst next to mine.
+  // isMine(owner), isFoe(owner), cap(i) are supplied by the demo.
+  function evaluate(b, isMine, isFoe, cap) {
+    let score = 0;
+    for (let i = 0; i < b.size; i++) {
+      const own = b.owner[i];
+      if (own < 0 || b.count[i] === 0) continue;
+      const mine = isMine(own);
+      if (!mine && !isFoe(own)) continue;
+      const c = cap(i);
+      let v = b.count[i] * 2 + 3;
+      let threatened = false;
+      let prey = 0;
+      for (const n of Engine.neighbours(b, i)) {
+        const o2 = b.owner[n];
+        if (o2 < 0 || b.count[n] === 0) continue;
+        if (isMine(o2) === mine) continue;
+        if (b.count[n] >= cap(n) - 1) threatened = true;
+        prey += b.count[n];
+      }
+      if (threatened) v -= 5 - c + b.count[i];
+      else {
+        if (c === 2) v += 3;
+        else if (c === 3) v += 2;
+        if (b.count[i] >= c - 1) v += 2 + prey;
+      }
+      score += mine ? v : -v;
+    }
+    return score;
+  }
+
+  // Picks the highest scoring move. With chance `mistake`, picks one of the top 3 instead.
+  function pickBest(scored, mistake = 0) {
+    if (!scored.length) return null;
+    scored.sort((a, b) => b.score - a.score);
+    if (mistake > 0 && Math.random() < mistake && scored.length > 1) return scored[Math.floor(Math.random() * Math.min(3, scored.length))].move;
+    const top = scored.filter((s) => s.score === scored[0].score);
+    return top[Math.floor(Math.random() * top.length)].move;
+  }
+
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // ---------- screen helpers ----------
+  const $ = (id) => document.getElementById(id);
+
+  // Sizes `canvas` to fit `wrap` for a cols x rows board. Returns { cell, dpr, w, h }.
+  function fitBoard(canvas, wrap, cols, rows, extraRows = 0) {
+    const cs = getComputedStyle(wrap);
+    const w = wrap.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const h = wrap.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    const cell = Math.max(12, Math.floor(Math.min(w / cols, h / (rows + extraRows))));
+    const dpr = window.devicePixelRatio || 1;
+    canvas.style.width = cell * cols + "px";
+    canvas.style.height = cell * (rows + extraRows) + "px";
+    canvas.width = Math.round(cell * cols * dpr);
+    canvas.height = Math.round(cell * (rows + extraRows) * dpr);
+    return { cell, dpr, w: cell * cols, h: cell * (rows + extraRows) };
+  }
+
+  // Sets up a fixed-size picture canvas at full screen sharpness; returns its context.
+  function sharp(cv, w, h) {
+    const dpr = window.devicePixelRatio || 1;
+    cv.style.width = w + "px";
+    cv.style.height = h + "px";
+    cv.width = Math.round(w * dpr);
+    cv.height = Math.round(h * dpr);
+    const g = cv.getContext("2d");
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return g;
+  }
+
+  function shake(el, big = false) {
+    el.classList.remove("shake", "shake-big");
+    void el.offsetWidth;
+    el.classList.add(big ? "shake-big" : "shake");
+  }
+
+  function popText(el, text) {
+    el.textContent = text;
+    el.classList.remove("pop");
+    void el.offsetWidth;
+    el.classList.add("pop");
+  }
+
+  function show(id) {
+    $(id).hidden = false;
+  }
+  function hide(id) {
+    $(id).hidden = true;
+  }
+
+  function cellAt(canvas, e, cell) {
+    const r = canvas.getBoundingClientRect();
+    return { col: Math.floor((e.clientX - r.left) / cell), row: Math.floor((e.clientY - r.top) / cell) };
+  }
+
+  // Wires the shared mute button.
+  function muteButton(btn) {
+    const render = () => {
+      btn.textContent = muted ? "🔇" : "🔊";
+      btn.setAttribute("aria-label", muted ? "Unmute" : "Mute");
+    };
+    btn.addEventListener("click", () => {
+      setMuted(!muted);
+      render();
+    });
+    render();
+  }
+
+  const COLORS = ["#ff5a5f", "#3fa7ff", "#ffc93c", "#8f6bff", "#2fd38a", "#ff8c42", "#ff6fc8", "#3ee0e0"];
+  const COLOR_NAMES = ["Red", "Blue", "Yellow", "Purple", "Green", "Orange", "Pink", "Cyan"];
+
+  return {
+    sfx, setMuted, isMuted: () => muted, tone,
+    circle, ellipse, shade, drawLamb, drawWolf, drawShepherd, drawSheep,
+    anim, evaluate, pickBest, sleep,
+    $, fitBoard, sharp, shake, popText, show, hide, cellAt, muteButton,
+    COLORS, COLOR_NAMES,
+  };
+})();
+// ======================= END SHARED KIT =======================
+
+// ======================= STAMPEDE CORE v2 =======================
+// Real-time Chain Reaction with one button per player. Shared by every Stampede game:
+// screens, settings, audio and music, haptics, input zones, pen displays, rendering,
+// AI seats, match mode, results, stats and badges. Each game calls Stampede.run(version)
+// with its own rules as hooks, so they can later sit behind one menu.
+const Stampede = (() => {
+  const $ = (id) => document.getElementById(id);
+
+  // ---------------- CONFIG ----------------
+  const COLORS = ["#ff5a5f", "#3fa7ff", "#ffc93c", "#2fd38a"];
+  const NAMES = ["Red", "Blue", "Yellow", "Green"];
+  const SYMBOLS = ["circle", "triangle", "square", "diamond"]; // colour-blind friendly marks
+  const BOTTOM = [true, false, false, true]; // seat 0 bottom-left, 1 top-right, 2 top-left, 3 bottom-right
+  const OWN_LEFT = [true, true, false, false]; // left side as that player sees it
+  const RANK = { line: 1, bomb: 2, overflow: 3 };
+  const SHOUTS = [[5, "Nice!", 1], [8, "Baa-rilliant!", 1.25], [12, "Overflowing!", 1.5], [16, "Hallelujah!", 1.85]];
+  const LOCK_MS = 1000;
+  const WAVE_MS = 140;
+  const MAX_RUN = 60; // waves in a row before a runaway cascade settles
+  const NEUTRAL = 90; // owner id of grey sheep: they never burst, and a burst claims them
+  const PAD = 8; // board margin, where the edge-bar pen display lives
+  const ROW_H = 22; // strip above each button for the sheep-row pen display
+  const AI = {
+    easy: { pick: 7, idle: 0.05, miss: 0.15, react: [260, 350] },
+    normal: { pick: 4, idle: 0.08, miss: 0.05, react: [190, 330] },
+    hard: { pick: 2, idle: 0.03, miss: 0, react: [150, 250] },
+  };
+  const BASE_TUNE = { pen: 5, refill: 1.1, cursorMs: 380, roundSecs: 90, stampedeSecs: 20, lineAt: 5, plusAt: 6, bombAt: 9, fullAt: 10, overflowAt: 14 };
+  const TUNE_INFO = [
+    ["pen", "Pen size", 1, 10, 1, " sheep"],
+    ["refill", "Refill time (2 players; scales up for 3–4)", 0.3, 3, 0.1, " s"],
+    ["cursorMs", "Cursor step", 150, 800, 10, " ms"],
+    ["roundSecs", "Round length", 20, 300, 5, " s"],
+    ["stampedeSecs", "Stampede Time", 0, 60, 5, " s"],
+    ["lineAt", "Line sheep at chain", 2, 20, 1, ""],
+    ["plusAt", "+2 sheep at chain", 2, 20, 1, ""],
+    ["bombAt", "Bomb sheep at chain", 2, 25, 1, ""],
+    ["fullAt", "Full pen at chain", 2, 25, 1, ""],
+    ["overflowAt", "Overflow sheep at chain", 2, 30, 1, ""],
+  ];
+  const REFILL_SCALE = [1, 1, 1, 1.4 / 1.1, 1.7 / 1.1]; // by number of players
+  const DEFAULT_SETTINGS = {
+    music: true, musicVol: 0.5, sound: true, soundVol: 0.8, vibe: true,
+    reduced: typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches,
+    pen: "dots", zone: "button", ai: "normal",
+  };
+
+  // ---------------- STORAGE ----------------
+  const Store = {
+    get(key, fallback) {
+      try {
+        const v = JSON.parse(localStorage.getItem(key));
+        if (v === null || v === undefined) return structuredClone(fallback);
+        return fallback && typeof fallback === "object" && !Array.isArray(fallback) ? { ...structuredClone(fallback), ...v } : v;
+      } catch {
+        return structuredClone(fallback);
+      }
+    },
+    set(key, value) {
+      try {
+        localStorage.setItem(key, JSON.stringify(value));
+      } catch {}
+    },
+  };
+
+  let settings = Store.get("cfl2-settings", DEFAULT_SETTINGS);
+  const saveSettings = () => Store.set("cfl2-settings", settings);
+
+  // ---------------- AUDIO ----------------
+  const Audio = (() => {
+    let ctx = null;
+    let sfxBus = null;
+    let musBus = null;
+    let noiseBuf = null;
+    function unlock() {
+      try {
+        if (!ctx) {
+          ctx = new (window.AudioContext || window.webkitAudioContext)();
+          sfxBus = ctx.createGain();
+          musBus = ctx.createGain();
+          sfxBus.connect(ctx.destination);
+          musBus.connect(ctx.destination);
+          noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 0.5, ctx.sampleRate);
+          const d = noiseBuf.getChannelData(0);
+          for (let k = 0; k < d.length; k++) d[k] = Math.random() * 2 - 1;
+        }
+        if (ctx.state === "suspended") ctx.resume();
+        levels();
+      } catch {
+        ctx = null;
+      }
+    }
+    function levels() {
+      if (!ctx) return;
+      sfxBus.gain.value = settings.sound ? settings.soundVol : 0;
+      musBus.gain.value = settings.music ? settings.musicVol * 0.55 : 0;
+    }
+    function tone(freq, dur = 0.12, type = "sine", vol = 0.12, slideTo = 0, delay = 0, music = false) {
+      if (!ctx || (music ? !settings.music : !settings.sound)) return;
+      const t = ctx.currentTime + Math.max(0, delay);
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = type;
+      o.frequency.setValueAtTime(freq, t);
+      if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + dur);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(vol, t + 0.008);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g).connect(music ? musBus : sfxBus);
+      o.start(t);
+      o.stop(t + dur + 0.03);
+    }
+    function noise(dur, freq, vol, delay = 0, type = "bandpass", music = false) {
+      if (!ctx || (music ? !settings.music : !settings.sound)) return;
+      const t = ctx.currentTime + Math.max(0, delay);
+      const s = ctx.createBufferSource();
+      s.buffer = noiseBuf;
+      const f = ctx.createBiquadFilter();
+      f.type = type;
+      f.frequency.value = freq;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(vol, t);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      s.connect(f).connect(g).connect(music ? musBus : sfxBus);
+      s.start(t);
+      s.stop(t + dur + 0.03);
+    }
+    function bleat(pitch = 1, delay = 0) {
+      if (!ctx || !settings.sound) return;
+      const t = ctx.currentTime + delay;
+      const o = ctx.createOscillator();
+      const lfo = ctx.createOscillator();
+      const lg = ctx.createGain();
+      const g = ctx.createGain();
+      o.type = "sawtooth";
+      o.frequency.setValueAtTime(420 * pitch, t);
+      o.frequency.linearRampToValueAtTime(360 * pitch, t + 0.35);
+      lfo.frequency.value = 22;
+      lg.gain.value = 18 * pitch;
+      lfo.connect(lg).connect(o.frequency);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.07, t + 0.03);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
+      const f = ctx.createBiquadFilter();
+      f.type = "lowpass";
+      f.frequency.value = 1800;
+      o.connect(f).connect(g).connect(sfxBus);
+      o.start(t);
+      lfo.start(t);
+      o.stop(t + 0.45);
+      lfo.stop(t + 0.45);
+    }
+    return { unlock, levels, tone, noise, bleat, get ctx() { return ctx; } };
+  })();
+
+  const Sfx = {
+    drop: () => Audio.tone(560, 0.07, "triangle", 0.07, 760),
+    burst(k) {
+      const f = 330 * Math.pow(2, Math.min(k, 24) / 12);
+      Audio.tone(f, 0.09, "triangle", 0.06, f * 1.4);
+      Audio.noise(0.05, 1400, 0.035);
+    },
+    waste: () => Audio.tone(120, 0.2, "square", 0.07, 70),
+    empty: () => Audio.tone(85, 0.14, "sine", 0.18, 55),
+    tick: () => Audio.tone(1700, 0.03, "sine", 0.025),
+    full() {
+      Audio.tone(1047, 0.12, "sine", 0.05);
+      Audio.tone(1568, 0.18, "sine", 0.045, 0, 0.07);
+    },
+    load: (type) => Audio.tone(type === "overflow" ? 1200 : 800, 0.18, "triangle", 0.08, type === "overflow" ? 1800 : 1200),
+    special(type) {
+      if (type === "line" || type === "cross") Audio.tone(900, 0.3, "sawtooth", 0.06, 300);
+      else if (type === "overflow") [523, 659, 784, 1047].forEach((f, k) => Audio.tone(f, 0.2, "triangle", 0.07, 0, k * 0.06));
+      else {
+        Audio.tone(160, 0.35, "sawtooth", 0.08, 50);
+        Audio.noise(0.4, 400, 0.12, 0, "lowpass");
+      }
+    },
+    shout: (lvl) => [0, 4, 7, 12].slice(0, 2 + lvl).forEach((s, k) => Audio.tone(523 * Math.pow(2, s / 12), 0.14, "triangle", 0.06, 0, k * 0.05)),
+    hit: (hp) => Audio.tone(140 + hp * 30, 0.08, "square", 0.05),
+    crack: () => {
+      Audio.tone(90, 0.25, "sawtooth", 0.08, 50);
+      Audio.noise(0.25, 900, 0.08);
+    },
+    chime: (k = 0) => Audio.tone(880 * Math.pow(2, k / 12), 0.3, "sine", 0.07),
+    win: () => [523, 659, 784, 1047, 1319].forEach((f, k) => Audio.tone(f, 0.25, "triangle", 0.08, 0, k * 0.09)),
+    lose: () => [392, 349, 311, 262].forEach((f, k) => Audio.tone(f, 0.3, "triangle", 0.07, 0, k * 0.14)),
+    howl() {
+      Audio.tone(300, 0.9, "sawtooth", 0.05, 520);
+      Audio.tone(520, 0.6, "sine", 0.04, 380, 0.5);
+    },
+    roar() {
+      Audio.tone(70, 0.8, "sawtooth", 0.12, 40);
+      Audio.noise(0.8, 300, 0.15, 0, "lowpass");
+    },
+    tickTock: (hi) => Audio.tone(hi ? 1200 : 900, 0.03, "square", 0.04),
+    bleat: (p, d) => Audio.bleat(p, d),
+  };
+
+  // ---------------- MUSIC ----------------
+  // A tiny step sequencer. A song: { bpm, root (MIDI), scale, prog: chord degrees per bar,
+  // lead: [16-step strings per bar, digits = scale steps above the chord, "." = rest],
+  // bass: 16-step string, drums: { kick, snare, hat } 16-step strings }.
+  const Music = (() => {
+    const SCALES = { major: [0, 2, 4, 5, 7, 9, 11], minor: [0, 2, 3, 5, 7, 8, 10], dorian: [0, 2, 3, 5, 7, 9, 10], penta: [0, 2, 4, 7, 9] };
+    let song = null;
+    let timer = 0;
+    let step = 0;
+    let nextAt = 0;
+    let rate = 1;
+    let level = 0;
+    const hz = (m) => 440 * Math.pow(2, (m - 69) / 12);
+    const pitch = (deg) => {
+      const s = SCALES[song.scale] || SCALES.major;
+      const o = Math.floor(deg / s.length);
+      return song.root + s[((deg % s.length) + s.length) % s.length] + 12 * o;
+    };
+    function play(s, t) {
+      const a = Audio.ctx;
+      const d = t - a.currentTime;
+      const st = s % 16;
+      const bar = Math.floor(s / 16);
+      const chord = song.prog[bar % song.prog.length];
+      const dr = song.drums;
+      if (dr.kick[st] === "x" || (level > 0 && st % 4 === 0)) {
+        Audio.tone(130, 0.16, "sine", 0.42, 42, d, true);
+      }
+      if (dr.snare[st] === "x") Audio.noise(0.12, 1600, 0.16, d, "bandpass", true);
+      if (dr.hat[st] === "x" || (rate > 1 && st % 2 === 1) || (level > 1 && st % 2 === 0)) Audio.noise(0.035, 8000, st % 4 === 0 ? 0.06 : 0.035, d, "highpass", true);
+      if (song.bass[st] !== ".") Audio.tone(hz(pitch(chord) - 24 + (song.bass[st] === "5" ? 7 : 0)), 0.18, "triangle", 0.2, 0, d, true);
+      if (st === 0) for (const k of [0, 2, 4]) Audio.tone(hz(pitch(chord + k) - 12), 0.9 * (60 / song.bpm / rate) * 4 * 0.9, "sine", 0.035, 0, d, true);
+      const lead = song.lead[bar % song.lead.length][st];
+      if (lead && lead !== ".") Audio.tone(hz(pitch(chord + Number(lead)) + 12), 0.14, song.leadType || "square", 0.028, 0, d, true);
+    }
+    function tick() {
+      const a = Audio.ctx;
+      if (!a || !song) return;
+      const spb = 60 / (song.bpm * rate) / 4;
+      if (nextAt < a.currentTime) nextAt = a.currentTime + 0.05;
+      while (nextAt < a.currentTime + 0.12) {
+        play(step, nextAt);
+        step++;
+        nextAt += spb;
+      }
+    }
+    function start(spec) {
+      stop();
+      if (!spec) return;
+      song = spec;
+      step = 0;
+      rate = 1;
+      level = 0;
+      nextAt = 0;
+      timer = setInterval(tick, 25);
+    }
+    function stop() {
+      clearInterval(timer);
+      timer = 0;
+      song = null;
+    }
+    return { start, stop, setRate: (r) => (rate = r), setLevel: (l) => (level = l), get playing() { return !!song; } };
+  })();
+
+  // ---------------- HAPTICS ----------------
+  const buzz = (pattern) => {
+    if (!settings.vibe || !navigator.vibrate) return;
+    try {
+      navigator.vibrate(pattern);
+    } catch {}
+  };
+
+  // ---------------- STATE ----------------
+  let V = null; // the game being played
+  let H = {}; // its hooks
+  let tune = {};
+  let setup = {};
+  let stats = {};
+  let G = null;
+  let mode = "title"; // title | play | paused | between | results
+  let match = null;
+  const geo = { cell: 40, dpr: 1, w: 0, h: 0 };
+  const band = { top: { w: 0, h: 0 }, bottom: { w: 0, h: 0 } };
+  const rects = [0, 1, 2, 3].map(() => ({ x: 0, y: 0, w: 0, h: 0 }));
+  const seatPlayer = [null, null, null, null];
+  let boardCv;
+  let ctx;
+  let topCv;
+  let topCtx;
+  let botCv;
+  let botCtx;
+  let lastFrame = 0;
+  let pointerX = 0.5;
+  let betweenTimer = 0;
+  const EMPTY = [];
+
+  const key = (k) => `cfl2-${V.key}-${k}`;
+  const tuneDefaults = () => ({ ...BASE_TUNE, ...(V.tune || {}) });
+  const saveTune = () => Store.set(key("tune"), tune);
+  const saveSetup = () => Store.set(key("setup"), setup);
+  const saveStats = () => Store.set(key("stats"), stats);
+
+  // ---------------- BOARD HELPERS ----------------
+  const isPlayer = (o) => o >= 0 && o < G.players.length;
+  const cellsOf = (p) => {
+    let n = 0;
+    for (let i = 0; i < G.b.size; i++) if (G.b.owner[i] === p) n++;
+    return n;
+  };
+  const orbsOf = (p) => {
+    let n = 0;
+    for (let i = 0; i < G.b.size; i++) if (G.b.owner[i] === p) n += G.b.count[i];
+    return n;
+  };
+  const sameTeam = (a, b) => a === b || (isPlayer(a) && isPlayer(b) && G.players[a].team === G.players[b].team);
+  const cursorCell = (pl) => {
+    const len = G.path.length;
+    return G.path[((pl.pos % len) + len) % len];
+  };
+  const humans = () => G.players.filter((p) => p.human);
+
+  function buildPath() {
+    const b = G.b;
+    G.path.length = 0;
+    for (let r = 0; r < b.rows; r++)
+      for (let k = 0; k < b.cols; k++) {
+        const i = r * b.cols + (r % 2 ? b.cols - 1 - k : k);
+        if (!b.rock[i] && (H.inPath ? H.inPath(G, i) : b.kind[i] !== "rock")) G.path.push(i);
+      }
+    if (!G.path.length) G.path.push(0);
+  }
+
+  // Rebuild the path but keep each cursor on the square it was on.
+  function rebuildPath() {
+    const at = G.players.map((pl) => cursorCell(pl));
+    const oldLen = G.path.length;
+    buildPath();
+    G.players.forEach((pl, k) => {
+      const p = G.path.indexOf(at[k]);
+      pl.pos = p >= 0 ? p : Math.floor((((pl.pos % oldLen) + oldLen) % oldLen) * (G.path.length / oldLen));
+    });
+  }
+
+  // ---------------- GAME ----------------
+  function newPlayer(p, id, now) {
+    return {
+      id, seat: -1, kind: "human", level: null, team: id, color: COLORS[id % 4], name: NAMES[id % 4], sym: SYMBOLS[id % 4],
+      speed: 1, dir: 1, pen: tune.pen, refillAt: 0, lockUntil: 0, special: null, lineDir: "row",
+      alive: true, placed: false, chain: 0, best: 0, mood: null, moodUntil: 0, aiPlan: null, score: 0, nextStep: now, pos: null,
+      observer: false, pressAt: -1e9, taps: 0, drops: 0, wastes: 0, empties: 0, bursts: 0, specials: 0, damage: 0,
+      ...p,
+      human: (p.kind ?? "human") === "human", // stays true even while a game borrows the seat (a finale, a test bot)
+    };
+  }
+
+  function startRound() {
+    clearTimeout(betweenTimer);
+    const now = performance.now();
+    const dims = V.board ? V.board(setup) : { rows: V.rows ?? 9, cols: V.cols ?? 6 };
+    const b = Engine.createBoard(dims.rows, dims.cols, { tag: null, kind: null, hp: 0, mhp: 0 });
+    const players = V.players(setup).map((p, id) => newPlayer(p, id, now));
+    G = {
+      b, players, path: [], start: now, waveAt: now, run: 0, over: false, rush: false, solo: !!(V.solo ?? false), data: {},
+      flights: EMPTY, flightAt: 0, popAt: new Float64Array(b.size), incoming: new Int16Array(b.size), lastTimer: "",
+      shakeAmp: 0, shakeAt: 0, bgDirty: true, tut: null, bob: 0,
+    };
+    if (typeof V.solo === "function") G.solo = V.solo(setup);
+    seatPlayer.fill(null);
+    for (const pl of players) if (pl.seat >= 0) seatPlayer[pl.seat] = pl;
+    H.setup?.(G, setup, match);
+    buildPath();
+    players.forEach((pl, k) => {
+      if (pl.pos === null) pl.pos = Math.floor((k * G.path.length) / players.length);
+    });
+    $("app").classList.toggle("solo", G.solo);
+    $("app").classList.remove("rush");
+    $("hud").textContent = "";
+    H.hud?.(G);
+    mode = "play";
+    hideAll();
+    layout();
+    Music.start(V.music);
+    if (!Store.get(key("tut"), false) && humans().length) startTutorial();
+  }
+
+  // A new game (not the next round of a match).
+  function startGame() {
+    saveSetup();
+    Audio.unlock();
+    match = V.match && setup.bestOf > 1 ? { round: 1, wins: {}, need: Math.ceil(setup.bestOf / 2) } : null;
+    startRound();
+  }
+
+  const refillMs = (pl) => {
+    const n = G.players.filter((p) => !p.observer).length;
+    const base = H.refillMs?.(G, pl) ?? tune.refill * 1000 * (G.solo ? 1 : REFILL_SCALE[Math.min(4, n)]);
+    return base / (G.rush ? 2 : 1);
+  };
+
+  function defaultCanDrop(pl, i) {
+    const b = G.b;
+    if (b.rock[i] || (H.blocked ? H.blocked(G, i, pl) : b.kind[i])) return false;
+    const o = b.owner[i];
+    return o === -1 || o === pl.id || (isPlayer(o) && sameTeam(o, pl.id));
+  }
+
+  // The one action: drop a sheep (or the loaded special) where the cursor is.
+  function drop(pl, now = performance.now()) {
+    if (!G || G.over || mode !== "play" || !pl.alive || pl.observer) return;
+    if (pl.kind === "human") pl.taps++;
+    if (now < pl.lockUntil) return;
+    if (pl.pen <= 0) {
+      if (pl.kind === "human") {
+        pl.empties++;
+        Sfx.empty();
+        buzz(35);
+      }
+      return;
+    }
+    H.beforeDrop?.(G, pl, now);
+    const i = cursorCell(pl);
+    pl.pen--;
+    if (!pl.refillAt) pl.refillAt = now + refillMs(pl);
+    if (!(H.canDrop ? H.canDrop(G, pl, i, defaultCanDrop) : defaultCanDrop(pl, i))) {
+      pl.lockUntil = now + LOCK_MS;
+      pl.wastes++;
+      mood(pl, "oops", LOCK_MS);
+      Sfx.waste();
+      if (pl.kind === "human") buzz([40, 60, 40]);
+      H.onWaste?.(G, pl, i);
+      return;
+    }
+    pl.placed = true;
+    pl.drops++;
+    const special = pl.special;
+    pl.special = null;
+    const b = G.b;
+    const o = b.owner[i];
+    if (o >= 0 && o !== pl.id && sameTeam(o, pl.id)) b.count[i]++;
+    else Engine.place(b, i, pl.id);
+    G.popAt[i] = now;
+    if (pl.kind === "human") buzz(8);
+    H.afterDrop?.(G, pl, i, special, now);
+    if (special) pl.specials++;
+    if (special === "overflow") overflow(pl, now);
+    else if (special) {
+      b.tag[i] = { type: special, dir: special === "line" ? pl.lineDir : null };
+      if (special === "line") pl.lineDir = pl.lineDir === "row" ? "col" : "row";
+      Sfx.load(special);
+    } else Sfx.drop();
+  }
+
+  function overflow(pl, now) {
+    const b = G.b;
+    const fx = effect("overflow", -1, pl.color, now);
+    for (let i = 0; i < b.size; i++)
+      if (b.owner[i] === pl.id) {
+        b.count[i]++;
+        G.popAt[i] = now;
+        if (fx) fx.cells[fx.n++] = i;
+      }
+    shout(pl, "Overflow!", 1.3);
+    Sfx.special("overflow");
+  }
+
+  function landOn(to, who) {
+    const b = G.b;
+    const v = b.owner[to];
+    if (isPlayer(v) && v !== who && sameTeam(v, who)) b.count[to]++;
+    else {
+      b.owner[to] = who;
+      b.count[to]++;
+    }
+    G.popAt[to] = performance.now();
+  }
+
+  // Core blockers: Grumpy Rocks (take hits) and gift boxes (open into a special).
+  function hitKind(i, who) {
+    const b = G.b;
+    const kind = b.kind[i];
+    const now = performance.now();
+    if (kind === "rock") {
+      b.hp[i]--;
+      Sfx.hit(b.hp[i]);
+      effect("hit", i, "#ffffff", now);
+      puff(i, "#c7cad1", 3);
+      if (b.hp[i] <= 0) {
+        b.kind[i] = null;
+        Sfx.crack();
+        puff(i, "#9aa0aa", 8);
+        H.onRockBreak?.(G, i, who);
+        rebuildPath();
+      }
+      return true;
+    }
+    if (kind === "box") {
+      b.kind[i] = null;
+      const pick = V.boxSpecials || ["line", "line", "bomb", "bomb", "overflow"];
+      if (isPlayer(who)) {
+        loadSpecial(G.players[who], pick[Math.floor(Math.random() * pick.length)]);
+        shout(G.players[who], "Gift!", 1.1);
+      }
+      Sfx.chime(4);
+      puff(i, "#e050ad", 8);
+      H.onBox?.(G, i, who);
+      return true;
+    }
+    return false;
+  }
+
+  // ---------------- WAVES ----------------
+  const burstsBy = new Int32Array(8);
+  const pending = [];
+  const waveRules = {
+    canBurst: (b, i) => {
+      const o = b.owner[i];
+      return isPlayer(o) && G.players[o].alive && (H.canBurst ? H.canBurst(G, b, i) : true);
+    },
+    targets: (b, i) => {
+      const who = b.owner[i];
+      burstsBy[who]++;
+      if (b.tag[i]) {
+        pending.push(b.tag[i].type, b.tag[i].dir, i, who);
+        b.tag[i] = null;
+      }
+      const t = Engine.neighbours(b, i);
+      return H.targets ? H.targets(G, b, i, t) : t;
+    },
+    emptied: (b, i) => {
+      b.owner[i] = -1;
+      H.emptied?.(G, b, i);
+    },
+    land: (b, from, to, who) => {
+      if (!G.players[who].alive) return;
+      if (H.land?.(G, b, from, to, who)) return;
+      if (b.kind[to] && hitKind(to, who)) return;
+      landOn(to, who);
+    },
+    maxWaves: 1,
+  };
+
+  function tickWave(now) {
+    const n = G.players.length;
+    burstsBy.fill(0);
+    pending.length = 0;
+    const { waves } = Engine.resolve(G.b, waveRules, false);
+    G.flights = waves.length ? waves[0].bursts : EMPTY;
+    G.flightAt = now;
+    for (const f of G.flights) puff(f.from, G.players[f.who]?.color ?? "#fff", 3);
+    for (let k = 0; k < pending.length; k += 4) special(pending[k], pending[k + 1], pending[k + 2], pending[k + 3], now);
+    G.run = waves.length ? G.run + 1 : 0;
+    if (G.run > (V.maxRun ?? MAX_RUN)) {
+      for (let i = 0; i < G.b.size; i++) if (G.b.owner[i] >= 0 && !G.b.rock[i]) G.b.count[i] = Math.min(G.b.count[i], Engine.capacity(G.b, i) - 1);
+      G.run = 0;
+    }
+    chains(n, now);
+    H.afterWave?.(G, now, burstsBy);
+    if (!H.noElimination && !G.tut) eliminate();
+  }
+
+  function areaFor(type, dir, i) {
+    const b = G.b;
+    const r0 = Engine.rowOf(b, i);
+    const c0 = Engine.colOf(b, i);
+    const out = [];
+    const add = (r, c) => Engine.inside(b, r, c) && r * b.cols + c !== i && out.push(r * b.cols + c);
+    if (type === "line") for (let k = 0; k < (dir === "row" ? b.cols : b.rows); k++) dir === "row" ? add(r0, k) : add(k, c0);
+    else if (type === "bomb") for (const [dr, dc] of Engine.ALL8) add(r0 + dr, c0 + dc);
+    else if (type === "cross") {
+      for (let k = 0; k < b.cols; k++) add(r0, k);
+      for (let k = 0; k < b.rows; k++) if (k !== r0) add(k, c0);
+    } else if (type === "bigcross") {
+      for (let r = 0; r < b.rows; r++) for (let c = 0; c < b.cols; c++) if (Math.abs(r - r0) <= 1 || Math.abs(c - c0) <= 1) add(r, c);
+    } else if (type === "blast") for (let dr = -2; dr <= 2; dr++) for (let dc = -2; dc <= 2; dc++) add(r0 + dr, c0 + dc);
+    return out;
+  }
+
+  const COMBOS = { "line+line": "cross", "bomb+line": "bigcross", "bomb+bomb": "blast" };
+  const COMBO_SHOUT = { cross: "Cross!", bigcross: "Mega cross!", blast: "Kaboom!" };
+
+  // A special sheep's square burst: it takes its area, combining with any special it sets off.
+  function special(type, dir, cell, who, now) {
+    const b = G.b;
+    let area = areaFor(type, dir, cell);
+    const other = area.find((k) => b.tag[k]);
+    if (other !== undefined) {
+      const combo = COMBOS[[type, b.tag[other].type].sort().join("+")];
+      b.tag[other] = null;
+      if (combo) {
+        type = combo;
+        area = areaFor(combo, null, cell);
+        shout(G.players[who], COMBO_SHOUT[combo], 1.4);
+      }
+    }
+    for (const k of area) {
+      if (b.rock[k] || H.specialHit?.(G, k, who)) continue;
+      if (b.kind[k] && hitKind(k, who)) continue;
+      landOn(k, who);
+    }
+    const fx = effect(type, cell, G.players[who].color, now);
+    if (fx) for (const k of area) fx.cells[fx.n++] = k;
+    shake(type === "blast" || type === "bigcross" ? 9 : 5);
+    Sfx.special(type);
+    buzz(type === "blast" ? 80 : 40);
+    H.onSpecial?.(G, { type, cell, who }, type, area);
+  }
+
+  function loadSpecial(pl, type) {
+    if (pl.special && RANK[type] <= RANK[pl.special]) return;
+    pl.special = type;
+    Sfx.load(type);
+  }
+
+  function chains(n, now) {
+    let top = 0;
+    for (let p = 0; p < n; p++) {
+      const pl = G.players[p];
+      const k = burstsBy[p];
+      if (k > 0) {
+        const prev = pl.chain;
+        pl.chain += k;
+        pl.bursts += k;
+        rewards(pl, prev, pl.chain);
+        H.onChain?.(G, pl, prev, pl.chain, now);
+        if (pl.chain > top) top = pl.chain;
+      } else if (pl.chain > 0) {
+        pl.best = Math.max(pl.best, pl.chain);
+        H.chainEnd?.(G, pl, pl.chain, now);
+        pl.chain = 0;
+      }
+    }
+    if (!top) return;
+    Sfx.burst(top);
+    if (top >= 2) shout(null, `Chain x${top}!`, 0.9, "#ffcf4a", "chain");
+    shake(Math.min(10, 1 + top * 0.35));
+    if (top === 8 || top === 16) buzz(top === 16 ? 120 : 60);
+  }
+
+  const crossed = (prev, now, at) => prev < at && now >= at;
+  function rewards(pl, prev, now) {
+    if (crossed(prev, now, tune.lineAt)) loadSpecial(pl, "line");
+    if (crossed(prev, now, tune.plusAt)) pl.pen = Math.min(tune.pen, pl.pen + 2);
+    if (crossed(prev, now, tune.bombAt)) loadSpecial(pl, "bomb");
+    if (crossed(prev, now, tune.fullAt)) pl.pen = tune.pen;
+    if (crossed(prev, now, tune.overflowAt)) loadSpecial(pl, "overflow");
+    SHOUTS.forEach(([at, word, scale], lvl) => {
+      if (crossed(prev, now, at)) {
+        shout(pl, word, scale);
+        Sfx.shout(lvl);
+        if (lvl >= 2) Sfx.bleat(1.2);
+      }
+    });
+    if (now >= 6) mood(pl, "cheer", 1400);
+  }
+
+  // Knock out flocks with no sheep once everyone has dropped at least once.
+  function eliminate() {
+    const live = G.players.filter((pl) => !pl.observer);
+    if (!live.every((pl) => pl.placed || !pl.alive)) return;
+    for (const pl of live) {
+      if (pl.alive && orbsOf(pl.id) === 0) {
+        pl.alive = false;
+        pl.special = null;
+        Sfx.howl();
+        shout(pl, "Out!", 1.2);
+        buzz(100);
+      }
+    }
+  }
+
+  // Default ending: last team standing, or most squares (then most sheep) when time runs out.
+  function defaultEnd(left) {
+    const teams = new Map();
+    for (const pl of G.players) if (!pl.observer) teams.set(pl.team, teams.get(pl.team) || pl.alive);
+    const alive = [...teams].filter(([, a]) => a).map(([t]) => t);
+    if (alive.length === 1 && teams.size > 1) return { team: alive[0], why: "last" };
+    if (left <= 0) {
+      const score = (t) => G.players.filter((pl) => pl.team === t && pl.alive).reduce((s, pl) => s + cellsOf(pl.id) * 1000 + orbsOf(pl.id), 0);
+      const ranked = [...teams.keys()].sort((a, b) => score(b) - score(a));
+      return { team: ranked.length > 1 && score(ranked[0]) === score(ranked[1]) ? -1 : ranked[0], why: "time" };
+    }
+    return null;
+  }
+
+  const teamName = (t) => {
+    const list = G.players.filter((p) => p.team === t && !p.observer);
+    return list.map((p) => p.name).join(" & ");
+  };
+  const teamColor = (t) => G.players.find((p) => p.team === t)?.color ?? "#ffcf4a";
+  const humanWon = (res) => res.team >= 0 && G.players.some((p) => p.human && p.team === res.team);
+
+  // A round has ended: next round of a match, or the results.
+  function endRound(res) {
+    G.over = true;
+    Music.stop();
+    $("app").classList.remove("rush");
+    if (match && res.team !== undefined) {
+      if (res.team >= 0) match.wins[res.team] = (match.wins[res.team] || 0) + 1;
+      const champ = Object.keys(match.wins).find((t) => match.wins[t] >= match.need);
+      if (champ === undefined) return between(res);
+      res.matchWon = Number(champ);
+      res.team = Number(champ);
+    }
+    setTimeout(() => results(res), 650);
+    (res.sad ?? !humanWon(res)) && humans().length ? Sfx.lose() : Sfx.win();
+  }
+
+  // ---------------- AI ----------------
+  function aiStep(pl, now) {
+    if (pl.kind !== "ai" || !pl.alive || pl.pen <= 0 || now < pl.lockUntil || G.tut) return;
+    const skill = AI[pl.level || settings.ai] ?? AI.normal;
+    if (H.aiDecide) return H.aiDecide(G, pl, now, skill); // a game with its own idea of a good drop
+    const i = cursorCell(pl);
+    const ok = H.canDrop ? H.canDrop(G, pl, i, defaultCanDrop) : defaultCanDrop(pl, i);
+    if (!ok && Math.random() >= skill.miss) return;
+    let gain = 0;
+    if (ok) {
+      const b = G.b;
+      const mine = (o) => o === pl.id || (isPlayer(o) && sameTeam(o, pl.id));
+      const theirs = (o) => isPlayer(o) && !sameTeam(o, pl.id);
+      const score = (bb) => Kit.evaluate(bb, mine, theirs, (c) => Engine.capacity(bb, c));
+      const after = Engine.clone(b);
+      Engine.place(after, i, pl.id);
+      Engine.resolve(after, { maxWaves: 40, canBurst: (bb, c) => isPlayer(bb.owner[c]) }, false);
+      gain = score(after) - score(b) + (H.aiValue?.(G, pl, i) ?? 0);
+      if (pl.special && pl.special !== "overflow") gain += Engine.neighbours(b, i, Engine.ALL8).filter((k) => theirs(b.owner[k])).length * 2;
+    }
+    const reserve = (pl.level || settings.ai) === "hard" && pl.pen <= 1 && gain < skill.pick * 2;
+    if (!pl.placed || (ok && !reserve && (gain >= skill.pick || Math.random() < skill.idle)) || !ok) {
+      const [lo, hi] = skill.react;
+      pl.aiPlan = { cell: i, at: H.aiTime?.(G, pl, now, skill) ?? now + lo + Math.random() * (hi - lo) };
+    }
+  }
+
+  // ---------------- LOOP ----------------
+  function update(now, dt) {
+    if (G.tut) {
+      // the tutorial holds the clock and the AI
+      G.start += dt;
+      tutorialStep(now);
+    }
+    const elapsed = (now - G.start) / 1000;
+    const secs = H.roundSecs ? H.roundSecs(G) : tune.roundSecs;
+    const left = secs - elapsed;
+    if (Number.isFinite(secs) && left <= tune.stampedeSecs && left > 0 && !G.rush) {
+      G.rush = true;
+      $("app").classList.add("rush");
+      shout(null, "STAMPEDE!", 1.6, "#ff6b6b");
+      Sfx.howl();
+      Music.setRate(1.25);
+      buzz(80);
+    }
+    for (const pl of G.players) {
+      if (!pl.alive || pl.observer) continue;
+      const stepMs = (H.stepMs?.(G, pl) ?? tune.cursorMs) / pl.speed / (G.rush ? 1.2 : 1);
+      if (now >= pl.nextStep) {
+        pl.nextStep = Math.max(pl.nextStep + stepMs, now - stepMs);
+        pl.pos += pl.dir;
+        H.onStep?.(G, pl, now);
+        aiStep(pl, now);
+      }
+      if (pl.aiPlan && now >= pl.aiPlan.at) {
+        if (cursorCell(pl) === pl.aiPlan.cell) drop(pl, now);
+        pl.aiPlan = null;
+      }
+      if (pl.pen < tune.pen) {
+        if (!pl.refillAt) pl.refillAt = now + refillMs(pl);
+        if (now >= pl.refillAt) {
+          pl.pen++;
+          pl.refillAt = pl.pen < tune.pen ? now + refillMs(pl) : 0;
+          if (pl.kind === "human") pl.pen === tune.pen ? Sfx.full() : Sfx.tick();
+        }
+      } else pl.refillAt = 0;
+    }
+    if (now - G.waveAt >= WAVE_MS) {
+      G.waveAt = now;
+      tickWave(now);
+    }
+    H.update?.(G, now, left);
+    if (G.over) return;
+    const txt = Number.isFinite(secs) ? `${Math.floor(Math.max(0, Math.ceil(left)) / 60)}:${String(Math.max(0, Math.ceil(left)) % 60).padStart(2, "0")}` : H.timerText?.(G) ?? "";
+    if (txt !== G.lastTimer) {
+      G.lastTimer = txt;
+      $("timer").textContent = txt;
+      $("timer-top").textContent = txt;
+      if (G.rush) Sfx.tickTock(left <= 5);
+    }
+    if (G.tut) return;
+    const res = H.endCheck ? H.endCheck(G, now, left, defaultEnd) : defaultEnd(left);
+    if (res) endRound(res);
+  }
+
+  function frame(now) {
+    requestAnimationFrame(frame);
+    const dt = Math.min(50, now - (lastFrame || now));
+    lastFrame = now;
+    if (G && mode === "play" && !G.over) update(now, dt);
+    if (G) {
+      drawBoard(now, dt);
+      drawBands(now);
+    }
+    if (mode === "title" && !$("title").hidden) drawTitleLamb(now);
+  }
+
+  function pause() {
+    if (!G || G.over || mode !== "play") return;
+    mode = "paused";
+    G.pauseAt = performance.now();
+    Music.stop();
+    show("pausemenu");
+  }
+
+  function resume() {
+    if (!G || mode !== "paused") return;
+    hideAll();
+    const d = performance.now() - G.pauseAt;
+    G.start += d;
+    G.waveAt += d;
+    for (const pl of G.players) {
+      pl.nextStep += d;
+      if (pl.refillAt) pl.refillAt += d;
+      pl.lockUntil += d;
+      pl.moodUntil += d;
+      if (pl.aiPlan) pl.aiPlan.at += d;
+    }
+    if (G.tut) G.tut.at += d;
+    H.shift?.(G, d);
+    mode = "play";
+    Audio.unlock();
+    Music.start(V.music);
+    if (G.rush) Music.setRate(1.25);
+  }
+
+  // ---------------- SHOUTS AND MOODS ----------------
+  const shoutPool = [];
+  const shoutOwner = new Map();
+  function shout(pl, text, scale = 1, color, slot) {
+    const id = slot ?? pl?.id ?? -1;
+    let el = shoutOwner.get(id);
+    if (!el) {
+      el = shoutPool.find((e) => ![...shoutOwner.values()].includes(e)) || shoutPool[0];
+      for (const [k, v] of shoutOwner) if (v === el) shoutOwner.delete(k);
+      shoutOwner.set(id, el);
+    }
+    const now = performance.now();
+    el.textContent = text;
+    el.style.color = color ?? pl?.color ?? "#ffcf4a";
+    el.style.fontSize = `${2 * scale}rem`;
+    // a shout that is still popping just changes its words; restarting the animation costs a layout
+    if (el.owner !== id || now - el.startedAt > 450) {
+      el.owner = id;
+      el.startedAt = now;
+      el.className = "shout" + (pl && pl.seat >= 0 && !BOTTOM[pl.seat] ? " flip" : "");
+      el.style.top = slot === "chain" ? "40%" : pl && pl.seat >= 0 ? (BOTTOM[pl.seat] ? "64%" : "36%") : "50%";
+      void el.offsetWidth;
+      el.classList.add("go");
+    }
+    clearTimeout(el.done);
+    el.done = setTimeout(() => {
+      if (shoutOwner.get(id) === el) shoutOwner.delete(id);
+    }, 1000);
+  }
+
+  function mood(pl, kind, ms) {
+    pl.mood = kind;
+    pl.moodUntil = performance.now() + ms;
+  }
+
+  function shake(amp) {
+    const a = amp * (settings.reduced ? 0.25 : 1);
+    if (a > G.shakeAmp * Math.max(0, 1 - (performance.now() - G.shakeAt) / 300)) {
+      G.shakeAmp = a;
+      G.shakeAt = performance.now();
+    }
+  }
+
+  // ---------------- PARTICLES AND EFFECTS (pooled) ----------------
+  const P_MAX = 240;
+  const parts = Array.from({ length: P_MAX }, () => ({ on: false, x: 0, y: 0, vx: 0, vy: 0, t: 0, life: 1, r: 1, c: "#fff" }));
+  let pNext = 0;
+  function puff(cell, color, n) {
+    if (!G) return;
+    const c = geo.cell;
+    const cx = (Engine.colOf(G.b, cell) + 0.5) * c;
+    const cy = (Engine.rowOf(G.b, cell) + 0.5) * c;
+    const count = settings.reduced ? Math.ceil(n / 2) : n;
+    for (let k = 0; k < count; k++) {
+      const p = parts[pNext];
+      pNext = (pNext + 1) % P_MAX;
+      const a = Math.random() * Math.PI * 2;
+      const s = (0.4 + Math.random() * 0.9) * c * 0.004;
+      p.on = true;
+      p.x = cx;
+      p.y = cy;
+      p.vx = Math.cos(a) * s;
+      p.vy = Math.sin(a) * s - c * 0.0015;
+      p.t = 0;
+      p.life = 380 + Math.random() * 260;
+      p.r = c * (0.06 + Math.random() * 0.06);
+      p.c = k % 2 ? "#ffffff" : color;
+    }
+  }
+
+  const FX_MAX = 16;
+  const fxPool = Array.from({ length: FX_MAX }, () => ({ on: false, type: "", cell: -1, color: "", t0: 0, n: 0, cells: new Int16Array(128) }));
+  let fxNext = 0;
+  function effect(type, cell, color, t0) {
+    const f = fxPool[fxNext];
+    fxNext = (fxNext + 1) % FX_MAX;
+    f.on = true;
+    f.type = type;
+    f.cell = cell;
+    f.color = color;
+    f.t0 = t0;
+    f.n = 0;
+    if (type === "hit" && cell >= 0) f.cells[f.n++] = cell;
+    return f;
+  }
+
+  // ---------------- RENDERING ----------------
+  function sizeCanvas(cv, w, h) {
+    const d = geo.dpr;
+    const W = Math.max(1, Math.round(w * d));
+    const Hh = Math.max(1, Math.round(h * d));
+    if (cv.width !== W || cv.height !== Hh) {
+      cv.width = W;
+      cv.height = Hh;
+    }
+  }
+
+  function layout() {
+    geo.dpr = Math.min(2, window.devicePixelRatio || 1);
+    for (const [name, cv] of [["top", topCv], ["bottom", botCv]]) {
+      band[name].w = cv.clientWidth;
+      band[name].h = cv.clientHeight;
+      sizeCanvas(cv, band[name].w, band[name].h);
+    }
+    for (let s = 0; s < 4; s++) {
+      const B = BOTTOM[s] ? band.bottom : band.top;
+      const r = rects[s];
+      const solo = G?.solo;
+      r.w = solo ? Math.min(180, B.w * 0.46) : Math.min(152, (B.w - 112) / 2);
+      r.h = B.h - ROW_H - 6;
+      r.y = ROW_H;
+      r.x = solo ? (B.w - r.w) / 2 : OWN_LEFT[s] ? 6 : B.w - 6 - r.w;
+    }
+    if (!G) return;
+    const st = $("stage");
+    const cols = G.b.cols;
+    const rows = G.b.rows;
+    geo.cell = Math.max(8, Math.floor(Math.min((st.clientWidth - PAD * 2) / cols, (st.clientHeight - PAD * 2) / rows)));
+    geo.w = cols * geo.cell + PAD * 2;
+    geo.h = rows * geo.cell + PAD * 2;
+    boardCv.style.width = `${geo.w}px`;
+    boardCv.style.height = `${geo.h}px`;
+    sizeCanvas(boardCv, geo.w, geo.h);
+    sprites.clear();
+    G.bgDirty = true;
+  }
+
+  // Sheep sprites are drawn once per colour, mark and size, then copied.
+  const sprites = new Map();
+  function sprite(color, sym, flip, r) {
+    const k = `${color}|${sym}|${flip}|${r}`;
+    let cv = sprites.get(k);
+    if (cv) return cv;
+    cv = document.createElement("canvas");
+    const L = Math.ceil(r * 3.4);
+    cv.width = cv.height = Math.ceil(L * geo.dpr);
+    cv.L = L;
+    const g = cv.getContext("2d");
+    g.scale(geo.dpr, geo.dpr);
+    Kit.drawSheep(g, L / 2, L / 2, r, color, { flip });
+    if (sym) mark(g, L / 2 + (flip ? r * 0.12 : -r * 0.12), L / 2 - r * 0.05, r * 0.42, sym);
+    sprites.set(k, cv);
+    return cv;
+  }
+
+  function mark(g, x, y, s, sym, fill = "rgba(255,255,255,0.9)") {
+    g.fillStyle = fill;
+    g.strokeStyle = "rgba(0,0,0,0.45)";
+    g.lineWidth = Math.max(1, s * 0.22);
+    g.beginPath();
+    if (sym === "circle") g.arc(x, y, s * 0.55, 0, Math.PI * 2);
+    else if (sym === "triangle") {
+      g.moveTo(x, y - s * 0.65);
+      g.lineTo(x + s * 0.62, y + s * 0.45);
+      g.lineTo(x - s * 0.62, y + s * 0.45);
+    } else if (sym === "square") g.rect(x - s * 0.48, y - s * 0.48, s * 0.96, s * 0.96);
+    else {
+      g.moveTo(x, y - s * 0.7);
+      g.lineTo(x + s * 0.6, y);
+      g.lineTo(x, y + s * 0.7);
+      g.lineTo(x - s * 0.6, y);
+    }
+    g.closePath();
+    g.stroke();
+    g.fill();
+  }
+
+  // The grass, stones and grid are drawn into a cached background.
+  let bg = null;
+  function drawBackground() {
+    const b = G.b;
+    const c = geo.cell;
+    bg ??= document.createElement("canvas");
+    sizeCanvas(bg, geo.w, geo.h);
+    const g = bg.getContext("2d");
+    g.setTransform(geo.dpr, 0, 0, geo.dpr, 0, 0);
+    g.clearRect(0, 0, geo.w, geo.h);
+    g.fillStyle = V.theme?.edge ?? "#24402c";
+    g.beginPath();
+    g.roundRect(0, 0, geo.w, geo.h, 12);
+    g.fill();
+    g.translate(PAD, PAD);
+    const [g1, g2] = V.theme?.grass ?? ["#3d7a45", "#46874e"];
+    for (let i = 0; i < b.size; i++) {
+      const x = Engine.colOf(b, i) * c;
+      const y = Engine.rowOf(b, i) * c;
+      if (b.rock[i]) {
+        drawStone(g, x, y, c, i);
+        continue;
+      }
+      g.fillStyle = (Engine.rowOf(b, i) + Engine.colOf(b, i)) % 2 ? g1 : g2;
+      g.fillRect(x, y, c, c);
+      // a few grass tufts
+      g.strokeStyle = "rgba(255,255,255,0.07)";
+      g.lineWidth = 1.5;
+      g.beginPath();
+      const tx = x + ((i * 37) % 70) / 100 * c + c * 0.12;
+      const ty = y + ((i * 53) % 60) / 100 * c + c * 0.25;
+      g.moveTo(tx, ty);
+      g.lineTo(tx - 2, ty - 5);
+      g.moveTo(tx + 3, ty);
+      g.lineTo(tx + 4, ty - 6);
+      g.stroke();
+    }
+    g.strokeStyle = "rgba(255,255,255,0.14)";
+    g.lineWidth = 1;
+    g.beginPath();
+    for (let col = 1; col < b.cols; col++) {
+      g.moveTo(col * c, 0);
+      g.lineTo(col * c, b.rows * c);
+    }
+    for (let row = 1; row < b.rows; row++) {
+      g.moveTo(0, row * c);
+      g.lineTo(b.cols * c, row * c);
+    }
+    g.stroke();
+    G.bgDirty = false;
+  }
+
+  function drawStone(g, x, y, c, i) {
+    g.fillStyle = "#5f645c";
+    g.fillRect(x, y, c, c);
+    for (const [dx, dy, w, h] of [[0.08, 0.1, 0.5, 0.36], [0.6, 0.1, 0.32, 0.36], [0.08, 0.52, 0.3, 0.38], [0.42, 0.52, 0.5, 0.38]]) {
+      g.fillStyle = (i + dx * 10) % 2 > 1 ? "#80847b" : "#767a71";
+      g.beginPath();
+      g.roundRect(x + dx * c, y + dy * c, w * c, h * c, c * 0.08);
+      g.fill();
+    }
+  }
+
+  // A Grumpy Rock: eyes follow the nearest cursor, brows and cracks grow with each hit.
+  function drawRock(g, cx, cy, r, hp, maxHp, lookX, lookY) {
+    Kit.ellipse(g, cx, cy + r * 0.08, r * 0.95, r * 0.8, 0, "#7d828d");
+    Kit.ellipse(g, cx - r * 0.25, cy - r * 0.2, r * 0.45, r * 0.3, -0.3, "#9599a3");
+    const hits = Math.max(0, maxHp - hp);
+    g.strokeStyle = "#3e4048";
+    g.lineWidth = Math.max(1.5, r * 0.07);
+    for (let k = 0; k < hits; k++) {
+      const a = k * 2.1 + 0.6;
+      g.beginPath();
+      g.moveTo(cx + Math.cos(a) * r * 0.85, cy + Math.sin(a) * r * 0.7);
+      g.lineTo(cx + Math.cos(a) * r * 0.45, cy + Math.sin(a + 0.4) * r * 0.4);
+      g.lineTo(cx + Math.cos(a + 0.3) * r * 0.2, cy + Math.sin(a) * r * 0.25);
+      g.stroke();
+    }
+    const anger = Math.min(4, hits + (maxHp > 3 ? 1 : 0));
+    for (let side = -1; side <= 1; side += 2) {
+      const ex = cx + side * r * 0.32;
+      const ey = cy - r * 0.05;
+      Kit.circle(g, ex, ey, r * 0.2, "#fff");
+      const dx = lookX - ex;
+      const dy = lookY - ey;
+      const d = Math.hypot(dx, dy) || 1;
+      Kit.circle(g, ex + (dx / d) * r * 0.08, ey + (dy / d) * r * 0.08, r * 0.1, "#1a1622");
+      g.strokeStyle = "#2e2a33";
+      g.lineWidth = r * 0.09;
+      g.beginPath();
+      g.moveTo(ex - side * r * 0.2, ey - r * (0.3 - anger * 0.06));
+      g.lineTo(ex + side * r * 0.18, ey - r * (0.3 + anger * 0.06));
+      g.stroke();
+    }
+    if (hp > 5) {
+      g.fillStyle = "#ffcf4a";
+      g.font = `900 ${Math.round(r * 0.32)}px system-ui`;
+      g.textAlign = "center";
+      g.fillText(hp, cx, cy + r * 0.68);
+      g.textAlign = "start";
+    } else for (let k = 0; k < hp; k++) Kit.circle(g, cx - ((hp - 1) / 2) * r * 0.22 + k * r * 0.22, cy + r * 0.6, r * 0.07, "#ffcf4a");
+  }
+
+  function drawGift(g, x, y, r, t) {
+    y += Math.sin(t * 4) * r * 0.08;
+    g.fillStyle = "#c0398f";
+    g.fillRect(x - r, y - r * 0.7, r * 2, r * 1.6);
+    g.fillStyle = "#e050ad";
+    g.fillRect(x - r * 1.1, y - r * 0.95, r * 2.2, r * 0.45);
+    g.fillStyle = "#ffcf4a";
+    g.fillRect(x - r * 0.16, y - r * 0.95, r * 0.32, r * 1.85);
+    Kit.ellipse(g, x - r * 0.4, y - r * 1.12, r * 0.35, r * 0.2, -0.4, "#ffcf4a");
+    Kit.ellipse(g, x + r * 0.4, y - r * 1.12, r * 0.35, r * 0.2, 0.4, "#ffcf4a");
+  }
+
+  // Special sheep: Line has stripes showing its direction, Bomb is a round woolly ball, Overflow is golden.
+  function drawSpecial(g, x, y, r, type, color, dir, t) {
+    if (type === "bomb") {
+      Kit.circle(g, x, y, r * 1.15, color);
+      g.strokeStyle = Kit.shade(color, 0.5);
+      g.lineWidth = r * 0.18;
+      g.beginPath();
+      g.arc(x, y, r * 0.6, 0.5, 4.5);
+      g.stroke();
+      g.strokeStyle = "#5b4630";
+      g.lineWidth = r * 0.16;
+      g.beginPath();
+      g.moveTo(x + r * 0.7, y - r * 0.8);
+      g.quadraticCurveTo(x + r * 1.1, y - r * 1.3, x + r * 1.4, y - r * 1.1);
+      g.stroke();
+      Kit.circle(g, x + r * 1.45, y - r * 1.15, r * (0.2 + 0.1 * Math.sin(t * 20)), "#ffcf4a");
+      return;
+    }
+    Kit.drawSheep(g, x, y, r, type === "overflow" ? "#ffcf4a" : color);
+    if (type === "overflow") {
+      g.globalAlpha = 0.5 + 0.3 * Math.sin(t * 6);
+      Kit.circle(g, x, y, r * 1.6, "rgba(255,220,100,0.35)");
+      g.globalAlpha = 1;
+      return;
+    }
+    g.strokeStyle = "rgba(255,255,255,0.95)";
+    g.lineWidth = r * 0.22;
+    g.beginPath();
+    for (const k of [-0.45, 0, 0.45]) {
+      if (dir === "row") {
+        g.moveTo(x - r * 0.8, y + k * r);
+        g.lineTo(x + r * 0.8, y + k * r);
+      } else {
+        g.moveTo(x + k * r, y - r * 0.7);
+        g.lineTo(x + k * r, y + r * 0.7);
+      }
+    }
+    g.stroke();
+  }
+
+  const SPOTS = [null, [[0, 0]], [[-0.2, 0], [0.2, 0.02]], [[-0.2, 0.12], [0.2, 0.12], [0, -0.16]], [[-0.2, -0.15], [0.2, -0.15], [-0.2, 0.17], [0.2, 0.17]]];
+  const tints = new Map();
+  const tint = (color) => {
+    let t = tints.get(color);
+    if (!t) tints.set(color, (t = color + "40"));
+    return t;
+  };
+
+  function nearestCursor(cell) {
+    const b = G.b;
+    let best = null;
+    let d = 1e9;
+    for (const pl of G.players) {
+      if (pl.observer || !pl.alive) continue;
+      const k = cursorCell(pl);
+      const dd = Math.abs(Engine.rowOf(b, k) - Engine.rowOf(b, cell)) + Math.abs(Engine.colOf(b, k) - Engine.colOf(b, cell));
+      if (dd < d) [d, best] = [dd, k];
+    }
+    return best ?? cell;
+  }
+
+  function drawBoard(now, dt) {
+    if (G.bgDirty) drawBackground();
+    const t = now / 1000;
+    const b = G.b;
+    const c = geo.cell;
+    ctx.setTransform(geo.dpr, 0, 0, geo.dpr, 0, 0);
+    ctx.clearRect(0, 0, geo.w, geo.h);
+    const sk = G.shakeAmp * Math.max(0, 1 - (now - G.shakeAt) / 300);
+    const sx = sk ? Math.sin(now * 0.09) * sk : 0;
+    const sy = sk ? Math.cos(now * 0.11) * sk * 0.7 : 0;
+    ctx.translate(sx, sy);
+    const bob = G.bob || 0;
+    if (bob) {
+      ctx.translate(geo.w / 2, geo.h / 2);
+      ctx.scale(1 + 0.012 * bob, 1 + 0.012 * bob);
+      ctx.translate(-geo.w / 2, -geo.h / 2);
+    }
+    ctx.drawImage(bg, 0, 0, geo.w, geo.h);
+    ctx.translate(PAD, PAD);
+    const inc = G.incoming;
+    inc.fill(0);
+    const fp = Math.min(1, (now - G.flightAt) / WAVE_MS);
+    if (fp < 1) for (const f of G.flights) for (const d of f.to) inc[d]++;
+    const r = c * 0.14;
+    for (let i = 0; i < b.size; i++) {
+      if (b.rock[i]) continue;
+      const x = Engine.colOf(b, i) * c;
+      const y = Engine.rowOf(b, i) * c;
+      const o = b.owner[i];
+      if (isPlayer(o)) {
+        ctx.fillStyle = tint(G.players[o].color);
+        ctx.fillRect(x, y, c, c);
+      }
+      if (H.drawCell?.(ctx, G, i, x, y, c, t, now)) continue;
+      const kind = b.kind[i];
+      if (kind === "rock") {
+        const k = nearestCursor(i);
+        drawRock(ctx, x + c / 2, y + c / 2, c * 0.4, b.hp[i], b.mhp[i] || b.hp[i], (Engine.colOf(b, k) + 0.5) * c, (Engine.rowOf(b, k) + 0.5) * c);
+        continue;
+      }
+      if (kind === "box") {
+        drawGift(ctx, x + c / 2, y + c / 2 + c * 0.05, c * 0.28, t + i);
+        continue;
+      }
+      const n = b.count[i] - inc[i];
+      if (n <= 0 || o < 0) continue;
+      const color = o === NEUTRAL ? "#a9a9b6" : G.players[o]?.color ?? "#fff";
+      const sym = o === NEUTRAL ? null : G.players[o]?.sym;
+      const k = Math.min(n, 4);
+      const nervous = o !== NEUTRAL && n >= Engine.capacity(b, i) - 1;
+      const pa = (now - G.popAt[i]) / 220;
+      const squash = pa < 1 ? Math.sin(Math.PI * pa) * (1 - pa) * 0.45 : 0;
+      for (let s = 0; s < k; s++) {
+        const sp = SPOTS[k][s];
+        const jx = nervous && !settings.reduced ? Math.sin(t * 40 + i * 3 + s) * c * 0.02 : 0;
+        const px = x + (0.5 + sp[0]) * c + jx;
+        const py = y + (0.5 + sp[1]) * c;
+        if (s === 0 && b.tag[i]) {
+          drawSpecial(ctx, px, py, r, b.tag[i].type, color, b.tag[i].dir, t);
+          continue;
+        }
+        const img = sprite(color, sym, s % 2 === 1, Math.round(r * 2) / 2);
+        const w = img.L * (1 + squash * 0.5);
+        const h = img.L * (1 - squash);
+        ctx.drawImage(img, px - w / 2, py + img.L / 2 - h - img.L * 0.0, w, h);
+      }
+      if (n > 4) {
+        ctx.fillStyle = "#ffcf4a";
+        ctx.font = `900 ${Math.round(c * 0.24)}px system-ui`;
+        ctx.fillText(n, x + c * 0.72, y + c * 0.95);
+      }
+    }
+    // sheep in flight
+    if (fp < 1) {
+      const e = 1 - (1 - fp) * (1 - fp);
+      for (const f of G.flights) {
+        const fx = (Engine.colOf(b, f.from) + 0.5) * c;
+        const fy = (Engine.rowOf(b, f.from) + 0.5) * c;
+        const pl = G.players[f.who];
+        for (const d of f.to) {
+          const tx = (Engine.colOf(b, d) + 0.5) * c;
+          const ty = (Engine.rowOf(b, d) + 0.5) * c;
+          const img = sprite(pl?.color ?? "#fff", pl?.sym, tx < fx, Math.round(r * 2) / 2);
+          ctx.drawImage(img, fx + (tx - fx) * e - img.L / 2, fy + (ty - fy) * e - Math.sin(Math.PI * fp) * c * 0.3 - img.L / 2, img.L, img.L);
+        }
+      }
+    }
+    // special and hit effects, about half a second each
+    for (const f of fxPool) {
+      if (!f.on) continue;
+      const p = (now - f.t0) / 500;
+      if (p >= 1) {
+        f.on = false;
+        continue;
+      }
+      ctx.globalAlpha = 1 - p;
+      ctx.fillStyle = f.type === "overflow" ? "#ffe680" : f.color;
+      for (let k = 0; k < f.n; k++) {
+        const x = Engine.colOf(b, f.cells[k]) * c;
+        const y = Engine.rowOf(b, f.cells[k]) * c;
+        if (f.type === "overflow") Kit.circle(ctx, x + c / 2, y + c / 2 - p * c * 0.4, c * 0.12, "#ffe680");
+        else ctx.fillRect(x + c * 0.1 * p, y + c * 0.1 * p, c * (1 - 0.2 * p), c * (1 - 0.2 * p));
+      }
+      if (f.cell >= 0 && (f.type === "bomb" || f.type === "blast" || f.type === "bigcross")) {
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc((Engine.colOf(b, f.cell) + 0.5) * c, (Engine.rowOf(b, f.cell) + 0.5) * c, c * (0.5 + p * (f.type === "bomb" ? 1.5 : 2.5)), 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
+    // wool puffs
+    for (const p of parts) {
+      if (!p.on) continue;
+      p.t += dt;
+      if (p.t >= p.life) {
+        p.on = false;
+        continue;
+      }
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy += 0.00002 * c * dt;
+      ctx.globalAlpha = 1 - p.t / p.life;
+      Kit.circle(ctx, p.x, p.y, p.r * (1 + p.t / p.life), p.c);
+    }
+    ctx.globalAlpha = 1;
+    H.drawOver?.(ctx, G, c, t, now);
+    drawCursors(now, t);
+    if (settings.pen === "bar") drawEdgeBars(now);
+  }
+
+  function drawCursors(now, t) {
+    const c = geo.cell;
+    const b = G.b;
+    G.players.forEach((pl, q) => {
+      if (!pl.alive || pl.observer || H.hideCursor?.(G, pl)) return;
+      const i = cursorCell(pl);
+      const x = Engine.colOf(b, i) * c;
+      const y = Engine.rowOf(b, i) * c;
+      const inset = 2 + (q % 4) * 4;
+      const dots = settings.pen === "dots" && pl.kind === "human";
+      const empty = pl.pen <= 0;
+      const last = pl.pen === 1;
+      ctx.globalAlpha = now < pl.lockUntil ? 0.35 : 1;
+      ctx.lineWidth = dots && last ? 4 + 2 * Math.abs(Math.sin(t * 9)) : 4;
+      ctx.strokeStyle = dots && empty ? "#8a8f96" : pl.color;
+      if (dots && empty) ctx.setLineDash([5, 4]);
+      ctx.strokeRect(x + inset, y + inset, c - inset * 2, c - inset * 2);
+      ctx.setLineDash(EMPTY);
+      if (pl.special) drawSpecial(ctx, x + c - inset - c * 0.12, y + inset + c * 0.12, c * 0.08, pl.special, pl.color, pl.lineDir, t);
+      if (dots) {
+        // one dot per sheep in the pen, on the side of the cursor facing its player
+        const n = tune.pen;
+        const gap = Math.max(2, (c - inset * 2 - 8) / n);
+        const yy = pl.seat >= 0 && !BOTTOM[pl.seat] ? y + inset + 5 : y + c - inset - 5;
+        for (let k = 0; k < n; k++) {
+          const xx = x + inset + 4 + gap * (k + 0.5);
+          ctx.beginPath();
+          ctx.arc(xx, yy, Math.max(0.8, Math.min(3.2, gap * 0.32)), 0, Math.PI * 2);
+          if (k < pl.pen) {
+            ctx.fillStyle = "#fffaf0";
+            ctx.fill();
+          } else {
+            ctx.strokeStyle = "rgba(255,255,255,0.45)";
+            ctx.lineWidth = 1;
+            ctx.stroke();
+          }
+        }
+      }
+      ctx.globalAlpha = 1;
+    });
+  }
+
+  // Edge bar: a segmented bar along each human's side of the board.
+  function drawEdgeBars(now) {
+    const W = G.b.cols * geo.cell;
+    const Hh = G.b.rows * geo.cell;
+    const bottoms = G.players.filter((p) => p.seat >= 0 && BOTTOM[p.seat] && p.kind === "human" && !p.observer);
+    const tops = G.players.filter((p) => p.seat >= 0 && !BOTTOM[p.seat] && p.kind === "human" && !p.observer);
+    for (const [list, y] of [[bottoms, Hh + 2], [tops, -PAD + 1]]) {
+      list.forEach((pl, k) => {
+        const span = W / list.length;
+        const x0 = list.length === 1 ? 0 : OWN_LEFT[pl.seat] === BOTTOM[pl.seat] ? 0 : span;
+        const n = tune.pen;
+        const seg = span / n;
+        for (let s = 0; s < n; s++) {
+          let fill = s < pl.pen ? 1 : 0;
+          if (s === pl.pen && pl.refillAt) fill = Math.max(0, 1 - (pl.refillAt - now) / refillMs(pl));
+          ctx.fillStyle = "rgba(0,0,0,0.35)";
+          ctx.fillRect(x0 + s * seg + 1, y, seg - 2, PAD - 3);
+          if (fill > 0) {
+            ctx.fillStyle = pl.pen <= 1 && fill >= 1 ? "#ff8a8a" : pl.color;
+            ctx.fillRect(x0 + s * seg + 1, y, (seg - 2) * fill, PAD - 3);
+          }
+        }
+      });
+    }
+  }
+
+  // The bands: each player's button with its lamb, pen display, special and lock.
+  function drawBands(now) {
+    const t = now / 1000;
+    for (const [name, cv, g] of [["top", topCv, topCtx], ["bottom", botCv, botCtx]]) {
+      const B = band[name];
+      g.setTransform(geo.dpr, 0, 0, geo.dpr, 0, 0);
+      g.clearRect(0, 0, B.w, B.h);
+      if (name === "top") {
+        if (G.solo) continue;
+        g.translate(B.w, B.h);
+        g.rotate(Math.PI);
+      }
+      for (let s = 0; s < 4; s++) {
+        if (BOTTOM[s] !== (name === "bottom")) continue;
+        const pl = seatPlayer[s];
+        if (pl) drawButton(g, pl, rects[s], now, t);
+      }
+    }
+  }
+
+  function drawButton(g, pl, R, now, t) {
+    const empty = pl.pen <= 0;
+    const locked = now < pl.lockUntil;
+    const press = Math.max(0, 1 - (now - pl.pressAt) / 120);
+    const x = R.x;
+    const y = R.y + press * 3;
+    const w = R.w;
+    const h = R.h;
+    if (settings.zone === "corner" && pl.kind === "human") {
+      g.fillStyle = "rgba(255,255,255,0.04)";
+      const B = BOTTOM[pl.seat] ? band.bottom : band.top;
+      const zx = G.solo ? 0 : OWN_LEFT[pl.seat] ? 0 : B.w / 2;
+      g.fillRect(zx, 0, G.solo ? B.w : B.w / 2, B.h);
+    }
+    g.fillStyle = "rgba(0,0,0,0.35)";
+    g.beginPath();
+    g.roundRect(x, R.y + 5, w, h, 24);
+    g.fill();
+    g.fillStyle = !pl.alive || empty ? "#7b7f86" : pl.color;
+    g.beginPath();
+    g.roundRect(x, y, w, h, 24);
+    g.fill();
+    const cx = x + w / 2;
+    const cy = y + h / 2 + 2;
+    const R2 = Math.min(w, h) * 0.42;
+    if (settings.pen === "ring") {
+      const n = tune.pen;
+      for (let k = 0; k < n; k++) {
+        const gap = n > 1 ? 0.32 : 0;
+        const a0 = -Math.PI / 2 + (k / n) * Math.PI * 2 + gap / 2;
+        const a1 = -Math.PI / 2 + ((k + 1) / n) * Math.PI * 2 - gap / 2;
+        g.lineWidth = 7;
+        g.lineCap = "round";
+        g.strokeStyle = "rgba(0,0,0,0.25)";
+        g.beginPath();
+        g.arc(cx, cy, R2, a0, a1);
+        g.stroke();
+        let fill = k < pl.pen ? 1 : 0;
+        if (k === pl.pen && pl.refillAt) fill = Math.max(0, 1 - (pl.refillAt - now) / refillMs(pl));
+        if (fill > 0) {
+          g.strokeStyle = "#fffaf0";
+          g.beginPath();
+          g.arc(cx, cy, R2, a0, a0 + (a1 - a0) * fill);
+          g.stroke();
+        }
+      }
+    }
+    if (settings.pen === "row" && pl.kind === "human") {
+      // a row of sheep just above the button, out from under the thumb
+      const n = tune.pen;
+      const size = Math.min(7, (w - 8) / n / 2.6);
+      for (let k = 0; k < n; k++) {
+        const sx = cx + (k - (n - 1) / 2) * size * 2.6;
+        let fill = k < pl.pen ? 1 : 0;
+        if (k === pl.pen && pl.refillAt) fill = Math.max(0, 1 - (pl.refillAt - now) / refillMs(pl));
+        g.globalAlpha = fill >= 1 ? 1 : 0.25 + fill * 0.4;
+        const img = sprite(fill >= 1 ? pl.color : "#8a8f96", null, false, size);
+        g.drawImage(img, sx - img.L / 2, ROW_H / 2 - img.L / 2, img.L, img.L);
+      }
+      g.globalAlpha = 1;
+    }
+    const m = now < pl.moodUntil ? pl.mood : null;
+    const panic = empty && pl.alive;
+    const jump = m === "cheer" ? Math.abs(Math.sin(t * 10)) * (settings.reduced ? 3 : 8) : 0;
+    const jit = panic && !settings.reduced ? Math.sin(t * 50) * 2 : 0;
+    const bob = (G.bob || 0) * 5;
+    if (pl.wolf) Kit.drawWolf(g, cx + jit, cy + 4 - jump - bob, R2 * 1.5, { t, mood: m === "oops" ? "sad" : "happy" }); // a lamb in a wolf costume
+    else Kit.drawLamb(g, cx + jit, cy + 6 - jump - bob, R2 * 1.25, { scarf: pl.color, t, mood: !pl.alive ? "sleep" : m === "oops" ? "sleep" : panic ? "shock" : "happy" });
+    if (m === "oops") for (let side = -1; side <= 1; side += 2) Kit.circle(g, cx + R2 * 0.27 + side * R2 * 0.09, cy + 6 - R2 * 0.26, R2 * 0.09, "#3b3340");
+    if (panic) Kit.ellipse(g, cx + R2 * 0.55, cy - R2 * 0.25, R2 * 0.06, R2 * 0.1, 0, "#8fd3ff");
+    mark(g, x + 16, y + 16, 12, pl.sym);
+    if (pl.special) {
+      Kit.circle(g, x + w - 22, y + 22, 17, "rgba(0,0,0,0.3)");
+      drawSpecial(g, x + w - 22, y + 23, 9, pl.special, pl.color, pl.lineDir, t);
+    }
+    if (pl.kind === "ai") {
+      g.fillStyle = "rgba(0,0,0,0.45)";
+      g.font = "900 12px system-ui";
+      g.fillText("AI", x + 10, y + h - 10);
+    }
+    if (locked) {
+      g.fillStyle = "rgba(0,0,0,0.55)";
+      g.beginPath();
+      g.roundRect(x, y, w, h, 24);
+      g.fill();
+      g.strokeStyle = "#fff";
+      g.lineWidth = 5;
+      g.beginPath();
+      g.arc(cx, cy, R2 * 0.5, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * ((pl.lockUntil - now) / LOCK_MS));
+      g.stroke();
+    }
+    if (!pl.alive) {
+      g.fillStyle = "rgba(0,0,0,0.5)";
+      g.beginPath();
+      g.roundRect(x, y, w, h, 24);
+      g.fill();
+      g.fillStyle = "#fff";
+      g.font = "900 22px system-ui";
+      g.textAlign = "center";
+      g.fillText(pl.team !== pl.id && V.outLabel ? V.outLabel : "OUT", cx, cy + 8);
+      g.textAlign = "start";
+    }
+  }
+
+  // The title lamb idles: wiggles, blinks and leans towards your finger.
+  function drawTitleLamb(now) {
+    const cv = $("title-lamb");
+    if (!cv.g) cv.g = Kit.sharp(cv, 220, 130);
+    const g = cv.g;
+    const t = now / 1000;
+    g.clearRect(0, 0, 220, 130);
+    if (V.hero) return V.hero(g, t, pointerX);
+    g.save();
+    g.translate(110, 120);
+    g.rotate(Math.sin(t * 2.2) * 0.05 + (pointerX - 0.5) * 0.25);
+    g.translate(-110, -120);
+    const blink = t % 3.2 < 0.14;
+    Kit.drawLamb(g, 110, 66, 100, { t, scarf: V.scarf ?? COLORS[0], mood: blink ? "sleep" : "happy", flip: pointerX < 0.5 });
+    g.restore();
+  }
+
+  // ---------------- INPUT ----------------
+  function onBandDown(e, name) {
+    e.preventDefault();
+    Audio.unlock();
+    if (!G || mode !== "play") return;
+    const cv = name === "top" ? topCv : botCv;
+    const B = band[name];
+    const r = cv.getBoundingClientRect();
+    let x = e.clientX - r.left;
+    let y = e.clientY - r.top;
+    if (name === "top") {
+      x = B.w - x;
+      y = B.h - y;
+    }
+    for (let s = 0; s < 4; s++) {
+      if (BOTTOM[s] !== (name === "bottom")) continue;
+      const pl = seatPlayer[s];
+      if (!pl || pl.kind !== "human") continue;
+      const R = rects[s];
+      const hit = settings.zone === "corner" ? G.solo || (OWN_LEFT[s] ? x < B.w / 2 : x >= B.w / 2) : x >= R.x - 8 && x <= R.x + R.w + 8 && y >= R.y - ROW_H && y <= R.y + R.h + 8;
+      if (hit) {
+        pl.pressAt = performance.now();
+        drop(pl);
+        if (G.tut) tutorialTapped(pl);
+        return;
+      }
+    }
+  }
+
+  function bindInput() {
+    topCv.addEventListener("pointerdown", (e) => onBandDown(e, "top"));
+    botCv.addEventListener("pointerdown", (e) => onBandDown(e, "bottom"));
+    const stop = (e) => e.preventDefault();
+    for (const ev of ["contextmenu", "gesturestart", "dblclick", "selectstart"]) document.addEventListener(ev, stop);
+    document.addEventListener("touchmove", (e) => {
+      if (!e.target.closest(".opts, .sliders, .overlay")) e.preventDefault();
+    }, { passive: false });
+    document.addEventListener("pointerdown", (e) => {
+      Audio.unlock();
+      pointerX = e.clientX / window.innerWidth;
+    }, true);
+    document.addEventListener("pointermove", (e) => (pointerX = e.clientX / window.innerWidth));
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) pause();
+    });
+    window.addEventListener("pagehide", pause);
+    window.addEventListener("blur", pause);
+    window.addEventListener("resize", layout);
+    new ResizeObserver(layout).observe($("stage"));
+  }
+
+  // ---------------- TUTORIAL ----------------
+  // First play only: a ghost hand shows the button, the cursor and the pen. Skippable.
+  function startTutorial() {
+    G.tut = { step: 0, at: performance.now() };
+    $("tut").hidden = false;
+    tutorialShow();
+  }
+  function tutorialShow() {
+    const h = humans()[0];
+    const hand = $("tut-hand");
+    const label = $("tut-label");
+    const step = G.tut.step;
+    if (step === 0) {
+      const cv = BOTTOM[h.seat] ? botCv : topCv;
+      const r = cv.getBoundingClientRect();
+      const R = rects[h.seat];
+      const B = BOTTOM[h.seat] ? band.bottom : band.top;
+      const bx = BOTTOM[h.seat] ? R.x + R.w / 2 : B.w - R.x - R.w / 2;
+      const by = BOTTOM[h.seat] ? R.y + R.h / 2 : B.h - R.y - R.h / 2;
+      hand.style.left = `${r.left + bx}px`;
+      hand.style.top = `${r.top + by}px`;
+      label.textContent = "Tap!";
+    } else {
+      const i = cursorCell(h);
+      const br = boardCv.getBoundingClientRect();
+      hand.style.left = `${br.left + PAD + (Engine.colOf(G.b, i) + 0.5) * geo.cell}px`;
+      hand.style.top = `${br.top + PAD + (Engine.rowOf(G.b, i) + 0.8) * geo.cell}px`;
+      label.textContent = step === 1 ? "Your sheep land here" : settings.pen === "dots" ? "Dots = sheep left" : "Watch your sheep refill";
+    }
+  }
+  function tutorialStep(now) {
+    const T = G.tut;
+    const limit = [6000, 2600, 2600][T.step];
+    if (T.step > 0) tutorialShow();
+    if (now - T.at > limit) {
+      T.step++;
+      T.at = now;
+      if (T.step > 2) return endTutorial();
+      tutorialShow();
+    }
+  }
+  function tutorialTapped() {
+    if (G.tut.step === 0) {
+      G.tut.step = 1;
+      G.tut.at = performance.now();
+      tutorialShow();
+    }
+  }
+  function endTutorial() {
+    if (!G?.tut) return;
+    G.tut = null;
+    $("tut").hidden = true;
+    Store.set(key("tut"), true);
+    shout(null, "Go!", 1.6, "#ffcf4a");
+    Sfx.chime(7);
+  }
+
+  // ---------------- SCREENS ----------------
+  const OVERLAYS = ["title", "pausemenu", "settings", "tune", "between", "results", "stats"];
+  let settingsBack = "title";
+  function hideAll() {
+    for (const id of OVERLAYS) $(id).hidden = true;
+  }
+  function show(id) {
+    hideAll();
+    $(id).hidden = false;
+  }
+
+  function home() {
+    clearTimeout(betweenTimer);
+    if (G) G.over = true;
+    G = null;
+    match = null;
+    mode = "title";
+    Music.stop();
+    $("tut").hidden = true;
+    $("app").classList.remove("rush");
+    for (const cv of [topCv, botCv, boardCv]) cv.getContext("2d").clearRect(0, 0, cv.width, cv.height);
+    $("timer").textContent = "";
+    $("timer-top").textContent = "";
+    $("hud").textContent = "";
+    renderOptions();
+    V.onHome?.();
+    show("title");
+  }
+
+  // between rounds of a match: a quick scoreboard, then the next round by itself
+  function between(res) {
+    mode = "between";
+    const teams = [...new Set(G.players.filter((p) => !p.observer).map((p) => p.team))];
+    $("between-title").textContent = res.team >= 0 ? `${teamName(res.team)} take${teamName(res.team).includes("&") ? "" : "s"} the round!` : "Tied round!";
+    $("between-title").style.color = res.team >= 0 ? teamColor(res.team) : "";
+    $("between-score").innerHTML = teams
+      .map((tm) => `<div class="team" style="color:${teamColor(tm)}">${teamName(tm)} ${Array.from({ length: match.need }, (_, k) => `<i class="${k < (match.wins[tm] || 0) ? "won" : ""}"></i>`).join("")}</div>`)
+      .join("");
+    const bar = $("between-score").nextElementSibling;
+    bar.classList.remove("go");
+    setTimeout(() => {
+      show("between");
+      void bar.offsetWidth;
+      bar.classList.add("go");
+    }, 600);
+    Sfx.chime(res.team >= 0 ? 5 : 0);
+    match.round++;
+    betweenTimer = setTimeout(() => mode === "between" && startRound(), 3600);
+  }
+
+  function results(res) {
+    mode = "results";
+    const won = humanWon(res);
+    const hs = humans();
+    const me = hs[0];
+    const title = res.title ?? (res.team < 0 ? "It's a tie!" : hs.length === 1 ? (won ? "You win!" : `${teamName(res.team)} win${teamName(res.team).includes("&") ? "" : "s"}`) : `${teamName(res.team)} win${teamName(res.team).includes("&") ? "" : "s"}!`);
+    $("results-title").textContent = title;
+    $("results-title").style.color = res.color ?? (res.team >= 0 ? teamColor(res.team) : "");
+    $("results-sub").textContent = res.sub ?? (res.matchWon !== undefined ? "Match won!" : res.why === "last" ? "Last flock standing." : res.why === "time" ? "Most squares when time ran out." : "");
+    // records and stats
+    stats.played = (stats.played || 0) + 1;
+    if (won) stats.wins = (stats.wins || 0) + 1;
+    const bestChain = Math.max(0, ...hs.map((p) => Math.max(p.best, p.chain)));
+    const rows = [];
+    const rec = (label, value, recordKey, higher = true) => {
+      let isBest = false;
+      if (recordKey && hs.length) {
+        const prev = stats.records?.[recordKey];
+        if (prev === undefined || (higher ? value > prev : value < prev)) {
+          stats.records = { ...(stats.records || {}), [recordKey]: value };
+          isBest = prev !== undefined || value > 0;
+        }
+      }
+      rows.push(`<div class="stat${isBest ? " best" : ""}"><b>${value}</b><span>${label}</span></div>`);
+    };
+    for (const r of V.records?.(G, res) ?? []) rec(r.label, r.value, r.key, r.higher ?? true);
+    if (me) {
+      rec("Biggest chain", bestChain, "chain");
+      const drops = hs.reduce((s, p) => s + p.drops, 0);
+      const wastes = hs.reduce((s, p) => s + p.wastes, 0);
+      rec("Sheep dropped", drops);
+      rec("Accuracy", `${drops + wastes ? Math.round((100 * drops) / (drops + wastes)) : 100}%`);
+      rec("Specials used", hs.reduce((s, p) => s + p.specials, 0));
+    }
+    const live = G.players.filter((p) => !p.observer);
+    if (live.length > 1) {
+      const mvp = live.reduce((a, b) => ((V.mvpScore?.(b) ?? b.bursts) > (V.mvpScore?.(a) ?? a.bursts) ? b : a));
+      rows.push(`<div class="stat"><b style="color:${mvp.color}">${mvp.name}</b><span>MVP lamb</span></div>`);
+    }
+    $("results-stats").innerHTML = rows.join("");
+    $("results-extra").replaceChildren();
+    H.resultsExtra?.(G, res, $("results-extra"));
+    // badges
+    const fresh = [];
+    stats.badges ??= {};
+    for (const bd of V.badges || []) {
+      if (stats.badges[bd.id]) continue;
+      let got = false;
+      try {
+        got = !!bd.test({ G, res, won, me, hs, stats, setup, match });
+      } catch {}
+      if (got) {
+        stats.badges[bd.id] = true;
+        fresh.push(bd);
+      }
+    }
+    $("results-badges").innerHTML = fresh.map((bd) => `<div class="badge got"><i>${bd.icon}</i>${bd.name}</div>`).join("");
+    saveStats();
+    const g = Kit.sharp($("results-lamb"), 220, 120);
+    Kit.drawLamb(g, 110, 66, 104, { scarf: res.color ?? (res.team >= 0 ? teamColor(res.team) : COLORS[0]), mood: won || !hs.length ? "happy" : "sad", glow: won ? "rgba(255,220,120,0.55)" : undefined });
+    $("again").textContent = V.againLabel?.(G, res) ?? "Play again";
+    show("results");
+  }
+
+  function renderStats() {
+    const r = stats.records || {};
+    const rows = [["Games played", stats.played || 0], ["Wins", stats.wins || 0], ["Best chain", r.chain || 0]];
+    for (const extra of V.statRows?.(stats) ?? []) rows.push(extra);
+    $("stats-list").innerHTML = rows.map(([l, v]) => `<div class="stat"><b>${v}</b><span>${l}</span></div>`).join("");
+    $("badge-list").innerHTML = (V.badges || []).map((bd) => `<div class="badge${stats.badges?.[bd.id] ? " got" : ""}" title="${bd.desc}"><i>${bd.icon}</i>${bd.name}<br><small>${bd.desc}</small></div>`).join("");
+  }
+
+  // ---------------- OPTIONS AND SETTINGS UI ----------------
+  const symSvg = (sym, color) => {
+    const shape = { circle: '<circle cx="11" cy="11" r="8"/>', triangle: '<path d="M11 2 20 19H2Z"/>', square: '<rect x="3" y="3" width="16" height="16" rx="2"/>', diamond: '<path d="M11 1 21 11 11 21 1 11Z"/>' }[sym];
+    return `<svg class="sym" viewBox="0 0 22 22" fill="${color}" stroke="rgba(0,0,0,.4)" stroke-width="2">${shape}</svg>`;
+  };
+  function segEl(options, value, onPick) {
+    const s = document.createElement("div");
+    s.className = "seg";
+    for (const [v, text] of options) {
+      const btn = document.createElement("button");
+      btn.textContent = text;
+      btn.className = value === v ? "on" : "";
+      btn.addEventListener("click", () => onPick(v));
+      s.append(btn);
+    }
+    return s;
+  }
+  function rowEl(parent, label, el) {
+    const r = document.createElement("div");
+    r.className = "optrow";
+    r.innerHTML = `<span class="lbl">${label}</span>`;
+    r.append(el);
+    parent.append(r);
+    return r;
+  }
+  const ui = {
+    row: (label, el) => rowEl($("opts"), label, el),
+    seg(label, k, options) {
+      return rowEl($("opts"), label, segEl(options, setup[k], (v) => {
+        setup[k] = v;
+        saveSetup();
+        renderOptions();
+      }));
+    },
+    stepper(label, k, min, max) {
+      const s = document.createElement("div");
+      s.className = "stepper";
+      s.innerHTML = `<button aria-label="Fewer">−</button><output>${setup[k]}</output><button aria-label="More">+</button>`;
+      const [less, , more] = s.children;
+      const set = (v) => {
+        setup[k] = Math.max(min, Math.min(max, v));
+        saveSetup();
+        renderOptions();
+      };
+      less.addEventListener("click", () => set(setup[k] - 1));
+      more.addEventListener("click", () => set(setup[k] + 1));
+      return rowEl($("opts"), label, s);
+    },
+    seats(count) {
+      const box = document.createElement("div");
+      box.className = "seats";
+      setup.seats ??= ["human", "ai", "ai", "ai"];
+      for (let p = 0; p < count; p++) {
+        const row = document.createElement("div");
+        row.className = "seat";
+        row.innerHTML = `${symSvg(SYMBOLS[p], COLORS[p])}<span class="nm">${NAMES[p]}</span>`;
+        row.append(segEl([["human", "Human"], ["ai", "AI"]], setup.seats[p], (v) => {
+          setup.seats[p] = v;
+          saveSetup();
+          renderOptions();
+        }));
+        box.append(row);
+      }
+      $("opts").append(box);
+    },
+    clear: () => $("opts").replaceChildren(),
+  };
+  function renderOptions() {
+    ui.clear();
+    V.options?.(ui, setup);
+    $("play").textContent = V.playLabel?.(setup) ?? "Play";
+  }
+
+  function renderSettings() {
+    const box = $("settings-list");
+    box.replaceChildren();
+    const set = (k, v) => {
+      settings[k] = v;
+      saveSettings();
+      Audio.levels();
+      document.documentElement.classList.toggle("reduced", settings.reduced);
+      $("app").classList.toggle("reduced", settings.reduced);
+      renderSettings();
+    };
+    const onOff = (k) => segEl([[true, "On"], [false, "Off"]], settings[k], (v) => set(k, v));
+    const vol = (k) => {
+      const r = document.createElement("input");
+      r.type = "range";
+      r.min = 0;
+      r.max = 1;
+      r.step = 0.05;
+      r.value = settings[k];
+      r.addEventListener("input", () => {
+        settings[k] = Number(r.value);
+        saveSettings();
+        Audio.levels();
+      });
+      r.addEventListener("change", () => k === "soundVol" && Sfx.drop());
+      return r;
+    };
+    rowEl(box, "Music", onOff("music"));
+    rowEl(box, "Music volume", vol("musicVol"));
+    rowEl(box, "Sound", onOff("sound"));
+    rowEl(box, "Sound volume", vol("soundVol"));
+    rowEl(box, "Vibration", onOff("vibe"));
+    rowEl(box, "Reduced motion", onOff("reduced"));
+    rowEl(box, "Pen display", segEl([["dots", "Cursor dots"], ["bar", "Edge bar"], ["row", "Sheep row"], ["ring", "Ring"]], settings.pen, (v) => set("pen", v)));
+    rowEl(box, "Tap zone", segEl([["button", "Button"], ["corner", "Whole corner"]], settings.zone, (v) => set("zone", v)));
+    rowEl(box, "AI difficulty", segEl([["easy", "Easy"], ["normal", "Normal"], ["hard", "Hard"]], settings.ai, (v) => set("ai", v)));
+  }
+
+  function openSettings(from) {
+    settingsBack = from;
+    renderSettings();
+    show("settings");
+  }
+
+  function openTune() {
+    const box = $("sliders");
+    box.replaceChildren();
+    for (const [k, label, min, max, step, unit] of TUNE_INFO.concat(V.tuneInfo || [])) {
+      const el = document.createElement("label");
+      el.innerHTML = `<span>${label}</span><output></output><input type="range" min="${min}" max="${max}" step="${step}" />`;
+      const input = el.querySelector("input");
+      const out = el.querySelector("output");
+      input.value = tune[k];
+      out.textContent = tune[k] + unit;
+      input.addEventListener("input", () => {
+        tune[k] = Number(input.value);
+        out.textContent = tune[k] + unit;
+        saveTune();
+        if (k === "pen" && G) for (const pl of G.players) pl.pen = Math.min(pl.pen, tune.pen);
+      });
+      box.append(el);
+    }
+    show("tune");
+  }
+
+  // ---------------- WIRING ----------------
+  function run(version) {
+    V = version;
+    H = V.hooks || {};
+    tune = Store.get(key("tune"), tuneDefaults());
+    setup = Store.get(key("setup"), V.setupDefaults || {});
+    stats = Store.get(key("stats"), { played: 0, wins: 0, records: {}, badges: {} });
+    boardCv = $("board");
+    ctx = boardCv.getContext("2d");
+    topCv = $("band-top");
+    botCv = $("band-bottom");
+    topCtx = topCv.getContext("2d");
+    botCtx = botCv.getContext("2d");
+    for (let k = 0; k < 6; k++) {
+      const el = document.createElement("div");
+      el.className = "shout";
+      $("shouts").append(el);
+      shoutPool.push(el);
+    }
+    document.title = V.title;
+    $("title-name").textContent = V.title;
+    $("title-how").innerHTML = V.how.join("<br>");
+    document.documentElement.classList.toggle("reduced", settings.reduced);
+    $("app").classList.toggle("reduced", settings.reduced);
+    $("play").addEventListener("click", () => (V.onPlay ? V.onPlay(startGame) : startGame()));
+    $("again").addEventListener("click", () => (V.onAgain ? V.onAgain(startGame) : startGame()));
+    $("results-home").addEventListener("click", home);
+    $("pause").addEventListener("click", pause);
+    $("resume").addEventListener("click", resume);
+    $("restart").addEventListener("click", startGame);
+    $("home").addEventListener("click", home);
+    $("pause-settings").addEventListener("click", () => openSettings("pausemenu"));
+    $("open-settings").addEventListener("click", () => openSettings("title"));
+    $("settings-back").addEventListener("click", () => show(settingsBack));
+    $("open-advanced").addEventListener("click", openTune);
+    $("tune-back").addEventListener("click", () => openSettings(settingsBack));
+    $("tune-reset").addEventListener("click", () => {
+      tune = tuneDefaults();
+      saveTune();
+      openTune();
+    });
+    $("open-stats").addEventListener("click", () => {
+      renderStats();
+      show("stats");
+    });
+    $("stats-back").addEventListener("click", () => show("title"));
+    $("tut-skip").addEventListener("click", endTutorial);
+    bindInput();
+    renderOptions();
+    layout();
+    show("title");
+    requestAnimationFrame(frame);
+  }
+
+  return {
+    run, startGame, startRound, home, pause, resume, drop, shout, mood, shake, puff, effect, loadSpecial, landOn, hitKind,
+    buildPath, rebuildPath, cursorCell, cellsOf, orbsOf, sameTeam, isPlayer, refillMs, layout, ui, renderOptions,
+    drawRock, drawGift, drawSpecial, mark, sprite, Sfx, Audio, Music, buzz, Store, endRound,
+    COLORS, NAMES, SYMBOLS, NEUTRAL, RANK, BOTTOM, PAD,
+    get G() { return G; }, get tune() { return tune; }, get setup() { return setup; }, get geo() { return geo; },
+    get settings() { return settings; }, get stats() { return stats; }, get mode() { return mode; }, get match() { return match; },
+  };
+})();
+// ===================== END STAMPEDE CORE v2 =====================
+
+
+// ======================= N5: LEAD HIM HOME =======================
+// ---------- CONFIG ----------
+const CONFIG = {
+  stepMs: 1500, // the lamb takes a step this often
+  scaredSteps: 3, // a wolf burst on his square sends him back this many steps
+  braveMs: 2000, // after a scare he can't be scared again for this long
+  roundSecs: 120,
+  liftMs: 1400, // the Shepherd lifting him up
+  wolfColor: "#8b8f9c",
+  // R = rock (2 hits), T = thorns (he can't walk them; a burst clears them), . = grass. Lamb starts bottom-left, home is top-right.
+  levels: [
+    { wolves: ["easy"], speed: 0.8, map: "...... ...... ...... ...... ...... ...... ...... ...... ......" },
+    { wolves: ["easy"], speed: 0.9, map: "...... ...... ..R... ...... ...R.. ...... .R.... ...... ......" },
+    { wolves: ["normal"], speed: 0.9, map: "...... ...... ...... ..RR.. ...... ...... ...... ...... ......" },
+    { wolves: ["normal"], speed: 1, map: "...... ...... ...T.. ..T... ...T.. ..T... ...... ...... ......" },
+    { wolves: ["normal"], speed: 1.1, map: "...... ..R... ...T.. .T.R.. ..T... ...R.. ...... ...... ......" },
+    { wolves: ["easy", "easy"], speed: 1, map: "...... ...... ...... ...... ...... ...... ...... ...... ......" },
+    { wolves: ["hard"], speed: 1.1, map: "...... ...R.. ...... .R..R. ...... ..R... ...... ...... ......" },
+    { wolves: ["normal"], speed: 1.2, map: "...... RRR... ...... ...RRR ...... RRR... ...... ...RRR ......" },
+    { wolves: ["normal", "normal"], speed: 1.1, map: "...... ..T... ...... .T..T. ...... ..T... ...... ...... ......" },
+    { wolves: ["hard", "hard"], speed: 1.2, map: "...... .R..T. ...... ..TR.. ...... .T..R. ...... ...... ......" },
+  ],
+};
+const S = Stampede;
+const $ = (id) => document.getElementById(id);
+let progress = S.Store.get("cfl2-n5-progress", { done: [] });
+const unlocked = () => Math.min(CONFIG.levels.length, progress.done.filter(Boolean).length + 1);
+const isOurs = (G, i) => S.isPlayer(G.b.owner[i]) && G.players[G.b.owner[i]].team === 0;
+
+// ---------- MODE ----------
+S.run({
+  key: "n5",
+  title: "Lead Him Home",
+  how: ["The lost lamb walks only on your squares. Build him a path to the Shepherd.", "Wolf bursts on his square scare him back. Bring him home in 2 minutes!"],
+  tune: { roundSecs: CONFIG.roundSecs },
+  setupDefaults: { n: 1, seats: ["human", "ai"], lvl: 1 },
+  solo: (s) => s.n === 1,
+  players(s) {
+    const L = CONFIG.levels[Math.min(s.lvl, unlocked()) - 1];
+    const list = Array.from({ length: s.n }, (_, p) => ({ seat: p, kind: s.seats[p], team: 0 }));
+    L.wolves.forEach((lvl, k) => list.push({ seat: -1, kind: "ai", level: lvl, team: 1, speed: L.speed, color: CONFIG.wolfColor, name: "Wolf", sym: null, pos: 20 + k * 17 }));
+    return list;
+  },
+  options(ui, s) {
+    s.lvl = Math.min(s.lvl || 1, unlocked());
+    ui.seg("Players", "n", [[1, "Solo"], [2, "2 co-op"]]);
+    if (s.n === 2) ui.seats(2);
+    ui.seg("Level", "lvl", CONFIG.levels.map((_, k) => [k + 1, String(k + 1)]).slice(0, unlocked()));
+  },
+  playLabel: (s) => `Play level ${Math.min(s.lvl || 1, unlocked())}`,
+  hero(g, t) {
+    Kit.drawShepherd(g, 170, 124, 110, { t });
+    Kit.drawLamb(g, 70 + Math.sin(t) * 8, 84, 64, { t, scarf: S.COLORS[0], mood: "happy" });
+  },
+  music: {
+    bpm: 100, root: 62, scale: "major", prog: [0, 4, 5, 3],
+    lead: ["2...4...5...4...", "2...1...0.......", "4...5...7...5...", "4...2...1...0..."],
+    bass: "x.......x.......",
+    drums: { kick: "x.......x.......", snare: "........x.......", hat: "x...x...x...x..." },
+    leadType: "triangle",
+  },
+  againLabel: (G, res) => (res.team === 0 && G.data.lvl < CONFIG.levels.length ? "Next level" : res.team === 0 ? "Play again" : "Retry"),
+  onAgain(start) {
+    const D = S.G?.data;
+    if (D?.won && D.lvl < CONFIG.levels.length) S.setup.lvl = D.lvl + 1;
+    start();
+  },
+  records: (G, res) => (res.team === 0 ? [{ label: "Seconds", value: Math.round((G.data.homeAt - G.start) / 1000), key: `lvl${G.data.lvl}`, higher: false }] : []),
+  statRows: () => [["Levels done", `${progress.done.filter(Boolean).length} / ${CONFIG.levels.length}`]],
+  badges: [
+    { id: "home", icon: "🏡", name: "Found", desc: "Bring the lamb home", test: (c) => c.won },
+    { id: "all", icon: "🌄", name: "Every lamb home", desc: "Finish level 10", test: (c) => c.won && c.G.data.lvl === 10 },
+    { id: "brave", icon: "💪", name: "Not a scare", desc: "Win without him being scared", test: (c) => c.won && c.G.data.scares === 0 },
+    { id: "quick", icon: "⏱️", name: "Straight home", desc: "Win in under 45 seconds", test: (c) => c.won && c.G.data.homeAt - c.G.start < 45000 },
+  ],
+  hooks: {
+    setup(G, s) {
+      const lvl = Math.min(s.lvl || 1, unlocked());
+      const L = CONFIG.levels[lvl - 1];
+      const b = G.b;
+      const rows = L.map.split(" ");
+      for (let r = 0; r < b.rows; r++)
+        for (let c = 0; c < b.cols; c++) {
+          const i = r * b.cols + c;
+          if (rows[r][c] === "R") {
+            b.kind[i] = "rock";
+            b.hp[i] = b.mhp[i] = 2;
+          } else if (rows[r][c] === "T") b.kind[i] = "thorn";
+        }
+      const start = (b.rows - 1) * b.cols;
+      const home = b.cols - 1;
+      b.owner[start] = 0;
+      b.count[start] = 1;
+      b.kind[home] = "home";
+      // the wolves begin with a small den in the middle
+      G.players.filter((p) => p.team === 1).forEach((w, k) => {
+        const i = 4 * b.cols + 2 + k;
+        if (!b.kind[i]) {
+          b.owner[i] = w.id;
+          b.count[i] = 1;
+        }
+      });
+      G.data = { braveUntil: 0, lvl, L, lamb: start, from: start, at: 0, trail: [start], home, nextStep: performance.now() + CONFIG.stepMs, stuck: false, scared: 0, scares: 0, won: false, homeAt: 0, last: "" };
+    },
+    hud: (G) => hud(G),
+    noElimination: true,
+    blocked: (G, i) => !!G.b.kind[i],
+    inPath: (G, i) => !G.b.kind[i],
+    land(G, b, from, to, who) {
+      const D = G.data;
+      if (b.kind[to] === "home") return true;
+      if (b.kind[to] === "thorn") {
+        b.kind[to] = null;
+        S.puff(to, "#7bd36b", 5);
+        S.rebuildPath();
+        return true;
+      }
+      if (to === D.lamb && G.players[who]?.team === 1 && performance.now() > D.braveUntil) D.scared = 1; // a wolf burst on his square
+      return false;
+    },
+    specialHit(G, k) {
+      const b = G.b;
+      if (b.kind[k] === "home") return true;
+      if (b.kind[k] === "thorn") {
+        b.kind[k] = null;
+        S.rebuildPath();
+        return true;
+      }
+      return false;
+    },
+    afterWave(G, now) {
+      const D = G.data;
+      if (!D.scared || D.won) return;
+      D.scared = 0;
+      D.scares++;
+      D.braveUntil = now + CONFIG.braveMs;
+      // he runs back along his trail
+      const back = Math.min(CONFIG.scaredSteps, D.trail.length - 1);
+      for (let k = 0; k < back; k++) D.trail.pop();
+      move(G, D.trail[D.trail.length - 1], now);
+      D.nextStep = now + CONFIG.stepMs;
+      S.mood(G.players[0], "oops", 900);
+      S.Sfx.bleat(1.5);
+      S.shout(null, "Eek!", 1.2, "#ffffff");
+    },
+    aiValue(G, pl, i) {
+      const b = G.b;
+      const D = G.data;
+      const d = (a, z) => Math.abs(Engine.rowOf(b, a) - Engine.rowOf(b, z)) + Math.abs(Engine.colOf(b, a) - Engine.colOf(b, z));
+      const nearLamb = d(i, D.lamb);
+      if (pl.team === 1) return nearLamb <= 1 ? 3 - nearLamb : 0; // wolves crowd the lamb
+      // shepherds build the road ahead of him
+      const ahead = d(i, D.home) < d(D.lamb, D.home);
+      return nearLamb <= 2 && ahead ? 7 - nearLamb * 2 : ahead && nearLamb <= 4 ? 1 : 0;
+    },
+    update(G, now) {
+      const D = G.data;
+      if (D.won) return;
+      if (now >= D.nextStep) {
+        D.nextStep = now + CONFIG.stepMs;
+        step(G, now);
+      }
+      hud(G);
+    },
+    shift(G, d) {
+      G.data.nextStep += d;
+      G.data.braveUntil += d;
+      G.data.at += d;
+      if (G.data.homeAt) G.data.homeAt += d;
+    },
+    endCheck(G, now, left) {
+      const D = G.data;
+      if (D.won) {
+        if (now - D.homeAt < CONFIG.liftMs + 400) return null;
+        progress.done[D.lvl - 1] = true;
+        S.Store.set("cfl2-n5-progress", progress);
+        return { team: 0, title: "He's home!", sub: "", color: "#ffcf4a" };
+      }
+      if (left <= 0) return { team: 1, title: "Still lost…", sub: "The night came before he got home. Try again!", color: "#ff8a8a", sad: true };
+      return null;
+    },
+    resultsExtra(G, res, el) {
+      if (res.team === 0) el.innerHTML = '<p class="verse">“And when he hath found it, he layeth it on his shoulders, rejoicing.”<br><small>Luke 15:5</small></p>';
+    },
+    drawCell(ctx, G, i, x, y, c, t) {
+      const kind = G.b.kind[i];
+      if (kind === "thorn") {
+        ctx.strokeStyle = "#2c5a2a";
+        ctx.lineWidth = c * 0.05;
+        ctx.beginPath();
+        for (let k = 0; k < 9; k++) {
+          const a = (k / 9) * Math.PI * 2;
+          ctx.moveTo(x + c / 2, y + c / 2);
+          ctx.lineTo(x + c / 2 + Math.cos(a) * c * 0.38, y + c / 2 + Math.sin(a) * c * 0.38);
+        }
+        ctx.stroke();
+        Kit.circle(ctx, x + c / 2, y + c / 2, c * 0.2, "#3f7a35");
+        return true;
+      }
+      return kind === "home";
+    },
+    drawOver(ctx, G, c, t, now) {
+      const D = G.data;
+      const b = G.b;
+      // his trail
+      ctx.fillStyle = "rgba(255,250,240,0.25)";
+      for (const k of D.trail) Kit.circle(ctx, (Engine.colOf(b, k) + 0.5) * c, (Engine.rowOf(b, k) + 0.85) * c, c * 0.05, "rgba(255,250,240,0.35)");
+      // the Shepherd, glowing at home
+      const hx = (Engine.colOf(b, D.home) + 0.5) * c;
+      const hy = (Engine.rowOf(b, D.home) + 1) * c;
+      ctx.globalAlpha = 0.35 + 0.15 * Math.sin(t * 2);
+      Kit.circle(ctx, hx, hy - c * 0.5, c * 0.9, "#ffe9a8");
+      ctx.globalAlpha = 1;
+      Kit.drawShepherd(ctx, hx, hy, c * 1.1, { t });
+      // the lamb: walking, shivering when stuck, lifted onto the Shepherd's shoulders at the end
+      let x;
+      let y;
+      if (D.won) {
+        const p = Math.min(1, (now - D.homeAt) / CONFIG.liftMs);
+        x = hx - c * 0.1;
+        y = hy - c * (0.5 + 0.55 * p);
+      } else {
+        const p = Math.min(1, (now - D.at) / 300);
+        x = (Engine.colOf(b, D.from) + (Engine.colOf(b, D.lamb) - Engine.colOf(b, D.from)) * p + 0.5) * c;
+        y = (Engine.rowOf(b, D.from) + (Engine.rowOf(b, D.lamb) - Engine.rowOf(b, D.from)) * p + 0.5) * c - Math.sin(Math.PI * p) * c * 0.3;
+        if (D.stuck && !S.settings.reduced) x += Math.sin(t * 50) * 1.5;
+      }
+      Kit.drawLamb(ctx, x, y - c * 0.06, c * 0.82, { t, scarf: S.COLORS[0], mood: D.won ? "happy" : D.stuck ? "shock" : "happy", glow: D.won ? "rgba(255,220,120,0.7)" : undefined });
+    },
+  },
+});
+
+// ---------- THE LAMB ----------
+// Each step he moves onto a neighbouring square of ours, the one closest to home along our squares.
+function step(G, now) {
+  const D = G.data;
+  const b = G.b;
+  const near = Engine.neighbours(b, D.lamb);
+  if (near.includes(D.home)) {
+    move(G, D.home, now);
+    D.won = true;
+    D.homeAt = now;
+    for (const p of G.players) p.observer = true;
+    S.shout(null, "Rejoice!", 1.8, "#ffcf4a");
+    S.Sfx.win();
+    S.buzz([60, 40, 140]);
+    return;
+  }
+  const dist = distances(G);
+  const options = near.filter((k) => isOurs(G, k) && b.kind[k] !== "thorn");
+  D.stuck = !options.length;
+  if (D.stuck) return;
+  const prev = D.trail.length > 1 ? D.trail[D.trail.length - 2] : -1;
+  const manhattan = (k) => Math.abs(Engine.rowOf(b, k) - Engine.rowOf(b, D.home)) + Math.abs(Engine.colOf(b, k) - Engine.colOf(b, D.home));
+  options.sort((a, z) => dist[a] - dist[z] || manhattan(a) - manhattan(z) || (a === prev) - (z === prev));
+  const best = options[0];
+  // with no road home yet he only steps if it brings him closer
+  if (!Number.isFinite(dist[best]) && manhattan(best) >= manhattan(D.lamb)) {
+    D.stuck = true;
+    return;
+  }
+  if (best === prev) D.trail.pop();
+  else D.trail.push(best);
+  move(G, best, now);
+}
+
+// distance to home through our squares
+function distances(G) {
+  const b = G.b;
+  const D = G.data;
+  const dist = new Array(b.size).fill(Infinity);
+  dist[D.home] = 0;
+  const queue = [D.home];
+  while (queue.length) {
+    const i = queue.shift();
+    for (const k of Engine.neighbours(b, i)) {
+      if (dist[k] !== Infinity || !isOurs(G, k)) continue;
+      dist[k] = dist[i] + 1;
+      queue.push(k);
+    }
+  }
+  return dist;
+}
+
+function move(G, to, now) {
+  const D = G.data;
+  D.from = D.lamb;
+  D.lamb = to;
+  D.at = now;
+  S.Audio.tone(520, 0.06, "triangle", 0.04, 700);
+}
+
+function hud(G) {
+  const D = G.data;
+  const b = G.b;
+  const left = Math.abs(Engine.rowOf(b, D.lamb) - Engine.rowOf(b, D.home)) + Math.abs(Engine.colOf(b, D.lamb) - Engine.colOf(b, D.home));
+  const html = `<span>Level ${D.lvl}</span><span>🏡 ${left} away</span>${D.stuck ? "<span>🥶</span>" : ""}`;
+  if (html !== D.last) {
+    D.last = html;
+    $("hud").innerHTML = html;
+  }
+}
+</script>
+</body>
+</html>

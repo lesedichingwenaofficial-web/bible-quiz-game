@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#13201a" />
+<title>Lead Him Home</title>
+<meta name="description" content="Lead Him Home, a cheekyfoundlamb game: real-time Chain Reaction escort. Build a path of your sheep so the lost lamb can walk home to the Shepherd." />
+<style>
+/*@KITCSS*/
+/*@STAMPEDE2CSS*/
+.hud { gap: 10px; font-size: 1.05rem; }
+.verse { font-style: italic; color: var(--cream) !important; }
+</style>
+</head>
+<body>
+<!--@STAMPEDE2HTML-->
+<script>
+/*@ENGINE*/
+/*@KIT*/
+/*@STAMPEDE2*/
+
+// ======================= N5: LEAD HIM HOME =======================
+// ---------- CONFIG ----------
+const CONFIG = {
+  stepMs: 1500, // the lamb takes a step this often
+  scaredSteps: 3, // a wolf burst on his square sends him back this many steps
+  braveMs: 2000, // after a scare he can't be scared again for this long
+  roundSecs: 120,
+  liftMs: 1400, // the Shepherd lifting him up
+  wolfColor: "#8b8f9c",
+  // R = rock (2 hits), T = thorns (he can't walk them; a burst clears them), . = grass. Lamb starts bottom-left, home is top-right.
+  levels: [
+    { wolves: ["easy"], speed: 0.8, map: "...... ...... ...... ...... ...... ...... ...... ...... ......" },
+    { wolves: ["easy"], speed: 0.9, map: "...... ...... ..R... ...... ...R.. ...... .R.... ...... ......" },
+    { wolves: ["normal"], speed: 0.9, map: "...... ...... ...... ..RR.. ...... ...... ...... ...... ......" },
+    { wolves: ["normal"], speed: 1, map: "...... ...... ...T.. ..T... ...T.. ..T... ...... ...... ......" },
+    { wolves: ["normal"], speed: 1.1, map: "...... ..R... ...T.. .T.R.. ..T... ...R.. ...... ...... ......" },
+    { wolves: ["easy", "easy"], speed: 1, map: "...... ...... ...... ...... ...... ...... ...... ...... ......" },
+    { wolves: ["hard"], speed: 1.1, map: "...... ...R.. ...... .R..R. ...... ..R... ...... ...... ......" },
+    { wolves: ["normal"], speed: 1.2, map: "...... RRR... ...... ...RRR ...... RRR... ...... ...RRR ......" },
+    { wolves: ["normal", "normal"], speed: 1.1, map: "...... ..T... ...... .T..T. ...... ..T... ...... ...... ......" },
+    { wolves: ["hard", "hard"], speed: 1.2, map: "...... .R..T. ...... ..TR.. ...... .T..R. ...... ...... ......" },
+  ],
+};
+const S = Stampede;
+const $ = (id) => document.getElementById(id);
+let progress = S.Store.get("cfl2-n5-progress", { done: [] });
+const unlocked = () => Math.min(CONFIG.levels.length, progress.done.filter(Boolean).length + 1);
+const isOurs = (G, i) => S.isPlayer(G.b.owner[i]) && G.players[G.b.owner[i]].team === 0;
+
+// ---------- MODE ----------
+S.run({
+  key: "n5",
+  title: "Lead Him Home",
+  how: ["The lost lamb walks only on your squares. Build him a path to the Shepherd.", "Wolf bursts on his square scare him back. Bring him home in 2 minutes!"],
+  tune: { roundSecs: CONFIG.roundSecs },
+  setupDefaults: { n: 1, seats: ["human", "ai"], lvl: 1 },
+  solo: (s) => s.n === 1,
+  players(s) {
+    const L = CONFIG.levels[Math.min(s.lvl, unlocked()) - 1];
+    const list = Array.from({ length: s.n }, (_, p) => ({ seat: p, kind: s.seats[p], team: 0 }));
+    L.wolves.forEach((lvl, k) => list.push({ seat: -1, kind: "ai", level: lvl, team: 1, speed: L.speed, color: CONFIG.wolfColor, name: "Wolf", sym: null, pos: 20 + k * 17 }));
+    return list;
+  },
+  options(ui, s) {
+    s.lvl = Math.min(s.lvl || 1, unlocked());
+    ui.seg("Players", "n", [[1, "Solo"], [2, "2 co-op"]]);
+    if (s.n === 2) ui.seats(2);
+    ui.seg("Level", "lvl", CONFIG.levels.map((_, k) => [k + 1, String(k + 1)]).slice(0, unlocked()));
+  },
+  playLabel: (s) => `Play level ${Math.min(s.lvl || 1, unlocked())}`,
+  hero(g, t) {
+    Kit.drawShepherd(g, 170, 124, 110, { t });
+    Kit.drawLamb(g, 70 + Math.sin(t) * 8, 84, 64, { t, scarf: S.COLORS[0], mood: "happy" });
+  },
+  music: {
+    bpm: 100, root: 62, scale: "major", prog: [0, 4, 5, 3],
+    lead: ["2...4...5...4...", "2...1...0.......", "4...5...7...5...", "4...2...1...0..."],
+    bass: "x.......x.......",
+    drums: { kick: "x.......x.......", snare: "........x.......", hat: "x...x...x...x..." },
+    leadType: "triangle",
+  },
+  againLabel: (G, res) => (res.team === 0 && G.data.lvl < CONFIG.levels.length ? "Next level" : res.team === 0 ? "Play again" : "Retry"),
+  onAgain(start) {
+    const D = S.G?.data;
+    if (D?.won && D.lvl < CONFIG.levels.length) S.setup.lvl = D.lvl + 1;
+    start();
+  },
+  records: (G, res) => (res.team === 0 ? [{ label: "Seconds", value: Math.round((G.data.homeAt - G.start) / 1000), key: `lvl${G.data.lvl}`, higher: false }] : []),
+  statRows: () => [["Levels done", `${progress.done.filter(Boolean).length} / ${CONFIG.levels.length}`]],
+  badges: [
+    { id: "home", icon: "🏡", name: "Found", desc: "Bring the lamb home", test: (c) => c.won },
+    { id: "all", icon: "🌄", name: "Every lamb home", desc: "Finish level 10", test: (c) => c.won && c.G.data.lvl === 10 },
+    { id: "brave", icon: "💪", name: "Not a scare", desc: "Win without him being scared", test: (c) => c.won && c.G.data.scares === 0 },
+    { id: "quick", icon: "⏱️", name: "Straight home", desc: "Win in under 45 seconds", test: (c) => c.won && c.G.data.homeAt - c.G.start < 45000 },
+  ],
+  hooks: {
+    setup(G, s) {
+      const lvl = Math.min(s.lvl || 1, unlocked());
+      const L = CONFIG.levels[lvl - 1];
+      const b = G.b;
+      const rows = L.map.split(" ");
+      for (let r = 0; r < b.rows; r++)
+        for (let c = 0; c < b.cols; c++) {
+          const i = r * b.cols + c;
+          if (rows[r][c] === "R") {
+            b.kind[i] = "rock";
+            b.hp[i] = b.mhp[i] = 2;
+          } else if (rows[r][c] === "T") b.kind[i] = "thorn";
+        }
+      const start = (b.rows - 1) * b.cols;
+      const home = b.cols - 1;
+      b.owner[start] = 0;
+      b.count[start] = 1;
+      b.kind[home] = "home";
+      // the wolves begin with a small den in the middle
+      G.players.filter((p) => p.team === 1).forEach((w, k) => {
+        const i = 4 * b.cols + 2 + k;
+        if (!b.kind[i]) {
+          b.owner[i] = w.id;
+          b.count[i] = 1;
+        }
+      });
+      G.data = { braveUntil: 0, lvl, L, lamb: start, from: start, at: 0, trail: [start], home, nextStep: performance.now() + CONFIG.stepMs, stuck: false, scared: 0, scares: 0, won: false, homeAt: 0, last: "" };
+    },
+    hud: (G) => hud(G),
+    noElimination: true,
+    blocked: (G, i) => !!G.b.kind[i],
+    inPath: (G, i) => !G.b.kind[i],
+    land(G, b, from, to, who) {
+      const D = G.data;
+      if (b.kind[to] === "home") return true;
+      if (b.kind[to] === "thorn") {
+        b.kind[to] = null;
+        S.puff(to, "#7bd36b", 5);
+        S.rebuildPath();
+        return true;
+      }
+      if (to === D.lamb && G.players[who]?.team === 1 && performance.now() > D.braveUntil) D.scared = 1; // a wolf burst on his square
+      return false;
+    },
+    specialHit(G, k) {
+      const b = G.b;
+      if (b.kind[k] === "home") return true;
+      if (b.kind[k] === "thorn") {
+        b.kind[k] = null;
+        S.rebuildPath();
+        return true;
+      }
+      return false;
+    },
+    afterWave(G, now) {
+      const D = G.data;
+      if (!D.scared || D.won) return;
+      D.scared = 0;
+      D.scares++;
+      D.braveUntil = now + CONFIG.braveMs;
+      // he runs back along his trail
+      const back = Math.min(CONFIG.scaredSteps, D.trail.length - 1);
+      for (let k = 0; k < back; k++) D.trail.pop();
+      move(G, D.trail[D.trail.length - 1], now);
+      D.nextStep = now + CONFIG.stepMs;
+      S.mood(G.players[0], "oops", 900);
+      S.Sfx.bleat(1.5);
+      S.shout(null, "Eek!", 1.2, "#ffffff");
+    },
+    aiValue(G, pl, i) {
+      const b = G.b;
+      const D = G.data;
+      const d = (a, z) => Math.abs(Engine.rowOf(b, a) - Engine.rowOf(b, z)) + Math.abs(Engine.colOf(b, a) - Engine.colOf(b, z));
+      const nearLamb = d(i, D.lamb);
+      if (pl.team === 1) return nearLamb <= 1 ? 3 - nearLamb : 0; // wolves crowd the lamb
+      // shepherds build the road ahead of him
+      const ahead = d(i, D.home) < d(D.lamb, D.home);
+      return nearLamb <= 2 && ahead ? 7 - nearLamb * 2 : ahead && nearLamb <= 4 ? 1 : 0;
+    },
+    update(G, now) {
+      const D = G.data;
+      if (D.won) return;
+      if (now >= D.nextStep) {
+        D.nextStep = now + CONFIG.stepMs;
+        step(G, now);
+      }
+      hud(G);
+    },
+    shift(G, d) {
+      G.data.nextStep += d;
+      G.data.braveUntil += d;
+      G.data.at += d;
+      if (G.data.homeAt) G.data.homeAt += d;
+    },
+    endCheck(G, now, left) {
+      const D = G.data;
+      if (D.won) {
+        if (now - D.homeAt < CONFIG.liftMs + 400) return null;
+        progress.done[D.lvl - 1] = true;
+        S.Store.set("cfl2-n5-progress", progress);
+        return { team: 0, title: "He's home!", sub: "", color: "#ffcf4a" };
+      }
+      if (left <= 0) return { team: 1, title: "Still lost…", sub: "The night came before he got home. Try again!", color: "#ff8a8a", sad: true };
+      return null;
+    },
+    resultsExtra(G, res, el) {
+      if (res.team === 0) el.innerHTML = '<p class="verse">“And when he hath found it, he layeth it on his shoulders, rejoicing.”<br><small>Luke 15:5</small></p>';
+    },
+    drawCell(ctx, G, i, x, y, c, t) {
+      const kind = G.b.kind[i];
+      if (kind === "thorn") {
+        ctx.strokeStyle = "#2c5a2a";
+        ctx.lineWidth = c * 0.05;
+        ctx.beginPath();
+        for (let k = 0; k < 9; k++) {
+          const a = (k / 9) * Math.PI * 2;
+          ctx.moveTo(x + c / 2, y + c / 2);
+          ctx.lineTo(x + c / 2 + Math.cos(a) * c * 0.38, y + c / 2 + Math.sin(a) * c * 0.38);
+        }
+        ctx.stroke();
+        Kit.circle(ctx, x + c / 2, y + c / 2, c * 0.2, "#3f7a35");
+        return true;
+      }
+      return kind === "home";
+    },
+    drawOver(ctx, G, c, t, now) {
+      const D = G.data;
+      const b = G.b;
+      // his trail
+      ctx.fillStyle = "rgba(255,250,240,0.25)";
+      for (const k of D.trail) Kit.circle(ctx, (Engine.colOf(b, k) + 0.5) * c, (Engine.rowOf(b, k) + 0.85) * c, c * 0.05, "rgba(255,250,240,0.35)");
+      // the Shepherd, glowing at home
+      const hx = (Engine.colOf(b, D.home) + 0.5) * c;
+      const hy = (Engine.rowOf(b, D.home) + 1) * c;
+      ctx.globalAlpha = 0.35 + 0.15 * Math.sin(t * 2);
+      Kit.circle(ctx, hx, hy - c * 0.5, c * 0.9, "#ffe9a8");
+      ctx.globalAlpha = 1;
+      Kit.drawShepherd(ctx, hx, hy, c * 1.1, { t });
+      // the lamb: walking, shivering when stuck, lifted onto the Shepherd's shoulders at the end
+      let x;
+      let y;
+      if (D.won) {
+        const p = Math.min(1, (now - D.homeAt) / CONFIG.liftMs);
+        x = hx - c * 0.1;
+        y = hy - c * (0.5 + 0.55 * p);
+      } else {
+        const p = Math.min(1, (now - D.at) / 300);
+        x = (Engine.colOf(b, D.from) + (Engine.colOf(b, D.lamb) - Engine.colOf(b, D.from)) * p + 0.5) * c;
+        y = (Engine.rowOf(b, D.from) + (Engine.rowOf(b, D.lamb) - Engine.rowOf(b, D.from)) * p + 0.5) * c - Math.sin(Math.PI * p) * c * 0.3;
+        if (D.stuck && !S.settings.reduced) x += Math.sin(t * 50) * 1.5;
+      }
+      Kit.drawLamb(ctx, x, y - c * 0.06, c * 0.82, { t, scarf: S.COLORS[0], mood: D.won ? "happy" : D.stuck ? "shock" : "happy", glow: D.won ? "rgba(255,220,120,0.7)" : undefined });
+    },
+  },
+});
+
+// ---------- THE LAMB ----------
+// Each step he moves onto a neighbouring square of ours, the one closest to home along our squares.
+function step(G, now) {
+  const D = G.data;
+  const b = G.b;
+  const near = Engine.neighbours(b, D.lamb);
+  if (near.includes(D.home)) {
+    move(G, D.home, now);
+    D.won = true;
+    D.homeAt = now;
+    for (const p of G.players) p.observer = true;
+    S.shout(null, "Rejoice!", 1.8, "#ffcf4a");
+    S.Sfx.win();
+    S.buzz([60, 40, 140]);
+    return;
+  }
+  const dist = distances(G);
+  const options = near.filter((k) => isOurs(G, k) && b.kind[k] !== "thorn");
+  D.stuck = !options.length;
+  if (D.stuck) return;
+  const prev = D.trail.length > 1 ? D.trail[D.trail.length - 2] : -1;
+  const manhattan = (k) => Math.abs(Engine.rowOf(b, k) - Engine.rowOf(b, D.home)) + Math.abs(Engine.colOf(b, k) - Engine.colOf(b, D.home));
+  options.sort((a, z) => dist[a] - dist[z] || manhattan(a) - manhattan(z) || (a === prev) - (z === prev));
+  const best = options[0];
+  // with no road home yet he only steps if it brings him closer
+  if (!Number.isFinite(dist[best]) && manhattan(best) >= manhattan(D.lamb)) {
+    D.stuck = true;
+    return;
+  }
+  if (best === prev) D.trail.pop();
+  else D.trail.push(best);
+  move(G, best, now);
+}
+
+// distance to home through our squares
+function distances(G) {
+  const b = G.b;
+  const D = G.data;
+  const dist = new Array(b.size).fill(Infinity);
+  dist[D.home] = 0;
+  const queue = [D.home];
+  while (queue.length) {
+    const i = queue.shift();
+    for (const k of Engine.neighbours(b, i)) {
+      if (dist[k] !== Infinity || !isOurs(G, k)) continue;
+      dist[k] = dist[i] + 1;
+      queue.push(k);
+    }
+  }
+  return dist;
+}
+
+function move(G, to, now) {
+  const D = G.data;
+  D.from = D.lamb;
+  D.lamb = to;
+  D.at = now;
+  S.Audio.tone(520, 0.06, "triangle", 0.04, 700);
+}
+
+function hud(G) {
+  const D = G.data;
+  const b = G.b;
+  const left = Math.abs(Engine.rowOf(b, D.lamb) - Engine.rowOf(b, D.home)) + Math.abs(Engine.colOf(b, D.lamb) - Engine.colOf(b, D.home));
+  const html = `<span>Level ${D.lvl}</span><span>🏡 ${left} away</span>${D.stuck ? "<span>🥶</span>" : ""}`;
+  if (html !== D.last) {
+    D.last = html;
+    $("hud").innerHTML = html;
+  }
+}
+</script>
+</body>
+</html>
