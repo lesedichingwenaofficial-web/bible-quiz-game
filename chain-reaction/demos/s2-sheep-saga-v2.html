@@ -2479,7 +2479,8 @@ const Stampede = (() => {
     const jump = m === "cheer" ? Math.abs(Math.sin(t * 10)) * (settings.reduced ? 3 : 8) : 0;
     const jit = panic && !settings.reduced ? Math.sin(t * 50) * 2 : 0;
     const bob = (G.bob || 0) * 5;
-    Kit.drawLamb(g, cx + jit, cy + 6 - jump - bob, R2 * 1.25, { scarf: pl.color, t, mood: !pl.alive ? "sleep" : m === "oops" ? "sleep" : panic ? "shock" : "happy" });
+    if (pl.wolf) Kit.drawWolf(g, cx + jit, cy + 4 - jump - bob, R2 * 1.5, { t, mood: m === "oops" ? "sad" : "happy" }); // a lamb in a wolf costume
+    else Kit.drawLamb(g, cx + jit, cy + 6 - jump - bob, R2 * 1.25, { scarf: pl.color, t, mood: !pl.alive ? "sleep" : m === "oops" ? "sleep" : panic ? "shock" : "happy" });
     if (m === "oops") for (let side = -1; side <= 1; side += 2) Kit.circle(g, cx + R2 * 0.27 + side * R2 * 0.09, cy + 6 - R2 * 0.26, R2 * 0.09, "#3b3340");
     if (panic) Kit.ellipse(g, cx + R2 * 0.55, cy - R2 * 0.25, R2 * 0.06, R2 * 0.1, 0, "#8fd3ff");
     mark(g, x + 16, y + 16, 12, pl.sym);

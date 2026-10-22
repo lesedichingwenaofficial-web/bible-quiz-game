@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#13201a" />
+<title>Wolf Tag</title>
+<meta name="description" content="Wolf Tag, a cheekyfoundlamb game: real-time Chain Reaction infection party for 3-4 players. Lose your flock and you join the wolves." />
+<style>
+/*@KITCSS*/
+/*@STAMPEDE2CSS*/
+.hud { gap: 10px; font-size: 1.15rem; }
+</style>
+</head>
+<body>
+<!--@STAMPEDE2HTML-->
+<script>
+/*@ENGINE*/
+/*@KIT*/
+/*@STAMPEDE2*/
+
+// ======================= N3: WOLF TAG =======================
+// ---------- CONFIG ----------
+const CONFIG = {
+  roundSecs: 120,
+  wolfRefill: 0.8, // wolves refill this much faster (x refill time)
+  wolfColor: "#6f6a80",
+  wolfTeam: 9,
+};
+const S = Stampede;
+const $ = (id) => document.getElementById(id);
+const isWolf = (p) => p.team === CONFIG.wolfTeam;
+const lambs = (G) => G.players.filter((p) => !isWolf(p));
+
+function makeWolf(G, pl, now) {
+  pl.team = CONFIG.wolfTeam;
+  pl.wolf = true;
+  pl.color = CONFIG.wolfColor;
+  pl.turnedAt = now;
+  pl.special = null;
+}
+
+// ---------- MODE ----------
+S.run({
+  key: "n3",
+  title: "Wolf Tag",
+  how: ["One of you starts as the wolf. Lose all your squares and you join the wolves!", "Wolves win by catching every lamb. Hold out to the end as the last lamb to win alone."],
+  tune: { roundSecs: CONFIG.roundSecs },
+  setupDefaults: { n: 4, seats: ["human", "ai", "ai", "ai"] },
+  players: (s) => Array.from({ length: s.n }, (_, p) => ({ seat: p, kind: s.seats[p] })),
+  options(ui, s) {
+    ui.stepper("Players", "n", 3, 4);
+    ui.seats(s.n);
+  },
+  hero(g, t) {
+    Kit.drawWolf(g, 150, 66, 90, { t, mood: "happy" });
+    Kit.drawLamb(g, 70, 70, 84, { t, scarf: S.COLORS[0], mood: Math.sin(t * 2) > 0.6 ? "shock" : "happy" });
+  },
+  outLabel: "WOLF",
+  music: {
+    bpm: 132, root: 57, scale: "dorian", prog: [0, 3, 0, 4],
+    lead: ["0..2..3.2..0....", "3..5..3.2..0....", "0..2..3.5..7....", "5..3..2.0..2...."],
+    bass: "x..x..x.x..x..x.",
+    drums: { kick: "x..x....x..x....", snare: "....x.......x...", hat: "x.x.x.x.x.x.x.x." },
+  },
+  mvpScore: (p) => (isWolf(p) ? 0 : 1000) + p.bursts,
+  badges: [
+    { id: "last", icon: "🐑", name: "Last lamb", desc: "Be the last lamb standing", test: (c) => c.res.lastLamb && c.hs.some((p) => p.id === c.res.lastLamb.id) },
+    { id: "pack", icon: "🐺", name: "Pack leader", desc: "Win as the starting wolf", test: (c) => c.res.team === CONFIG.wolfTeam && c.hs.some((p) => p.firstWolf) },
+    { id: "turn", icon: "🎭", name: "Costume change", desc: "Get caught, then win as a wolf", test: (c) => c.res.team === CONFIG.wolfTeam && c.hs.some((p) => p.wolf && !p.firstWolf) },
+  ],
+  hooks: {
+    setup(G) {
+      const w = G.players[Math.floor(Math.random() * G.players.length)];
+      makeWolf(G, w, performance.now());
+      w.firstWolf = true;
+      G.data = { last: "" };
+      S.shout(w, "Wolf!", 1.4, "#c7c3d6");
+    },
+    hud: (G) => hud(G),
+    noElimination: true, // caught lambs become wolves instead
+    refillMs: (G, pl) => (isWolf(pl) ? S.tune.refill * 1000 * CONFIG.wolfRefill * (G.players.length >= 4 ? 1.7 / 1.1 : 1.4 / 1.1) : undefined),
+    afterWave(G, now) {
+      if (!G.players.every((p) => p.placed)) return;
+      for (const pl of lambs(G)) {
+        if (S.orbsOf(pl.id) > 0) continue;
+        // caught: the lamb pulls on a wolf costume and joins the pack
+        makeWolf(G, pl, now);
+        S.shout(pl, "Caught!", 1.4, "#c7c3d6");
+        S.Sfx.howl();
+        S.buzz([60, 40, 60]);
+        const left = lambs(G);
+        if (left.length === 1) S.shout(left[0], "Last lamb!", 1.5);
+      }
+      hud(G);
+    },
+    endCheck(G, now, left) {
+      const L = lambs(G);
+      if (!L.length) return { team: CONFIG.wolfTeam, title: "The wolves win!", sub: "Every lamb was caught.", color: "#c7c3d6" };
+      if (left > 0) return null;
+      // time's up: a lone lamb who held out wins alone; otherwise the lamb with most squares
+      if (L.length === 1) return { team: L[0].team, title: `${L[0].name} is the last lamb!`, sub: "Held out against the whole pack.", color: L[0].color, lastLamb: L[0] };
+      const ranked = [...L].sort((a, b) => S.cellsOf(b.id) - S.cellsOf(a.id));
+      if (S.cellsOf(ranked[0].id) === S.cellsOf(ranked[1].id)) return { team: -1, sub: "Time's up: the lambs are tied." };
+      return { team: ranked[0].team, sub: `Time's up: most squares among the lambs (${S.cellsOf(ranked[0].id)}).` };
+    },
+    resultsExtra(G, res) {
+      if (res.lastLamb) {
+        S.mood(res.lastLamb, "cheer", 4000);
+        S.Sfx.bleat(1.2, 0.3);
+      }
+    },
+  },
+});
+
+function hud(G) {
+  const D = G.data;
+  const html = `<span>🐑 ${lambs(G).length}</span><span>🐺 ${G.players.length - lambs(G).length}</span>`;
+  if (html !== D.last) {
+    D.last = html;
+    $("hud").innerHTML = html;
+  }
+}
+</script>
+</body>
+</html>
