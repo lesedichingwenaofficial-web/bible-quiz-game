@@ -1322,7 +1322,7 @@ const Stampede = (() => {
   function newPlayer(p, id, now) {
     return {
       id, seat: -1, kind: "human", level: null, team: id, color: COLORS[id % 4], name: NAMES[id % 4], sym: SYMBOLS[id % 4],
-      speed: 1, dir: 1, pen: tune.pen, refillAt: 0, lockUntil: 0, special: null, lineDir: "row",
+      speed: 1, dir: 1, pen: p.penMax ?? tune.pen, refillAt: 0, lockUntil: 0, special: null, lineDir: "row",
       alive: true, placed: false, chain: 0, best: 0, mood: null, moodUntil: 0, aiPlan: null, score: 0, nextStep: now, pos: null,
       observer: false, pressAt: -1e9, taps: 0, drops: 0, wastes: 0, empties: 0, bursts: 0, specials: 0, damage: 0,
       ...p,
@@ -1373,6 +1373,7 @@ const Stampede = (() => {
     startRound();
   }
 
+  const penCap = (pl) => pl.penMax ?? tune.pen; // a game can give one player a bigger pen
   const refillMs = (pl) => {
     const n = G.players.filter((p) => !p.observer).length;
     const base = H.refillMs?.(G, pl) ?? tune.refill * 1000 * (G.solo ? 1 : REFILL_SCALE[Math.min(4, n)]);
@@ -1637,11 +1638,11 @@ const Stampede = (() => {
 
   const crossed = (prev, now, at) => prev < at && now >= at;
   function rewards(pl, prev, now) {
-    if (crossed(prev, now, tune.lineAt)) loadSpecial(pl, "line");
-    if (crossed(prev, now, tune.plusAt)) pl.pen = Math.min(tune.pen, pl.pen + 2);
+    if (crossed(prev, now, (pl.lineAt ?? tune.lineAt))) loadSpecial(pl, "line");
+    if (crossed(prev, now, tune.plusAt)) pl.pen = Math.min(penCap(pl), pl.pen + 2);
     if (crossed(prev, now, tune.bombAt)) loadSpecial(pl, "bomb");
-    if (crossed(prev, now, tune.fullAt)) pl.pen = tune.pen;
-    if (crossed(prev, now, tune.overflowAt)) loadSpecial(pl, "overflow");
+    if (crossed(prev, now, tune.fullAt)) pl.pen = penCap(pl);
+    if (crossed(prev, now, (pl.overflowAt ?? tune.overflowAt))) loadSpecial(pl, "overflow");
     SHOUTS.forEach(([at, word, scale], lvl) => {
       if (crossed(prev, now, at)) {
         shout(pl, word, scale);
@@ -1765,12 +1766,12 @@ const Stampede = (() => {
         if (cursorCell(pl) === pl.aiPlan.cell) drop(pl, now);
         pl.aiPlan = null;
       }
-      if (pl.pen < tune.pen) {
+      if (pl.pen < penCap(pl)) {
         if (!pl.refillAt) pl.refillAt = now + refillMs(pl);
         if (now >= pl.refillAt) {
           pl.pen++;
-          pl.refillAt = pl.pen < tune.pen ? now + refillMs(pl) : 0;
-          if (pl.kind === "human") pl.pen === tune.pen ? Sfx.full() : Sfx.tick();
+          pl.refillAt = pl.pen < penCap(pl) ? now + refillMs(pl) : 0;
+          if (pl.kind === "human") pl.pen === penCap(pl) ? Sfx.full() : Sfx.tick();
         }
       } else pl.refillAt = 0;
     }
@@ -2329,7 +2330,7 @@ const Stampede = (() => {
       if (pl.special) drawSpecial(ctx, x + c - inset - c * 0.12, y + inset + c * 0.12, c * 0.08, pl.special, pl.color, pl.lineDir, t);
       if (dots) {
         // one dot per sheep in the pen, on the side of the cursor facing its player
-        const n = tune.pen;
+        const n = penCap(pl);
         const gap = Math.max(2, (c - inset * 2 - 8) / n);
         const yy = pl.seat >= 0 && !BOTTOM[pl.seat] ? y + inset + 5 : y + c - inset - 5;
         for (let k = 0; k < n; k++) {
@@ -2360,7 +2361,7 @@ const Stampede = (() => {
       list.forEach((pl, k) => {
         const span = W / list.length;
         const x0 = list.length === 1 ? 0 : OWN_LEFT[pl.seat] === BOTTOM[pl.seat] ? 0 : span;
-        const n = tune.pen;
+        const n = penCap(pl);
         const seg = span / n;
         for (let s = 0; s < n; s++) {
           let fill = s < pl.pen ? 1 : 0;
@@ -2422,7 +2423,7 @@ const Stampede = (() => {
     const cy = y + h / 2 + 2;
     const R2 = Math.min(w, h) * 0.42;
     if (settings.pen === "ring") {
-      const n = tune.pen;
+      const n = penCap(pl);
       for (let k = 0; k < n; k++) {
         const gap = n > 1 ? 0.32 : 0;
         const a0 = -Math.PI / 2 + (k / n) * Math.PI * 2 + gap / 2;
@@ -2445,7 +2446,7 @@ const Stampede = (() => {
     }
     if (settings.pen === "row" && pl.kind === "human") {
       // a row of sheep just above the button, out from under the thumb
-      const n = tune.pen;
+      const n = penCap(pl);
       const size = Math.min(7, (w - 8) / n / 2.6);
       for (let k = 0; k < n; k++) {
         const sx = cx + (k - (n - 1) / 2) * size * 2.6;
@@ -2879,7 +2880,7 @@ const Stampede = (() => {
         tune[k] = Number(input.value);
         out.textContent = tune[k] + unit;
         saveTune();
-        if (k === "pen" && G) for (const pl of G.players) pl.pen = Math.min(pl.pen, tune.pen);
+        if (k === "pen" && G) for (const pl of G.players) pl.pen = Math.min(pl.pen, penCap(pl));
       });
       box.append(el);
     }
@@ -2915,7 +2916,7 @@ const Stampede = (() => {
     $("results-home").addEventListener("click", home);
     $("pause").addEventListener("click", pause);
     $("resume").addEventListener("click", resume);
-    $("restart").addEventListener("click", startGame);
+    $("restart").addEventListener("click", () => (V.onAgain ? V.onAgain(startGame) : startGame()));
     $("home").addEventListener("click", home);
     $("pause-settings").addEventListener("click", () => openSettings("pausemenu"));
     $("open-settings").addEventListener("click", () => openSettings("title"));

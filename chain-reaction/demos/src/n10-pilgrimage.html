@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#13201a" />
+<title>Pilgrimage</title>
+<meta name="description" content="Pilgrimage, a cheekyfoundlamb game: a solo real-time Chain Reaction roguelike. Seven rounds, stacking blessings, and a wolf at the end of the road." />
+<style>
+/*@KITCSS*/
+/*@STAMPEDE2CSS*/
+.hud { gap: 6px; flex-wrap: wrap; font-size: 1rem; }
+.hud .bl { padding: 2px 6px; border-radius: 8px; background: var(--meadow-2); }
+.bless { position: fixed; inset: 0; z-index: 32; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(8, 14, 11, 0.88); }
+.bless .card h2 { margin-bottom: 4px; }
+.picks { display: grid; gap: 10px; margin-top: 12px; }
+.picks button { display: flex; align-items: center; gap: 14px; padding: 14px; border-radius: 18px; background: var(--meadow-2); text-align: left; font-weight: 900; font-size: 1.1rem; }
+.picks button i { font-style: normal; font-size: 2.2rem; width: 48px; text-align: center; }
+.picks button small { display: block; font-weight: 700; font-size: 0.8rem; color: var(--muted); }
+.road { display: flex; justify-content: center; gap: 6px; margin-top: 4px; }
+.road i { width: 14px; height: 14px; border-radius: 50%; background: var(--meadow-2); }
+.road i.done { background: var(--sun); }
+.road i.boss { border-radius: 3px; }
+</style>
+</head>
+<body>
+<!--@STAMPEDE2HTML-->
+<section class="bless" id="bless" hidden>
+  <div class="card">
+    <h2 id="bless-title"></h2>
+    <div class="road" id="bless-road"></div>
+    <p>Choose a blessing</p>
+    <div class="picks" id="bless-picks"></div>
+  </div>
+</section>
+<script>
+/*@ENGINE*/
+/*@KIT*/
+/*@STAMPEDE2*/
+
+// ======================= N10: PILGRIMAGE =======================
+// ---------- CONFIG ----------
+const CONFIG = {
+  roundSecs: 60,
+  // each round's flocks: AI levels, and how fast their cursors are
+  rounds: [
+    { foes: ["easy"], speed: 0.9 },
+    { foes: ["normal"], speed: 1 },
+    { foes: ["easy", "easy"], speed: 1 },
+    { foes: ["hard"], speed: 1 },
+    { foes: ["normal", "normal"], speed: 1.05 },
+    { foes: ["normal", "hard", "normal"], speed: 1.1 },
+    { foes: ["hard"], speed: 1.3, boss: true, penMax: 8 }, // the Wolf
+  ],
+  boxEveryMs: 20000, // Lucky Box
+  blessings: {
+    pen: { icon: "🐑", name: "Bigger Pen", desc: "+2 sheep in your pen" },
+    refill: { icon: "⏩", name: "Quick Refill", desc: "Sheep come back 20% faster" },
+    line: { icon: "🟰", name: "Early Line", desc: "Line sheep from a 4-chain" },
+    bomb: { icon: "💣", name: "Double Bomb", desc: "Your Bomb sheep blast twice" },
+    sticky: { icon: "🧶", name: "Sticky Wool", desc: "Your squares of 3+ can't be taken" },
+    corner: { icon: "📐", name: "Corner Start", desc: "Start each round owning all 4 corners" },
+    box: { icon: "🎁", name: "Lucky Box", desc: "A gift box drops near you every 20 s" },
+    wind: { icon: "🌬️", name: "Second Wind", desc: "Once a round, an empty pen refills at once" },
+    slow: { icon: "🐌", name: "Slow Wolf", desc: "Rival cursors 15% slower" },
+    cup: { icon: "🏆", name: "Overflowing Cup", desc: "Overflow sheep from a 10-chain" },
+    grace: { icon: "🕊️", name: "Grace", desc: "Once, a lost round counts as a win" },
+  },
+  once: ["line", "sticky", "corner", "cup", "grace"], // these don't stack, so they leave the pool once taken
+};
+const S = Stampede;
+const $ = (id) => document.getElementById(id);
+const WOLF = "#6f6a80";
+let run = null;
+const newRun = () => ({ round: 1, bless: {}, graceUsed: false });
+const has = (k) => run.bless[k] || 0;
+const bestRun = () => S.stats.records?.run || 0;
+
+// ---------- MODE ----------
+S.run({
+  key: "n10",
+  title: "Pilgrimage",
+  how: ["Seven rounds of 60 seconds against tougher flocks, and the Wolf at the end.", "Win a round, then pick a blessing. Blessings stack. Lose and the journey ends."],
+  solo: true,
+  tune: { roundSecs: CONFIG.roundSecs },
+  players() {
+    const R = CONFIG.rounds[run.round - 1];
+    const me = { seat: 0, kind: "human", penMax: 5 + 2 * has("pen"), lineAt: has("line") ? 4 : undefined, overflowAt: has("cup") ? 10 : undefined };
+    const foes = R.foes.map((lvl, k) => ({
+      seat: -1, kind: "ai", level: lvl, speed: R.speed * Math.pow(0.85, has("slow")), pos: 13 + k * 14,
+      ...(R.boss ? { color: WOLF, name: "The Wolf", wolf: true, penMax: R.penMax, sym: null } : { name: ["Bramble", "Thistle", "Nettle"][k] }),
+    }));
+    return [me, ...foes];
+  },
+  options(ui) {
+    const b = bestRun();
+    if (b) ui.row("Best journey", Object.assign(document.createElement("b"), { textContent: b >= 7 ? "Home! ✨" : `${b} of 7 rounds` }));
+  },
+  onPlay(start) {
+    run = newRun();
+    start();
+  },
+  onAgain(start) {
+    run = newRun();
+    start();
+  },
+  againLabel: () => "Go again",
+  hero(g, t) {
+    Kit.drawShepherd(g, 180, 124, 100, { t });
+    Kit.drawLamb(g, 60 + Math.sin(t) * 6, 86, 60, { t, scarf: S.COLORS[0], mood: "happy" });
+    g.strokeStyle = "rgba(255,230,170,0.5)";
+    g.setLineDash([5, 6]);
+    g.beginPath();
+    g.moveTo(84, 112);
+    g.lineTo(160, 112);
+    g.stroke();
+    g.setLineDash([]);
+  },
+  music: {
+    bpm: 110, root: 60, scale: "dorian", prog: [0, 3, 6, 4],
+    lead: ["0...2.3.4...2...", "3...2.0.1...0...", "4...5.7.5...4...", "2...1.0.........5"],
+    bass: "x...x...x...x...",
+    drums: { kick: "x.......x.......", snare: "....x.......x...", hat: "x.x.x.x.x.x.x.x." },
+    leadType: "triangle",
+  },
+  records: (G, res) => [{ label: "Rounds won", value: res.roundsWon, key: "run" }],
+  statRows: () => [["Best journey", `${bestRun()} / 7`]],
+  badges: [
+    { id: "home", icon: "🏡", name: "Home at last", desc: "Beat the Wolf in round 7", test: (c) => c.res.roundsWon >= 7 },
+    { id: "four", icon: "🥾", name: "Halfway there", desc: "Win 4 rounds in one journey", test: (c) => c.res.roundsWon >= 4 },
+    { id: "grace", icon: "🕊️", name: "Saved by grace", desc: "Have Grace turn a loss into a win", test: (c) => c.res.graceUsed },
+    { id: "stack", icon: "🐑", name: "Big flock", desc: "Take Bigger Pen 3 times", test: () => run && has("pen") >= 3 },
+  ],
+  hooks: {
+    setup(G) {
+      const b = G.b;
+      const me = G.players[0];
+      G.data = { nextBox: performance.now() + CONFIG.boxEveryMs, windUsed: false, last: "" };
+      if (has("corner")) for (const i of [0, b.cols - 1, b.size - b.cols, b.size - 1]) {
+        b.owner[i] = me.id;
+        b.count[i] = 1;
+      }
+      if (CONFIG.rounds[run.round - 1].boss) S.shout(null, "The Wolf!", 1.7, "#c7c3d6");
+    },
+    hud: (G) => hud(G),
+    refillMs: (G, pl) => (pl.id === 0 ? S.tune.refill * 1000 * Math.pow(0.8, has("refill")) : undefined),
+    land(G, b, from, to, who) {
+      // Sticky Wool: my squares of 3+ can't be taken
+      if (has("sticky") && b.owner[to] === 0 && who !== 0 && b.count[to] >= 3) return true;
+      return false;
+    },
+    onSpecial(G, sp, type, area) {
+      // Double Bomb: my Bomb sheep blast twice
+      if (sp.who !== 0 || !has("bomb") || (type !== "bomb" && type !== "blast" && type !== "bigcross")) return;
+      for (const k of area) if (!G.b.rock[k] && !G.b.kind[k]) S.landOn(k, 0);
+      S.shout(G.players[0], "Double!", 1.2);
+    },
+    update(G, now) {
+      const D = G.data;
+      const me = G.players[0];
+      if (has("box") && now >= D.nextBox) {
+        D.nextBox = now + CONFIG.boxEveryMs;
+        const b = G.b;
+        const near = [];
+        for (let i = 0; i < b.size; i++) if (b.owner[i] === -1 && !b.kind[i] && Engine.neighbours(b, i).some((k) => b.owner[k] === 0)) near.push(i);
+        if (near.length) {
+          const i = near[Math.floor(Math.random() * near.length)];
+          b.kind[i] = "box";
+          S.puff(i, "#e050ad", 6);
+        }
+      }
+      if (has("wind") && !D.windUsed && me.pen <= 0) {
+        D.windUsed = true;
+        me.pen = me.penMax;
+        S.shout(me, "Second wind!", 1.3, "#bfe9ff");
+        S.Sfx.chime(9);
+      }
+    },
+    shift(G, d) {
+      G.data.nextBox += d;
+    },
+    endCheck(G, now, left, defaultEnd) {
+      const res = defaultEnd(left);
+      if (!res) return null;
+      let won = res.team === 0;
+      if (!won && has("grace") && !run.graceUsed) {
+        // Grace: this loss counts as a win, once
+        run.graceUsed = true;
+        won = true;
+        S.shout(null, "Grace!", 1.9, "#ffffff");
+      }
+      if (won && run.round < CONFIG.rounds.length) {
+        G.over = true;
+        S.Music.stop();
+        S.Sfx.win();
+        setTimeout(() => S.G === G && offerBlessings(), 900);
+        return null;
+      }
+      const roundsWon = won ? run.round : run.round - 1;
+      return won
+        ? { team: 0, title: "Home at last!", sub: "The Wolf is beaten and the journey is done.", color: "#ffcf4a", roundsWon, graceUsed: run.graceUsed }
+        : { team: -1, title: "The journey ends", sub: `Round ${run.round} of 7. The Shepherd carries the lamb home.`, color: "#ffcf4a", sad: true, roundsWon, graceUsed: run.graceUsed };
+    },
+    resultsExtra(G, res, el) {
+      // the Shepherd carries the lamb home on his shoulders
+      const cv = document.createElement("canvas");
+      el.append(cv);
+      const g = Kit.sharp(cv, 200, 120);
+      Kit.drawShepherd(g, 100, 118, 110, { t: 0 });
+      Kit.drawLamb(g, 108, 40, 38, { scarf: S.COLORS[0], mood: res.sad ? "sleep" : "happy" });
+      const icons = Object.entries(run.bless).map(([k, n]) => CONFIG.blessings[k].icon + (n > 1 ? `×${n}` : "")).join(" ");
+      if (icons) el.append(Object.assign(document.createElement("p"), { textContent: icons }));
+    },
+  },
+});
+
+// ---------- BLESSINGS ----------
+function offerBlessings() {
+  const pool = Object.keys(CONFIG.blessings).filter((k) => !(CONFIG.once.includes(k) && has(k)));
+  const picks = pool.sort(() => Math.random() - 0.5).slice(0, 3);
+  $("bless-title").textContent = `Round ${run.round} won!`;
+  $("bless-road").innerHTML = CONFIG.rounds.map((r, k) => `<i class="${k < run.round ? "done" : ""}${r.boss ? " boss" : ""}"></i>`).join("");
+  const box = $("bless-picks");
+  box.replaceChildren();
+  for (const k of picks) {
+    const B = CONFIG.blessings[k];
+    const btn = document.createElement("button");
+    btn.innerHTML = `<i>${B.icon}</i><span>${B.name}<small>${B.desc}</small></span>`;
+    btn.addEventListener("click", () => {
+      run.bless[k] = (run.bless[k] || 0) + 1;
+      run.round++;
+      $("bless").hidden = true;
+      S.Sfx.chime(12);
+      S.startRound();
+    });
+    box.append(btn);
+  }
+  $("bless").hidden = false;
+}
+
+function hud(G) {
+  const D = G.data;
+  const icons = Object.entries(run.bless).map(([k, n]) => `<span class="bl">${CONFIG.blessings[k].icon}${n > 1 ? n : ""}</span>`).join("");
+  const html = `<span>🥾 ${run.round}/7</span>${icons}`;
+  if (html !== D.last) {
+    D.last = html;
+    $("hud").innerHTML = html;
+  }
+}
+
+</script>
+</body>
+</html>
