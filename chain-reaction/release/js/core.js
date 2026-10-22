@@ -119,7 +119,7 @@ const Core = (() => {
     const pl = {
       id, seat: -1, team: id, kind, level, persona,
       color: pal.colors[ci], colorIndex: ci, sym: Art.SYMBOLS[p.symIndex ?? ci],
-      name: kind === "ai" ? `${PERSONAS[persona]?.name ?? "AI"}` : seatCfg.name || (id === 0 && p.seat === 0 ? Save.profile.name : pal.names[ci]),
+      name: kind === "ai" ? seatCfg.aiName ?? `${PERSONAS[persona]?.name ?? "AI"}` : seatCfg.name || (id === 0 && p.seat === 0 ? Save.profile.name : pal.names[ci]),
       look: seatCfg.look || null, trail: null, burst: null,
       speed, dir: 1, penMax: basePen !== null ? basePen + (assist ? 2 : 0) : assist ? tune.pen + 2 : undefined,
       pen: 0, refillAt: 0, lockUntil: 0, special: null, lineDir: "row",

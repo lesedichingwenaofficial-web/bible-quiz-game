@@ -33,7 +33,7 @@
   }
   // the scoreboard, best first (ties keep seat order)
   const standings = () => P.people.map((p) => p.k).sort((a, b) => P.points[b] - P.points[a] || a - b);
-  const seatOf = (k, extra = {}) => ({ ...P.s.seats[k], name: P.people[k].ai ? "" : P.people[k].name, look: P.people[k].look, ...extra });
+  const seatOf = (k, extra = {}) => ({ ...P.s.seats[k], name: P.people[k].name, aiName: P.people[k].ai ? P.people[k].name : undefined, look: P.people[k].look, ...extra });
 
   // ---------- one round: which game, who plays where ----------
   function plan() {
@@ -345,6 +345,13 @@
       const n = s.n;
       P = { s: structuredClone(s), list: playlist(s), rounds: s.rounds, k: 0, g: 0, games: [], people: [], points: new Array(n).fill(0), wins: new Array(n).fill(0), best: new Array(n).fill(0), everLast: new Set(), secs: 0, last: null, sitter: -1 };
       P.people = Array.from({ length: n }, (_, k) => who(P.s, k));
+      // two AI lambs with the same personality get told apart, as in a game
+      const seen = new Map();
+      for (const p of P.people) {
+        const c = seen.get(p.name) || 0;
+        seen.set(p.name, c + 1);
+        if (c) p.name += c === 1 ? " Jr" : ` ${c + 1}`;
+      }
       plan();
       Nav.go("partyboard", {}, { replace: Nav.is("results") });
     },
