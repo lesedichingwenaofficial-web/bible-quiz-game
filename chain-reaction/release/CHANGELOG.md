@@ -37,7 +37,17 @@
 - Music has a limiter and ducking, softer voices, and goes quiet when the app is hidden.
 - Saves are one versioned file, migrated forward and never wiped; a backup code moves them between devices.
 - Lost Lamb's results bars and the Big Bad Wolf's bluster bar no longer clash with the screen-header style (they're now `.meter`).
+- A Sheep Saga level ended early (for example by leaving) no longer breaks the results screen.
 - Shouts no longer steal a busy slot; the screen between rounds can be skipped with a tap.
+
+### Tested before release
+- Every mode, start to results, on a phone-sized screen with no errors: Stampede+, Sheep Saga, Big Bad Wolf, Sheep Rush, Lost Lamb, Flock Fall, Guard the Fold, Lead Him Home, Bridge and Party Night (3 and 4 players).
+- The 20-check app suite: home, menus, settings, seasons, tablet layout, 4 humans on one screen.
+- The single-file version opened straight from disk, and the site working offline after one visit.
+- Replays: live games with taps and mode buttons replay to the identical board in Stampede+, Guard the Fold, Lead Him Home and Bridge.
+- Save Clip makes a video of the Chain of the Match.
+- Balance by simulation: all 45 Saga levels and all 30 Lead Him Home levels finished by an AI; Guard the Fold's three folds held by Expert AI teams of every size; AI levels rank correctly in every versus mode.
+- The engine file is unchanged (md5 da3358d632d84fa351e458a6b3337daa). Ads and Purchases exist only as switched-off stubs with no screens.
 
 ### Studio choices
 - **Name:** Lamb Stampede (changeable in `js/config.js`).

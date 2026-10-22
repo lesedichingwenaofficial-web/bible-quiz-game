@@ -740,7 +740,7 @@
       const st = D.stars || 0;
       const fails = p.fails[k] || 0;
       out.html = `<div class="stars">${[0, 1, 2].map((s) => Icons.get(s < st ? "star" : "starOutline")).join("")}</div>
-        ${won ? `<p class="score">${fmtNum(D.score)}</p>` : `<div class="goals">${goalPills(D.finalGoals)}</div>`}
+        ${won ? `<p class="score">${fmtNum(D.score)}</p>` : `<div class="goals">${goalPills(D.finalGoals ?? goalState(G))}</div>`}
         ${out.booster ? `<p class="pill sky">${Icons.get("gift")} Booster: <b>${esc(BOOSTERS.find((b) => b[0] === out.booster)[1])}</b></p>` : ""}
         ${out.gift ? `<p class="pill gold">${Icons.get("star")} ${totalStars()} stars! New: <b>${esc(Progress.BY_ID.get(out.gift).name)}</b></p>` : ""}
         ${!won && fails >= SAGA.helpAfter ? `<p class="pill">${Icons.get("crook")} ${STRINGS.grace.help}</p>` : ""}`;
