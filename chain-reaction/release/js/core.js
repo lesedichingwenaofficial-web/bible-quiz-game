@@ -502,6 +502,7 @@ const Core = (() => {
     for (let p = 0; p < n; p++) {
       const pl = G.players[p];
       const k = burstsBy[p];
+      if (pl.noChain) continue; // a mode's celebration fireworks don't count as a chain
       if (k > 0) {
         const prev = pl.chain;
         if (prev === 0) pl.chainStart = G.tick;
@@ -736,7 +737,8 @@ const Core = (() => {
   function aiStep(pl) {
     if (pl.kind !== "ai" || !pl.alive || pl.pen <= 0 || G.time < pl.lockUntil) return;
     const skill = AI[pl.level] ?? AI.normal;
-    if (H.aiDecide) return H.aiDecide(G, pl, G.time, skill);
+    // a mode with its own idea of a good drop (it may hand a seat back to the usual AI)
+    if (H.aiDecide && H.aiDecide(G, pl, G.time, skill) !== "default") return;
     const i = cursorCell(pl);
     const ok = canDropAt(pl, i);
     if (!ok && G.rng() >= skill.miss) return;
@@ -823,11 +825,11 @@ const Core = (() => {
     if (G.replay?.probe && G.tick === G.replay.probe.tick) G.replay.probe.hash = boardHash();
     if (G.over) return;
     if (!quiet) {
-      const txt = Number.isFinite(secs) && !G.fs ? fmtTime(Math.max(0, Math.ceil(left))) : H.timerText?.(G) ?? "";
+      const txt = Number.isFinite(secs) && !G.fs ? fmtTime(Math.max(0, Math.ceil(left))) : H.timerHtml?.(G) ?? "";
       if (txt !== G.lastTimer) {
         G.lastTimer = txt;
-        $("timer").textContent = txt;
-        $("timer-top").textContent = txt;
+        $("timer").innerHTML = txt;
+        $("timer-top").innerHTML = txt;
         if (G.rush) Sfx.tickTock(left <= 5);
       }
       idleHint(t);
@@ -1227,7 +1229,7 @@ const Core = (() => {
       p.shape = S ? S.shape : 0;
     }
   }
-  const TRAILS = { "trail-sparkle": ["#fff6c8", "#ffffff"], "trail-hearts": ["#ff8fb1"], "trail-stars": ["#ffe680"], "trail-petals": ["#ffc2d9", "#ffffff"], "trail-rainbow": ["#ff5a5f", "#ffc93c", "#2fd38a", "#3fa7ff", "#9b7bff"] };
+  const TRAILS = { "trail-sparkle": ["#fff6c8", "#ffffff"], "trail-hearts": ["#ff8fb1"], "trail-stars": ["#ffe680"], "trail-petals": ["#ffc2d9", "#ffffff"], "trail-rainbow": ["#ff5a5f", "#ffc93c", "#2fd38a", "#3fa7ff", "#9b7bff"], "trail-fireflies": ["#fff27a", "#e4ff8a"] };
   function trailPuff(pl) {
     const cols = TRAILS[pl.trail];
     if (!cols) return;
@@ -1344,6 +1346,7 @@ const Core = (() => {
     "arena-oasis": { grass: ["#c9a96b", "#d6b779"], edge: "#8a6a3b", tuft: "rgba(80,140,70,0.3)" },
     "arena-night": { grass: ["#1f3a3f", "#25454b"], edge: "#0f2024", tuft: "rgba(255,255,200,0.12)" },
     "arena-gold": { grass: ["#9a7a2a", "#ab8932"], edge: "#5e4614", tuft: "rgba(255,240,170,0.3)" },
+    "arena-valley": { grass: ["#2b4f4a", "#325a54"], edge: "#16282a", tuft: "rgba(255,255,200,0.16)" },
     "arena-bethlehem": { grass: ["#3a4a6a", "#425378"], edge: "#1f2840", tuft: "rgba(255,248,210,0.2)" },
     "arena-garden": { grass: ["#5f9b55", "#6aa85f"], edge: "#3c6a37", tuft: "rgba(255,200,230,0.35)" },
   };

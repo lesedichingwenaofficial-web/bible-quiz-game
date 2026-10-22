@@ -231,6 +231,13 @@ const Art = (() => {
     }
     g.restore();
   }
+  function Art_leaf(g, x, y, r, rot, col) {
+    g.save();
+    g.translate(x, y);
+    g.rotate(rot);
+    ellipse(g, 0, 0, r, r * 0.45, 0, col);
+    g.restore();
+  }
   function heartPath(g, x, y, r) {
     g.moveTo(x, y + r * 0.8);
     g.bezierCurveTo(x - r * 1.3, y - r * 0.1, x - r * 0.6, y - r * 1.1, x, y - r * 0.4);
@@ -356,6 +363,14 @@ const Art = (() => {
         }
         break;
       }
+      case "hat-laurel":
+        for (let side = -1; side <= 1; side += 2)
+          for (let k = 0; k < 5; k++) {
+            const a = Math.PI + side * (0.3 + k * 0.28);
+            Art_leaf(g, Math.cos(a) * s * 0.13 * -side, s * 0.02 + Math.sin(a) * s * 0.06 - k * s * 0.012, s * 0.045, a, "#6fae4a");
+          }
+        Art_leaf(g, 0, -s * 0.05, s * 0.04, -Math.PI / 2, "#ffcf4a");
+        break;
       case "hat-sunflower":
         for (let p = 0; p < 10; p++) ellipse(g, s * 0.07 + Math.cos((p * TAU) / 10) * s * 0.04, -s * 0.03 + Math.sin((p * TAU) / 10) * s * 0.04, s * 0.025, s * 0.012, (p * TAU) / 10, "#ffcf4a");
         circle(g, s * 0.07, -s * 0.03, s * 0.025, "#8a5a3c");

@@ -213,6 +213,8 @@ const Sound = (() => {
       duck(0.3, 1800);
     }),
     bleat: q((p, d) => bleat(p, d)),
+    // a one-off tone for a mode's own sounds (still silent during a replay's fast-forward)
+    blip: q((f, dur, type, vol, slide) => tone(vary(f, 0.02), dur, type, vol, slide)),
   };
 
   return {

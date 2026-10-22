@@ -17,6 +17,7 @@ const Progress = (() => {
     { id: "hat-sunflower", tab: "lamb", slot: "hat", name: "Sunflower", price: 200 },
     { id: "hat-top", tab: "lamb", slot: "hat", name: "Top hat", price: 400, tier: "rare" },
     { id: "hat-crown", tab: "lamb", slot: "hat", name: "Golden crown", price: 2500, tier: "prestige" },
+    { id: "hat-laurel", tab: "lamb", slot: "hat", name: "Laurel wreath", price: 0, gift: "30 stars in Sheep Saga", tier: "rare" },
     { id: "hat-santa", tab: "lamb", slot: "hat", name: "Christmas hat", price: 120, season: "christmas" },
     { id: "hat-bonnet", tab: "lamb", slot: "hat", name: "Spring bonnet", price: 120, season: "easter" },
     // Lamb: scarves
@@ -58,6 +59,7 @@ const Progress = (() => {
     { id: "trail-petals", tab: "trail", slot: "trail", name: "Petals", price: 200 },
     { id: "trail-hearts", tab: "trail", slot: "trail", name: "Hearts", price: 250 },
     { id: "trail-stars", tab: "trail", slot: "trail", name: "Stars", price: 300, tier: "rare" },
+    { id: "trail-fireflies", tab: "trail", slot: "trail", name: "Fireflies", price: 0, gift: "100 stars in Sheep Saga", tier: "rare" },
     { id: "trail-rainbow", tab: "trail", slot: "trail", name: "Rainbow", price: 1200, tier: "prestige" },
     // Bursts
     { id: "burst-puff", tab: "burst", slot: "burst", name: "Wool puffs", price: 0 },
@@ -73,6 +75,7 @@ const Progress = (() => {
     { id: "arena-snow", tab: "arena", slot: "arena", name: "Frosty field", price: 300 },
     { id: "arena-night", tab: "arena", slot: "arena", name: "Starry night", price: 400, tier: "rare" },
     { id: "arena-gold", tab: "arena", slot: "arena", name: "Golden hour", price: 2000, tier: "prestige" },
+    { id: "arena-valley", tab: "arena", slot: "arena", name: "Night Valley", price: 0, gift: "60 stars in Sheep Saga", tier: "rare" },
     { id: "arena-bethlehem", tab: "arena", slot: "arena", name: "Bethlehem night", price: 150, season: "christmas" },
     { id: "arena-garden", tab: "arena", slot: "arena", name: "Easter garden", price: 150, season: "easter" },
   ];
@@ -93,7 +96,7 @@ const Progress = (() => {
   }
   function buy(id) {
     const it = BY_ID.get(id);
-    if (!it || owned(id) || !forSale(it) || it.level) return false;
+    if (!it || owned(id) || !forSale(it) || it.level || it.gift) return false;
     if (P().wool < it.price && !Save.data.dev.wool) return false;
     if (!Save.data.dev.wool) P().wool -= it.price;
     P().owned[id] = 1;

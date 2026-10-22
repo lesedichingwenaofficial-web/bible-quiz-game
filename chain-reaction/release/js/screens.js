@@ -185,7 +185,7 @@ Nav.define("wardrobe", {
     for (const it of items) {
       const cv = UI.h("canvas");
       const own = Progress.owned(it.id);
-      const tag = own ? (equippedId(it) === it.id ? Icons.get("check") : "") : it.level ? `${Icons.get("lock")}<small>Lv ${it.level}</small>` : `${Icons.get("wool")}<small>${it.price}</small>`;
+      const tag = own ? (equippedId(it) === it.id ? Icons.get("check") : "") : it.level ? `${Icons.get("lock")}<small>Lv ${it.level}</small>` : it.gift ? Icons.get("lock") : `${Icons.get("wool")}<small>${it.price}</small>`;
       const b = UI.h("button", { class: `item${own ? " own" : ""}${equippedId(it) === it.id ? " on" : ""}${it.tier ? ` ${it.tier}` : ""}${sel() === it ? " sel" : ""}`, "aria-label": it.name, html: `<span class="tag">${tag}</span>` });
       b.prepend(cv);
       b.append(UI.h("span", { class: "nm" }, it.name));
@@ -206,6 +206,7 @@ Nav.define("wardrobe", {
     const can = p.wool >= it.price || Save.data.dev.wool;
     if (own) action.append(UI.h("p", { class: "wd-name", html: `<b>${esc(it.name)}</b> ${equippedId(it) === it.id ? `<span class="pill sky">${Icons.get("check")} Wearing</span>` : ""}` }));
     else if (it.level) action.append(UI.h("p", { class: "wd-name", html: `<b>${esc(it.name)}</b> <span class="pill">${Icons.get("lock")} A gift at Flock Level ${it.level}</span>` }));
+    else if (it.gift) action.append(UI.h("p", { class: "wd-name", html: `<b>${esc(it.name)}</b> <span class="pill">${Icons.get("lock")} A gift for ${esc(it.gift)}</span>` }));
     else {
       action.append(UI.h("p", { class: "wd-name", html: `<b>${esc(it.name)}</b>${it.season ? ` <span class="pill gold">Seasonal</span>` : ""}` }));
       const b = UI.btn(can ? `Get it for ${it.price} wool` : `${it.price - p.wool} more wool to go`, () => {
@@ -239,7 +240,7 @@ function swatch(g, it, w, h) {
     Art.drawLamb(g, w / 2, h * 0.6, h * 1.05, { look: { ...look, wool: it.id }, still: true });
   } else if (it.slot === "pattern") Art.drawSheep(g, w / 2, h / 2, h * 0.3, pal.colors[1], { pattern: it.id });
   else if (it.slot === "trail" || it.slot === "burst") {
-    const cols = { "trail-sparkle": ["#fff6c8"], "trail-hearts": ["#ff8fb1"], "trail-stars": ["#ffe680"], "trail-petals": ["#ffc2d9"], "trail-rainbow": ["#ff5a5f", "#ffc93c", "#2fd38a", "#3fa7ff"], "burst-confetti": ["#ff5a5f", "#ffc93c", "#2fd38a", "#3fa7ff"], "burst-flowers": ["#ff9ac1", "#fff"], "burst-stars": ["#ffe680"], "burst-hearts": ["#ff6f91"], "burst-gold": ["#ffcf4a", "#e0a82e"], "burst-puff": ["#ffffff", "#dfe6ee"] }[it.id] || ["#c9cfc6"];
+    const cols = { "trail-sparkle": ["#fff6c8"], "trail-hearts": ["#ff8fb1"], "trail-stars": ["#ffe680"], "trail-petals": ["#ffc2d9"], "trail-rainbow": ["#ff5a5f", "#ffc93c", "#2fd38a", "#3fa7ff"], "trail-fireflies": ["#fff27a", "#d7ff7a"], "burst-confetti": ["#ff5a5f", "#ffc93c", "#2fd38a", "#3fa7ff"], "burst-flowers": ["#ff9ac1", "#fff"], "burst-stars": ["#ffe680"], "burst-hearts": ["#ff6f91"], "burst-gold": ["#ffcf4a", "#e0a82e"], "burst-puff": ["#ffffff", "#dfe6ee"] }[it.id] || ["#c9cfc6"];
     g.fillStyle = "#3d7a45";
     g.beginPath();
     g.roundRect(4, 4, w - 8, h - 8, 10);
@@ -296,7 +297,7 @@ function preview(g, w, h, t, it) {
   }
   Art.drawLamb(g, w / 2, h * 0.58, h * 0.78, { t, look: lk, mood: Math.sin(t * 0.7) > 0.85 ? "joy" : "happy", blink: t % 3 < 0.12 });
   if (it.slot === "trail" || it.slot === "burst") {
-    const cols = { "trail-sparkle": "#fff6c8", "trail-hearts": "#ff8fb1", "trail-stars": "#ffe680", "trail-petals": "#ffc2d9", "trail-rainbow": "#9b7bff", "burst-confetti": "#3fa7ff", "burst-flowers": "#ff9ac1", "burst-stars": "#ffe680", "burst-hearts": "#ff6f91", "burst-gold": "#ffcf4a" }[it.id];
+    const cols = { "trail-sparkle": "#fff6c8", "trail-hearts": "#ff8fb1", "trail-stars": "#ffe680", "trail-petals": "#ffc2d9", "trail-rainbow": "#9b7bff", "trail-fireflies": "#fff27a", "burst-confetti": "#3fa7ff", "burst-flowers": "#ff9ac1", "burst-stars": "#ffe680", "burst-hearts": "#ff6f91", "burst-gold": "#ffcf4a" }[it.id];
     if (!cols) return;
     for (let k = 0; k < 10; k++) {
       const a = t * 1.5 + (k / 10) * Art.TAU;

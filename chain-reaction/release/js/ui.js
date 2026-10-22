@@ -59,6 +59,13 @@ const Icons = (() => {
     eye: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>',
     rocks: '<path d="M3 19l3.5-7 3 3 2.5-5 3 4 2-2 4 7z"/>',
     wolf: '<path d="M5 4l3 5h8l3-5 1 9c0 4-3.5 7-8 7s-8-3-8-7z"/><circle cx="9.5" cy="12.5" r=".8" fill="currentColor"/><circle cx="14.5" cy="12.5" r=".8" fill="currentColor"/>',
+    rock: '<path d="M4 18l2.5-8 5-4 5 2.5 3.5 5.5-1 4z"/><path d="M9 11l2 2M14 10l-1 3"/>',
+    thorn: '<path d="M12 21V9M12 13l-4-3M12 11l4-3M12 16l-3-2M12 15l3-2"/><circle cx="12" cy="6" r="2.5" fill="currentColor"/>',
+    ice: '<path d="M12 3v18M4.5 7.5l15 9M19.5 7.5l-15 9M12 3l-2 2M12 3l2 2M12 21l-2-2M12 21l2-2"/>',
+    crate: '<rect x="4" y="5" width="16" height="15" rx="1.5"/><path d="M4 5l16 15M20 5L4 20"/>',
+    zzz: '<path d="M5 8h5l-5 6h5M13 5h5l-5 6h5M15 15h4l-4 5h4"/>',
+    grass: '<path d="M4 20c1-5 2-9 4-12M10 20c0-5 0-9 2-14M16 20c0-4 1-8 4-11M3 20h18"/>',
+    sheep: '<circle cx="9" cy="12" r="5"/><circle cx="14" cy="10" r="4"/><circle cx="18.5" cy="12" r="2.6" fill="currentColor"/><path d="M8 17v3M13 17v3"/>',
     lamb: '<circle cx="9" cy="13" r="5.5"/><circle cx="16.5" cy="9.5" r="3.5"/><path d="M7 18.5v2M11 18.5v2"/>',
   };
   const get = (name, cls = "") => `<svg class="ico ${cls}" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">${P[name] || P.sparkle}</svg>`;

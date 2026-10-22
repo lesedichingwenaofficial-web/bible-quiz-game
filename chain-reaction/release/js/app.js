@@ -15,7 +15,7 @@ const App = (() => {
     { key: "rush", file: "rush", title: "Sheep Rush", group: "solo", players: "1", icon: "timer" },
     { key: "leadhome", file: "leadhome", title: "Lead Him Home", group: "solo", players: "1", icon: "crook" },
   ];
-  const BUILT = new Set(["stampede"]); // modes finished in this build
+  const BUILT = new Set(["stampede", "saga"]); // modes finished in this build
   const meta = (key) => MODES.find((m) => m.key === key);
   let hasKeyboard = false;
   const lowEnd = (navigator.hardwareConcurrency || 8) <= 4 && (navigator.deviceMemory || 4) <= 2;
@@ -75,7 +75,7 @@ const App = (() => {
           <p class="tagline">${esc(STRINGS.tagline)}</p>
           ${Save.settings.verse ? `<figure class="verse-card tap" id="home-verse"><figcaption>${Icons.get("book")} ${STRINGS.home.verse}</figcaption><blockquote>${esc(v[1])}</blockquote><cite>${esc(v[0])} (KJV)</cite></figure>` : ""}
           <button class="btn primary huge" id="home-play">${Icons.get("play")}<span>${STRINGS.home.play}</span></button>
-          <button class="btn quick" id="home-quick">${Icons.get("bolt")}<span>${last ? `${STRINGS.home.cont}: ${esc(last.title)}` : STRINGS.home.quick}</span></button>
+          <button class="btn quick" id="home-quick">${Icons.get("bolt")}<span>${last ? `${STRINGS.home.cont}: ${esc(last.title)}${Save.mode(last.key).progress.next ? ` · Level ${Save.mode(last.key).progress.next}` : ""}` : STRINGS.home.quick}</span></button>
           <div class="home-two">
             <button class="btn sky big" id="home-daily">${Icons.get("calendar")}<span>${STRINGS.home.daily}</span>${Progress.breadToday() ? "" : '<i class="dot"></i>'}</button>
             <button class="btn rose big" id="home-wardrobe">${Icons.get("shirt")}<span>${STRINGS.home.wardrobe}</span></button>
@@ -178,7 +178,7 @@ const App = (() => {
     const ms = Save.data.modes[m.key];
     if (!ms || !ms.stats.played) return "Not played yet";
     const r = ms.records;
-    if (m.key === "saga" && ms.progress.level) return `Level ${ms.progress.level}`;
+    if (ms.progress.next) return `Level ${ms.progress.next} · ${(ms.progress.stars || []).reduce((a, b) => a + (b || 0), 0)} stars`;
     if (r.score) return `Best ${fmtNum(r.score)}`;
     return `Best chain ×${r.chain || 0} · ${ms.stats.wins} win${ms.stats.wins === 1 ? "" : "s"}`;
   }
@@ -224,7 +224,7 @@ const App = (() => {
   }
   async function openSetup(key) {
     const def = await loadMode(key);
-    if (def) Nav.go("setup", { key });
+    if (def) def.open ? def.open() : Nav.go("setup", { key });
   }
   Nav.define("setup", {
     render(el, { key }) {
@@ -352,7 +352,7 @@ const App = (() => {
   async function play(key, setup, o = {}) {
     const def = await loadMode(key);
     if (!def) return;
-    setup ??= loadSetup(def);
+    setup ??= def.continueSetup?.() ?? loadSetup(def);
     Sound.unlock();
     if (session.key !== key) Object.assign(session, { key, wins: {}, games: 0 });
     Save.profile.lastMode = key;
@@ -526,7 +526,7 @@ const App = (() => {
       for (const lv of rewards.levels) extraRows.push(`<div class="pill sky levelup">${Icons.get("star")} ${STRINGS.results.levelUp(lv.level)} ${lv.item ? `New: <b>${esc(Progress.BY_ID.get(lv.item).name)}</b>` : `<b>+${lv.wool}</b> wool`}</div>`);
       for (const k of rewards.newRecords) extraRows.push(`<div class="pill">${Icons.get("trophy")} ${STRINGS.results.newBest} ${esc(extra.recordNames?.[k] || (k === "chain" ? "Biggest chain" : k))}</div>`);
       for (const b of rewards.badges) extraRows.push(`<div class="pill badge-new">${Icons.get(b.icon)} Badge: <b>${esc(b.name)}</b> <small>+25</small></div>`);
-      if (rewards.journal) extraRows.push(`<button class="pill journal tap" id="r-journal">${Icons.get("book")} Journal card: <b>${esc(rewards.journal.ref)}</b></button>`);
+      if (rewards.journal) extraRows.push(`<button class="pill jpill tap" id="r-journal">${Icons.get("book")} Journal card: <b>${esc(rewards.journal.ref)}</b></button>`);
       ex.innerHTML = extraRows.join("");
       if (rewards.levels.length) setTimeout(() => Sfx.levelUp(), 700);
       if ($("r-journal")) $("r-journal").onclick = () => Nav.go("card", { key: def.key });
@@ -602,8 +602,11 @@ const App = (() => {
       if (!done) page.append(UI.btn(STRINGS.home.quick, () => quickPlay(), "primary big", "play"));
       for (const [key, name, desc, icon] of [["rush", STRINGS.daily.rush, STRINGS.daily.rushDesc, "timer"], ["saga", STRINGS.daily.pasture, STRINGS.daily.pastureDesc, "leaf"]]) {
         const built = BUILT.has(key);
-        const card = h("div", { class: `daily-card${built ? " tap" : " soon"}`, html: `<div class="dc-head">${Icons.get(icon)}<div><b>${name}</b><small>${built ? desc : STRINGS.daily.soon}</small></div>${built ? Icons.get("next") : Icons.get("lock")}</div>` });
-        if (built) card.onclick = () => (Modes.get(key)?.daily ? Modes.get(key).daily() : play(key));
+        const card = h("div", { class: `daily-card${built ? " tap" : " soon"}`, html: `<div class="dc-head">${Icons.get(icon)}<div><b>${name}</b><small>${!built ? STRINGS.daily.soon : Save.mode(key).progress.daily?.[Dates.today()] ? `Done today: ${fmtNum(Save.mode(key).progress.daily[Dates.today()])}. Play again any time!` : desc}</small></div>${built ? Icons.get("next") : Icons.get("lock")}</div>` });
+        if (built) card.onclick = async () => {
+          const def = await loadMode(key);
+          if (def) def.daily ? def.daily() : play(key);
+        };
         page.append(card);
       }
       el.append(page);
