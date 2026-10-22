@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#13201a" />
+<title>Lost Lamb</title>
+<meta name="description" content="Lost Lamb, a cheekyfoundlamb game: real-time king of the hill for 2-4 players. Own the square the wandering lamb stands on to fill your bar." />
+<style>
+/*@KITCSS*/
+/*@STAMPEDE2CSS*/
+.hud { flex-direction: column; gap: 4px; width: 100%; max-width: 360px; margin: 0 auto; padding: 6px 4px; }
+.bar { position: relative; width: 100%; height: 12px; border-radius: 6px; background: var(--meadow-2); overflow: hidden; }
+.bar i { position: absolute; inset: 0 auto 0 0; border-radius: 6px; transition: width 0.25s; }
+.bar.lead { box-shadow: 0 0 0 2px #fff; }
+.golden .bar i { box-shadow: 0 0 10px #ffcf4a; }
+</style>
+</head>
+<body>
+<!--@STAMPEDE2HTML-->
+<script>
+/*@ENGINE*/
+/*@KIT*/
+/*@STAMPEDE2*/
+
+// ======================= S6: LOST LAMB v2 =======================
+// ---------- CONFIG ----------
+const CONFIG = {
+  hopMs: 2000, // he hops to a neighbouring square this often
+  scoreMs: 500, // the owner of his square scores this often
+  target: 60, // first to this many points wins the round
+  hopAnimMs: 320,
+  napChance: 0.18, // after a hop: yawn, then nap
+  zoomChance: 0.15, // after a hop: wiggle, then zoomies
+  warnMs: 900, // a yawn or a wiggle shows this long first
+  napMs: 4000,
+  zoomGap: 260, // ms between zoomie hops
+  goldenEverySecs: 30, // a golden moment this often
+  goldenSecs: 5, // lasting this long, points double
+  arenas: {
+    open: { stones: [], rocks: [] },
+    rocky: { stones: [], rocks: [[2, 1, 2], [2, 4, 2], [6, 1, 2], [6, 4, 2]] }, // [row, col, hits]
+    ring: { stones: [[2, 2], [2, 3], [6, 2], [6, 3], [4, 1], [4, 4]], rocks: [] }, // an obstacle ring in the middle
+  },
+};
+const S = Stampede;
+const $ = (id) => document.getElementById(id);
+
+// ---------- MODE ----------
+S.run({
+  key: "s6",
+  title: "Lost Lamb",
+  how: ["Tap to drop a sheep. Own the square the lamb stands on to fill your bar.", "A burst on his square makes him jump. When he glows gold, points double!"],
+  match: true,
+  setupDefaults: { n: 2, seats: ["human", "ai", "ai", "ai"], arena: "open", bestOf: 3 },
+  players: (s) => Array.from({ length: s.n }, (_, p) => ({ seat: p, kind: s.seats[p] })),
+  options(ui, s) {
+    ui.stepper("Players", "n", 2, 4);
+    ui.seats(s.n);
+    ui.seg("Arena", "arena", [["open", "Open"], ["rocky", "Rocky"], ["ring", "Ring"]]);
+    ui.seg("Match", "bestOf", [[1, "1 round"], [3, "Best of 3"]]);
+  },
+  hero(g, t, px) {
+    const blink = t % 3 < 0.14;
+    Kit.drawLamb(g, 110, 62, 96, { t, scarf: S.COLORS[Math.floor(t / 2) % 4], mood: blink ? "sleep" : "happy", flip: px < 0.5 });
+    S.COLORS.forEach((col, k) => Kit.drawSheep(g, 30 + k * 54, 112, 10, col, { flip: k > 1 }));
+  },
+  music: {
+    bpm: 120, root: 64, scale: "penta", prog: [0, 3, 1, 4],
+    lead: ["0.1.2...4.3.2...", "2.3.4...3.2.1...", "4.3.2.1.2.3.4...", "2.1.0...1...0..."],
+    bass: "x...x...x...x.5.",
+    drums: { kick: "x.......x.......", snare: "....x.......x...", hat: "x.xxx.x.x.xxx.x." },
+  },
+  mvpScore: (p) => p.score,
+  badges: [
+    { id: "win", icon: "🏆", name: "Found him!", desc: "Win a game", test: (c) => c.won },
+    { id: "gold", icon: "✨", name: "Golden touch", desc: "Score 15 points in golden moments in a round", test: (c) => c.hs.some((p) => p.gold >= 15) },
+    { id: "startle", icon: "💥", name: "Boo!", desc: "Startle him 5 times in a round", test: (c) => c.hs.some((p) => p.startles >= 5) },
+    { id: "nap", icon: "😴", name: "Nap guard", desc: "Hold him through a whole nap", test: (c) => c.hs.some((p) => p.napHeld) },
+    { id: "sweep", icon: "🧹", name: "Clean sweep", desc: "Win a best of 3 two rounds to none", test: (c) => c.won && c.match && Object.values(c.match.wins).reduce((a, b) => a + b, 0) === 2 },
+    { id: "four", icon: "🎉", name: "Party shepherd", desc: "Win a 4-player game", test: (c) => c.won && c.setup.n === 4 },
+    { id: "ring", icon: "⭕", name: "Ring master", desc: "Win in the Ring arena", test: (c) => c.won && c.setup.arena === "ring" },
+    { id: "full", icon: "📈", name: "Full bar", desc: "Fill your bar before the time runs out", test: (c) => c.hs.some((p) => p.score >= CONFIG.target) },
+  ],
+  hooks: {
+    setup(G, s) {
+      const arena = CONFIG.arenas[s.arena] ?? CONFIG.arenas.open;
+      const b = G.b;
+      for (const [r, c] of arena.stones) b.rock[r * b.cols + c] = true;
+      for (const [r, c, hp] of arena.rocks) {
+        const i = r * b.cols + c;
+        b.kind[i] = "rock";
+        b.hp[i] = b.mhp[i] = hp;
+      }
+      const now = performance.now();
+      const start = s.arena === "ring" ? 4 * b.cols + 2 : 4 * b.cols + 2 + Math.floor(Math.random() * 2);
+      G.data = {
+        lamb: start, from: start, hopAt: now, nextHop: now + CONFIG.hopMs, nextScore: now + CONFIG.scoreMs, startled: false, shockUntil: 0,
+        state: "walk", stateUntil: 0, zoomLeft: 0, nextGolden: now + CONFIG.goldenEverySecs * 1000, goldenUntil: 0, last: "", napOwner: -1,
+      };
+      for (const pl of G.players) pl.gold = pl.startles = 0;
+    },
+    noElimination: true, // a wiped-out flock just drops back in: only the lamb decides
+    targets(G, b, i, t) {
+      if (i === G.data.lamb) {
+        G.data.startled = true;
+        const p = G.players[b.owner[i]];
+        if (p) p.startles++;
+      }
+      return t;
+    },
+    afterWave(G, now) {
+      const D = G.data;
+      if (!D.startled) return;
+      // startled: he bounces two squares away, even out of a nap
+      D.startled = false;
+      const b = G.b;
+      const far = [];
+      for (let k = 0; k < b.size; k++) {
+        const d = Math.abs(Engine.rowOf(b, k) - Engine.rowOf(b, D.lamb)) + Math.abs(Engine.colOf(b, k) - Engine.colOf(b, D.lamb));
+        if (d === 2 && !b.rock[k] && b.kind[k] !== "rock") far.push(k);
+      }
+      if (far.length) hop(G, far[Math.floor(Math.random() * far.length)], now);
+      D.state = "walk";
+      D.shockUntil = now + 700;
+      D.nextHop = now + CONFIG.hopMs;
+      S.Sfx.bleat(1.4);
+    },
+    update(G, now) {
+      const D = G.data;
+      lambBrain(G, now);
+      if (now >= D.nextGolden) {
+        D.nextGolden = now + CONFIG.goldenEverySecs * 1000;
+        D.goldenUntil = now + CONFIG.goldenSecs * 1000;
+        S.shout(null, "Golden!", 1.6, "#ffcf4a");
+        S.Sfx.chime(12);
+        S.buzz(60);
+      }
+      const golden = now < D.goldenUntil;
+      document.getElementById("hud").classList.toggle("golden", golden);
+      if (now >= D.nextScore) {
+        D.nextScore = now + CONFIG.scoreMs;
+        const o = G.b.owner[D.lamb];
+        const pl = G.players[o];
+        if (pl && pl.alive) {
+          const pts = golden ? 2 : 1;
+          pl.score = Math.min(CONFIG.target, pl.score + pts);
+          if (golden) pl.gold += pts;
+          S.Audio.tone(660 + o * 110, 0.05, "sine", golden ? 0.05 : 0.025);
+          if (pl.score >= CONFIG.target - 10 && pl.score - pts < CONFIG.target - 10) S.shout(pl, "Nearly!", 1.1);
+        }
+      }
+      bars(G);
+    },
+    shift(G, d) {
+      const D = G.data;
+      D.nextHop += d;
+      D.nextScore += d;
+      D.hopAt += d;
+      D.shockUntil += d;
+      D.stateUntil += d;
+      D.nextGolden += d;
+      D.goldenUntil += d;
+    },
+    aiValue(G, pl, i) {
+      const L = G.data.lamb;
+      const b = G.b;
+      const gold = performance.now() < G.data.goldenUntil ? 2 : 1;
+      if (i === L) return 6 * gold;
+      if (Engine.neighbours(b, i).includes(L)) return (b.count[i] + 1 >= Engine.capacity(b, i) ? 5 : 1.5) * gold;
+      return 0;
+    },
+    endCheck(G, now, left) {
+      const win = G.players.find((p) => p.score >= CONFIG.target);
+      if (win) return { team: win.team, sub: "Filled the bar first!" };
+      if (left > 0) return null;
+      const ranked = [...G.players].sort((a, b) => b.score - a.score);
+      const sub = "Time's up! Most time with the lamb.";
+      if (ranked.length > 1 && ranked[0].score === ranked[1].score) return { team: -1, sub };
+      return { team: ranked[0].team, sub };
+    },
+    resultsExtra(G, res, el) {
+      el.innerHTML = `<div class="hud" style="display:flex">${G.players.map((p) => `<div class="bar"><i style="width:${(100 * p.score) / CONFIG.target}%;background:${p.color}"></i></div>`).join("")}</div>`;
+    },
+    drawOver(ctx, G, c, t, now) {
+      const D = G.data;
+      const b = G.b;
+      const p = Math.min(1, (now - D.hopAt) / CONFIG.hopAnimMs);
+      const fx = (Engine.colOf(b, D.from) + 0.5) * c;
+      const fy = (Engine.rowOf(b, D.from) + 0.5) * c;
+      const tx = (Engine.colOf(b, D.lamb) + 0.5) * c;
+      const ty = (Engine.rowOf(b, D.lamb) + 0.5) * c;
+      const x = fx + (tx - fx) * p;
+      const y = fy + (ty - fy) * p - Math.sin(Math.PI * p) * c * 0.5;
+      const o = b.owner[D.lamb];
+      const owner = p >= 1 && S.isPlayer(o) ? G.players[o] : null;
+      const golden = now < D.goldenUntil;
+      if (owner || golden) {
+        ctx.globalAlpha = 0.45 + 0.2 * Math.sin(t * 6);
+        Kit.circle(ctx, tx, ty, c * (golden ? 0.62 : 0.5), golden ? "#ffcf4a" : owner.color);
+        ctx.globalAlpha = 1;
+      }
+      // his mood shows what he's about to do
+      const wiggle = D.state === "wiggle" && !S.settings.reduced ? Math.sin(t * 40) * c * 0.06 : 0;
+      const looksLeft = owner ? owner.seat === 0 || owner.seat === 2 : Math.sin(t) > 0;
+      const mood = now < D.shockUntil ? "shock" : D.state === "nap" ? "sleep" : D.state === "yawn" ? "shock" : "happy";
+      Kit.drawLamb(ctx, x + wiggle, y - c * 0.08, c * 0.85, { t, scarf: owner ? owner.color : "#fffaf0", mood, flip: looksLeft, glow: golden ? "rgba(255,220,120,0.6)" : undefined });
+      if (D.state === "nap" || D.state === "yawn") {
+        ctx.fillStyle = "#e8f0ff";
+        ctx.font = `900 ${Math.round(c * 0.28)}px system-ui`;
+        ctx.fillText(D.state === "nap" ? "z z" : "~", x + c * 0.25, y - c * 0.45 - Math.sin(t * 2) * c * 0.06);
+      }
+      if (D.state === "wiggle") {
+        ctx.strokeStyle = "#ffcf4a";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        for (const s of [-1, 1]) {
+          ctx.moveTo(x + s * c * 0.42, y - c * 0.2);
+          ctx.lineTo(x + s * c * 0.55, y - c * 0.3);
+          ctx.moveTo(x + s * c * 0.44, y);
+          ctx.lineTo(x + s * c * 0.6, y);
+        }
+        ctx.stroke();
+      }
+    },
+  },
+});
+
+// ---------- THE LAMB ----------
+// Walks, and now and then yawns into a nap or wiggles into zoomies.
+function lambBrain(G, now) {
+  const D = G.data;
+  const b = G.b;
+  if (D.state === "yawn" && now >= D.stateUntil) {
+    D.state = "nap";
+    D.stateUntil = now + CONFIG.napMs;
+    D.napOwner = b.owner[D.lamb];
+    D.napHeld = true;
+    return;
+  }
+  if (D.state === "nap") {
+    if (b.owner[D.lamb] !== D.napOwner) D.napHeld = false;
+    if (now < D.stateUntil) return;
+    const p = G.players[D.napOwner];
+    if (D.napHeld && p) p.napHeld = true;
+    D.state = "walk";
+    D.nextHop = now + 400;
+  }
+  if (D.state === "wiggle" && now >= D.stateUntil) {
+    D.state = "zoom";
+    D.zoomLeft = 2;
+    D.nextHop = now;
+  }
+  if (now < D.nextHop) return;
+  const n = Engine.neighbours(b, D.lamb).filter((k) => b.kind[k] !== "rock");
+  if (n.length) hop(G, n[Math.floor(Math.random() * n.length)], now);
+  if (D.state === "zoom") {
+    D.zoomLeft--;
+    D.nextHop = now + CONFIG.zoomGap;
+    if (D.zoomLeft <= 0) {
+      D.state = "walk";
+      D.nextHop = now + CONFIG.hopMs;
+    }
+    return;
+  }
+  D.nextHop = now + CONFIG.hopMs;
+  const r = Math.random();
+  if (r < CONFIG.napChance) {
+    D.state = "yawn";
+    D.stateUntil = now + CONFIG.warnMs;
+    D.nextHop = Infinity;
+    S.Audio.tone(300, 0.6, "sine", 0.04, 180);
+  } else if (r < CONFIG.napChance + CONFIG.zoomChance) {
+    D.state = "wiggle";
+    D.stateUntil = now + CONFIG.warnMs;
+    D.nextHop = Infinity;
+    S.Audio.tone(900, 0.3, "triangle", 0.04, 1400);
+  }
+}
+
+function hop(G, to, now) {
+  const D = G.data;
+  D.from = D.lamb;
+  D.lamb = to;
+  D.hopAt = now;
+  S.Audio.tone(520, 0.08, "triangle", 0.04, 780);
+}
+
+function bars(G) {
+  const D = G.data;
+  const top = Math.max(...G.players.map((p) => p.score));
+  const html = G.players
+    .map((p) => `<div class="bar${p.score === top && top > 0 ? " lead" : ""}"><i style="width:${(100 * p.score) / CONFIG.target}%;background:${p.color}"></i></div>`)
+    .join("");
+  if (html !== D.last) {
+    D.last = html;
+    $("hud").innerHTML = html;
+  }
+}
+</script>
+</body>
+</html>
