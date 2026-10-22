@@ -15,7 +15,7 @@ const App = (() => {
     { key: "rush", file: "rush", title: "Sheep Rush", group: "solo", players: "1", icon: "timer" },
     { key: "leadhome", file: "leadhome", title: "Lead Him Home", group: "solo", players: "1", icon: "crook" },
   ];
-  const BUILT = new Set(["stampede", "saga", "wolf"]); // modes finished in this build
+  const BUILT = new Set(["stampede", "saga", "wolf", "rush"]); // modes finished in this build
   const meta = (key) => MODES.find((m) => m.key === key);
   let hasKeyboard = false;
   const lowEnd = (navigator.hardwareConcurrency || 8) <= 4 && (navigator.deviceMemory || 4) <= 2;
@@ -365,7 +365,7 @@ const App = (() => {
     Pwa.gameStarted();
     Core.start(def, setup, {
       firstSteps,
-      seed: o.seed,
+      seed: o.seed ?? def.seedFor?.(setup),
       onEnd: (sum) => finished(def, sum),
       onBetween: (info) => Nav.go("between", info),
     });
@@ -536,6 +536,7 @@ const App = (() => {
       $("r-share").onclick = () => Share.result(def, sum, extra);
       if ($("r-watch")) $("r-watch").onclick = () => watchReplay(def, sum, false);
       if ($("r-clip")) $("r-clip").onclick = () => watchReplay(def, sum, true);
+      extra.after?.();
       Flock.offer($("r-flock"), won || rewards.levels.length > 0);
       Pwa.afterGame();
     },
