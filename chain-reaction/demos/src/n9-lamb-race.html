@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#13201a" />
+<title>Lamb Race</title>
+<meta name="description" content="Lamb Race, a cheekyfoundlamb game: a real-time Chain Reaction racing party for 2-4 players. Every burst you cause moves your lamb along the track." />
+<style>
+/*@KITCSS*/
+/*@STAMPEDE2CSS*/
+.hud { gap: 12px; font-size: 1.05rem; }
+</style>
+</head>
+<body>
+<!--@STAMPEDE2HTML-->
+<script>
+/*@ENGINE*/
+/*@KIT*/
+/*@STAMPEDE2*/
+
+// ======================= N9: LAMB RACE =======================
+// The board is 11 x 8: its outer ring is the race track, the 9 x 6 inside is the pasture.
+// ---------- CONFIG ----------
+const CONFIG = {
+  rows: 11,
+  cols: 8,
+  laps: 3,
+  lineBoost: 3, // a Line sheep: +3 tiles
+  bombKnock: 3, // a Bomb sheep: the lamb just ahead stumbles back this far
+  overflowMs: 5000, // an Overflow sheep: steps count double this long
+  maxSprint: 15, // most tiles one chain can give
+  stepMs: 110, // the lamb trots one tile this often while he has steps banked
+  roundSecs: 240, // a safety net: furthest lamb wins
+};
+const S = Stampede;
+const $ = (id) => document.getElementById(id);
+
+// the track: clockwise from the top-left corner
+const TRACK = [];
+for (let c = 0; c < CONFIG.cols; c++) TRACK.push(c);
+for (let r = 1; r < CONFIG.rows; r++) TRACK.push(r * CONFIG.cols + CONFIG.cols - 1);
+for (let c = CONFIG.cols - 2; c >= 0; c--) TRACK.push((CONFIG.rows - 1) * CONFIG.cols + c);
+for (let r = CONFIG.rows - 2; r >= 1; r--) TRACK.push(r * CONFIG.cols);
+const LAP = TRACK.length;
+
+// ---------- MODE ----------
+S.run({
+  key: "n9",
+  title: "Lamb Race",
+  how: ["Every burst you cause moves your lamb one tile round the track.", "Line sheep: +3. Bomb: the lamb ahead stumbles. First to 3 laps wins!"],
+  rows: CONFIG.rows,
+  cols: CONFIG.cols,
+  tune: { roundSecs: CONFIG.roundSecs },
+  setupDefaults: { n: 2, seats: ["human", "ai", "ai", "ai"] },
+  players: (s) => Array.from({ length: s.n }, (_, p) => ({ seat: p, kind: s.seats[p] })),
+  options(ui, s) {
+    ui.stepper("Players", "n", 2, 4);
+    ui.seats(s.n);
+  },
+  hero(g, t) {
+    S.COLORS.slice(0, 3).forEach((col, k) => Kit.drawLamb(g, ((t * (60 + k * 12)) % 260) - 20, 50 + k * 26, 46, { t, scarf: col, mood: "happy" }));
+  },
+  music: {
+    bpm: 150, root: 64, scale: "major", prog: [0, 3, 4, 4],
+    lead: ["0.2.4.5.4.2.0.2.", "4.5.7.5.4.2.4...", "5.4.2.0.2.4.5.7.", "7.5.4.2.0......."],
+    bass: "x.x.x.x.x.x.x.x.",
+    drums: { kick: "x...x...x...x...", snare: "....x.......x...", hat: "xxxxxxxxxxxxxxxx" },
+  },
+  mvpScore: (p) => p.dist,
+  badges: [
+    { id: "win", icon: "🏁", name: "First past the post", desc: "Win a race", test: (c) => c.won },
+    { id: "sprint", icon: "💨", name: "Sprinter", desc: "Sprint 15 tiles in one chain", test: (c) => c.hs.some((p) => p.bestSprint >= CONFIG.maxSprint) },
+    { id: "bomb", icon: "💣", name: "Banana skin", desc: "Knock back the lamb ahead with a Bomb", test: (c) => c.hs.some((p) => p.knocks > 0) },
+  ],
+  hooks: {
+    setup(G) {
+      const b = G.b;
+      for (const i of TRACK) b.rock[i] = true;
+      G.data = { last: "" };
+      for (const p of G.players) Object.assign(p, { dist: 0, bank: 0, nextTrot: 0, doubleUntil: 0, sprint: 0, bestSprint: 0, knocks: 0, shown: 0 });
+    },
+    hud: (G) => hud(G),
+    noElimination: true,
+    afterWave(G, now, bursts) {
+      for (const p of G.players) {
+        const k = bursts[p.id];
+        if (!k) {
+          p.sprint = 0;
+          continue;
+        }
+        // a chain is a sprint, worth double during an Overflow
+        const room = CONFIG.maxSprint - p.sprint;
+        const add = Math.min(room, k) * (now < p.doubleUntil ? 2 : 1);
+        p.sprint += Math.min(room, k);
+        p.bestSprint = Math.max(p.bestSprint, p.sprint);
+        p.bank += add;
+      }
+    },
+    onSpecial(G, sp, type) {
+      const pl = G.players[sp.who];
+      if (!pl) return;
+      if (type === "line" || type === "cross") {
+        pl.bank += CONFIG.lineBoost;
+        S.shout(pl, `+${CONFIG.lineBoost}`, 1.1);
+      } else knock(G, pl);
+    },
+    afterDrop(G, pl, i, special, now) {
+      if (special === "overflow") {
+        pl.doubleUntil = now + CONFIG.overflowMs;
+        S.shout(pl, "x2 steps!", 1.2, "#ffcf4a");
+      }
+    },
+    update(G, now) {
+      for (const p of G.players) {
+        if (p.bank > 0 && now >= p.nextTrot) {
+          p.bank--;
+          p.dist++;
+          p.nextTrot = now + CONFIG.stepMs;
+          if (p.dist % LAP === 0) {
+            S.shout(p, p.dist >= CONFIG.laps * LAP ? "Finish!" : `Lap ${p.dist / LAP + 1}!`, 1.4);
+            S.Sfx.chime(7 + p.dist / LAP);
+          }
+        }
+        if (p.bank < 0) {
+          // stumbling backwards
+          p.bank++;
+          p.dist = Math.max(0, p.dist - 1);
+        }
+      }
+      hud(G);
+    },
+    shift(G, d) {
+      for (const p of G.players) {
+        p.nextTrot += d;
+        p.doubleUntil += d;
+      }
+    },
+    endCheck(G, now, left) {
+      const win = G.players.find((p) => p.dist >= CONFIG.laps * LAP);
+      if (win) return { team: win.team, sub: `${CONFIG.laps} laps first!` };
+      if (left > 0) return null;
+      const ranked = [...G.players].sort((a, b) => b.dist - a.dist);
+      return ranked[0].dist === ranked[1].dist ? { team: -1, sub: "Neck and neck!" } : { team: ranked[0].team, sub: "Time's up: furthest round the track." };
+    },
+    drawOver(ctx, G, c, t, now) {
+      const b = G.b;
+      // the track
+      TRACK.forEach((i, k) => {
+        const x = Engine.colOf(b, i) * c;
+        const y = Engine.rowOf(b, i) * c;
+        ctx.fillStyle = k % 2 ? "#a07c52" : "#93714a";
+        ctx.fillRect(x, y, c, c);
+        if (k === 0) {
+          // the start and finish line
+          for (let q = 0; q < 4; q++) {
+            ctx.fillStyle = q % 2 ? "#ffffff" : "#1a1622";
+            ctx.fillRect(x + (q * c) / 4, y, c / 4, c * 0.2);
+          }
+        }
+      });
+      // the lambs, side by side so none hides another
+      G.players.forEach((p, k) => {
+        const pos = p.dist % LAP;
+        const i = TRACK[pos];
+        const off = (k - (G.players.length - 1) / 2) * c * 0.18;
+        const x = (Engine.colOf(b, i) + 0.5) * c + off;
+        const y = (Engine.rowOf(b, i) + 0.5) * c - (p.bank > 0 ? Math.abs(Math.sin(t * 14)) * c * 0.12 : 0) + off * 0.5;
+        const next = TRACK[(pos + 1) % LAP];
+        Kit.drawLamb(ctx, x, y, c * 0.62, { t, scarf: p.color, mood: p.bank < 0 ? "shock" : "happy", flip: Engine.colOf(b, next) < Engine.colOf(b, i) });
+        if (now < p.doubleUntil) Kit.circle(ctx, x + c * 0.25, y - c * 0.25, c * 0.08, "#ffcf4a");
+      });
+    },
+  },
+});
+
+// A Bomb sheep: the lamb just ahead of me stumbles back.
+function knock(G, pl) {
+  let target = null;
+  let gap = Infinity;
+  for (const p of G.players) {
+    if (p === pl) continue;
+    const d = (((p.dist - pl.dist) % LAP) + LAP) % LAP;
+    if (d > 0 && d < gap) [gap, target] = [d, p];
+  }
+  if (!target) return;
+  target.bank = -CONFIG.bombKnock;
+  pl.knocks++;
+  S.shout(target, "Oops!", 1.2, "#ff6b6b");
+  S.mood(target, "oops", 1000);
+  S.Sfx.waste();
+}
+
+function hud(G) {
+  const D = G.data;
+  const html = G.players.map((p) => `<span style="color:${p.color}">🏁 ${Math.min(CONFIG.laps, Math.floor(p.dist / LAP) + 1)}/${CONFIG.laps} · ${p.dist % LAP}</span>`).join("");
+  if (html !== D.last) {
+    D.last = html;
+    $("hud").innerHTML = html;
+  }
+}
+</script>
+</body>
+</html>

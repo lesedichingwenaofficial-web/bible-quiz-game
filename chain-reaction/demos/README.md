@@ -62,6 +62,7 @@ The five favourite Stampede versions, rebuilt to a finished-game standard on the
 | `n6-the-lost-coin.html` | The Lost Coin | Treasure hunt for 2–4: bursts uncover the grass to find coins and golden coins, and spring wolf traps |
 | `n7-hot-wolf.html` | Hot Wolf | Hot potato for 2–4: kick the ticking wolf off your square before he pounces on everything near him |
 | `n8-bridge.html` | Bridge | Connect race on 7x7, 1v1 or 2v2: Light links left to right, Dark top to bottom; best of 3 |
+| `n9-lamb-race.html` | Lamb Race | Racing party for 2–4: every burst moves your lamb a tile round a 34-tile track; Line +3, Bomb trips the lamb ahead; 3 laps |
 
 Balance numbers sit in a `CONFIG` object at the top of each file.
 
